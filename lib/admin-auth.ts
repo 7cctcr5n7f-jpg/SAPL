@@ -48,11 +48,13 @@ export async function setAdminCookie() {
   ;(await cookies()).set(COOKIE_NAME, expectedToken(passcode), {
     httpOnly: true, // not readable from client-side JS (mitigates XSS theft)
     secure: true, // only sent over HTTPS
-    // 'lax' is the most secure setting that still works for this app: the admin
-    // dashboard is same-origin in production, and top-level navigations to it
-    // still send the cookie. (Previously 'none' was only needed for the
-    // cross-origin v0 preview iframe, which is not how production is served.)
-    sameSite: 'lax',
+    // 'none' is required so the session cookie is sent with server-action
+    // requests made from the cross-origin v0 preview iframe. Without it the
+    // browser drops the cookie on those subrequests and every save fails with
+    // "session expired" even immediately after logging in. Paired with
+    // secure + httpOnly this remains safe, and it also works fine in
+    // production where the dashboard is same-origin.
+    sameSite: 'none',
     path: '/',
     maxAge: 60 * 60 * 24 * 30, // 30 days
   })
