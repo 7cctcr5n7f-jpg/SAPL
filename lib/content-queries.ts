@@ -91,3 +91,12 @@ export async function getActiveSessionMilestone(): Promise<SessionMilestone | nu
     .limit(1)
   return rows[0] ?? null
 }
+
+// All active session milestones, newest first (members page).
+export async function getActiveSessionMilestones(): Promise<SessionMilestone[]> {
+  return db
+    .select()
+    .from(sessionMilestones)
+    .where(eq(sessionMilestones.active, true))
+    .orderBy(desc(sessionMilestones.createdAt))
+}

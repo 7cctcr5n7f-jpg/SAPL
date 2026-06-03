@@ -6,15 +6,24 @@ export function PageHero({
   description,
   image,
   imageAlt = '',
+  compact = false,
 }: {
   eyebrow?: string
   title: string
   description?: string
   image?: string
   imageAlt?: string
+  compact?: boolean
 }) {
   return (
-    <section className="relative flex min-h-[60vh] items-end overflow-hidden pb-16 pt-40">
+    <section
+      className={
+        'relative flex items-end overflow-hidden ' +
+        (compact
+          ? 'min-h-[34vh] pb-10 pt-28 lg:min-h-[48vh] lg:pb-16 lg:pt-40'
+          : 'min-h-[60vh] pb-16 pt-40')
+      }
+    >
       <div className="absolute inset-0">
         {image ? (
           <Image
@@ -38,11 +47,23 @@ export function PageHero({
             {eyebrow}
           </span>
         )}
-        <h1 className="mt-4 max-w-4xl font-display text-5xl font-black uppercase leading-[0.9] tracking-tight text-balance md:text-6xl lg:text-7xl">
+        <h1
+          className={
+            'max-w-4xl font-display font-black uppercase leading-[0.9] tracking-tight text-balance ' +
+            (compact
+              ? 'mt-3 text-4xl md:text-6xl lg:text-7xl'
+              : 'mt-4 text-5xl md:text-6xl lg:text-7xl')
+          }
+        >
           {title}
         </h1>
         {description && (
-          <p className="mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-light-grey">
+          <p
+            className={
+              'max-w-2xl text-pretty leading-relaxed text-light-grey ' +
+              (compact ? 'mt-3 text-base lg:text-lg' : 'mt-5 text-lg')
+            }
+          >
             {description}
           </p>
         )}

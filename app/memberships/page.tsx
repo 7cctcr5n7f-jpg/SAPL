@@ -62,6 +62,7 @@ export default async function MembershipsPage() {
       ])]} />
 
       <PageHero
+        compact
         eyebrow="Membership Finder"
         title="Build Your Membership"
         description="Pick your access, your membership and your contract length. Your price updates instantly — find the right plan in under 15 seconds."
@@ -73,7 +74,7 @@ export default async function MembershipsPage() {
       <SpecialInline specials={inlineSpecials} />
 
       {/* finder */}
-      <section className="bg-background pb-20 pt-12 lg:pb-28 lg:pt-16">
+      <section className="bg-background pb-20 pt-6 lg:pb-28 lg:pt-16">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
           <MembershipFinder discounts={discounts} />
         </div>

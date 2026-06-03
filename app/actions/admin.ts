@@ -93,6 +93,9 @@ export async function logout() {
   revalidatePath('/admin')
 }
 
+// ── Save state (for confirmation toasts in the admin UI) ──
+export type SaveState = { ok: boolean; message: string; at: number } | null
+
 // ── Helpers ──
 function str(formData: FormData, key: string) {
   return String(formData.get(key) ?? '').trim()
@@ -217,4 +220,36 @@ export async function deleteSessionMilestone(formData: FormData) {
   const id = num(formData, 'id')
   if (id > 0) await db.delete(sessionMilestones).where(eq(sessionMilestones.id, id))
   revalidateAll()
+}
+
+// ── State-returning wrappers (used with useActionState for save confirmations) ──
+// Each wrapper catches errors (e.g. an expired admin session) and returns a
+// failure state so the UI can show a message instead of crashing the preview.
+async function runSave(fn: () => Promise<void>): Promise<SaveState> {
+  try {
+    await fn()
+    return { ok: true, message: 'Saved', at: Date.now() }
+  } catch (err) {
+    const message =
+      err instanceof Error && err.message === 'Unauthorized'
+        ? 'Session expired — please log in again to save.'
+        : 'Something went wrong. Please try again.'
+    return { ok: false, message, at: Date.now() }
+  }
+}
+
+export async function saveSettingState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  return runSave(() => saveSetting(formData))
+}
+
+export async function saveChowWinnerState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  return runSave(() => saveChowWinner(formData))
+}
+
+export async function saveSessionMilestoneState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  return runSave(() => saveSessionMilestone(formData))
+}
+
+export async function saveSpecialState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  return runSave(() => saveSpecial(formData))
 }

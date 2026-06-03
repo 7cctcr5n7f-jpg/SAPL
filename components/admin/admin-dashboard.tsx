@@ -6,11 +6,12 @@ import {
   deleteSessionMilestone,
   deleteSpecial,
   logout,
-  saveChowWinner,
-  saveSessionMilestone,
-  saveSetting,
-  saveSpecial,
+  saveChowWinnerState,
+  saveSessionMilestoneState,
+  saveSettingState,
+  saveSpecialState,
 } from '@/app/actions/admin'
+import { AdminForm } from '@/components/admin/admin-form'
 import { CheckField, FieldGrid, TextArea, TextField } from '@/components/admin/fields'
 import { ImageField } from '@/components/admin/image-field'
 import { DiscountSelect } from '@/components/admin/discount-select'
@@ -29,8 +30,6 @@ function toLocalInput(d: Date | null) {
 }
 
 const cardCls = 'rounded-2xl border border-steel bg-card p-5 sm:p-6'
-const saveBtn =
-  'rounded-md bg-neon-blue px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-accent-foreground transition-transform hover:scale-[1.02]'
 const deleteBtn =
   'inline-flex items-center gap-1.5 rounded-md border border-steel px-4 py-2.5 text-sm font-semibold text-light-grey transition-colors hover:border-red-500 hover:text-red-400'
 
@@ -41,7 +40,7 @@ function SpecialForm({ special }: { special?: Special }) {
     .filter(Boolean)
   return (
     <div className={cardCls}>
-      <form action={saveSpecial} className="flex flex-col gap-4">
+      <AdminForm action={saveSpecialState} submitLabel={special ? 'Save Changes' : 'Create Special'}>
         <input type="hidden" name="id" defaultValue={special?.id ?? 0} />
         <FieldGrid>
           <TextField label="Title" name="title" defaultValue={special?.title} required placeholder="First Class Free" />
@@ -87,12 +86,7 @@ function SpecialForm({ special }: { special?: Special }) {
             <CheckField label="Active (visible on site)" name="active" defaultChecked={special ? special.active : true} />
           </div>
         </FieldGrid>
-        <div className="flex items-center gap-3">
-          <button type="submit" className={saveBtn}>
-            {special ? 'Save Changes' : 'Create Special'}
-          </button>
-        </div>
-      </form>
+      </AdminForm>
       {special ? (
         <form action={deleteSpecial} className="mt-3 border-t border-steel/60 pt-3">
           <input type="hidden" name="id" defaultValue={special.id} />
@@ -110,7 +104,7 @@ function ChowForm({ winner, gender }: { winner?: ChowWinner; gender: 'Male' | 'F
   const sortOrder = gender === 'Male' ? 1 : 2
   return (
     <div className={cardCls}>
-      <form action={saveChowWinner} className="flex flex-col gap-4">
+      <AdminForm action={saveChowWinnerState} submitLabel={`Save ${label}`}>
         <input type="hidden" name="id" defaultValue={winner?.id ?? 0} />
         <input type="hidden" name="label" value={label} readOnly />
         <input type="hidden" name="active" value="true" readOnly />
@@ -118,12 +112,7 @@ function ChowForm({ winner, gender }: { winner?: ChowWinner; gender: 'Male' | 'F
         <p className="font-display text-sm font-bold uppercase tracking-widest text-neon-blue">{label}</p>
         <TextField label="Name" name="name" defaultValue={winner?.name} required placeholder={gender === 'Male' ? 'JD' : 'Nadia'} />
         <TextField label="Score" name="score" defaultValue={winner?.score} placeholder="221" />
-        <div>
-          <button type="submit" className={saveBtn}>
-            Save {label}
-          </button>
-        </div>
-      </form>
+      </AdminForm>
     </div>
   )
 }
@@ -131,7 +120,7 @@ function ChowForm({ winner, gender }: { winner?: ChowWinner; gender: 'Male' | 'F
 function MilestoneForm({ milestone }: { milestone?: SessionMilestone }) {
   return (
     <div className={cardCls}>
-      <form action={saveSessionMilestone} className="flex flex-col gap-4">
+      <AdminForm action={saveSessionMilestoneState} submitLabel={milestone ? 'Save Changes' : 'Add Celebration'}>
         <input type="hidden" name="id" defaultValue={milestone?.id ?? 0} />
         <FieldGrid>
           <TextField label="Member name" name="name" defaultValue={milestone?.name} required placeholder="Sarah" />
@@ -139,12 +128,7 @@ function MilestoneForm({ milestone }: { milestone?: SessionMilestone }) {
         </FieldGrid>
         <ImageField label="Celebration photo" name="imageUrl" defaultValue={milestone?.imageUrl} />
         <CheckField label="Show on members page" name="active" defaultChecked={milestone ? milestone.active : true} />
-        <div>
-          <button type="submit" className={saveBtn}>
-            {milestone ? 'Save Changes' : 'Add Celebration'}
-          </button>
-        </div>
-      </form>
+      </AdminForm>
       {milestone ? (
         <form action={deleteSessionMilestone} className="mt-3 border-t border-steel/60 pt-3">
           <input type="hidden" name="id" defaultValue={milestone.id} />
@@ -283,13 +267,10 @@ export function AdminDashboard({
 
         {/* Challenge of the week */}
         <div className={`mt-5 ${cardCls}`}>
-          <form action={saveSetting} className="flex flex-col gap-4">
+          <AdminForm action={saveSettingState} submitLabel="Save Challenge">
             <input type="hidden" name="key" value="chow_challenge" readOnly />
             <TextField label="Challenge of the week" name="value" defaultValue={chowChallenge} placeholder="Jab - Cross - Uppercut" />
-            <div>
-              <button type="submit" className={saveBtn}>Save Challenge</button>
-            </div>
-          </form>
+          </AdminForm>
         </div>
 
         {/* The two winners — side by side */}

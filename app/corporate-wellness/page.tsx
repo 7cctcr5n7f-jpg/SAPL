@@ -32,6 +32,7 @@ export const metadata: Metadata = {
   title: 'Corporate Wellness',
   description:
     'The Power of HIIT at Work. Boost productivity, focus and retention with the TENROUNDS corporate wellness challenge. Exclusive employee pricing from R850/month in Pretoria East.',
+  alternates: { canonical: '/corporate-wellness' },
 }
 
 const researchStats = [

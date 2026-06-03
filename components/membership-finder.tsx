@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Infinity as InfinityIcon, Sun, Users, Check, ArrowRight, Sparkles, Lock } from 'lucide-react'
+import { Infinity as InfinityIcon, Sun, Users, Check, ArrowRight, Sparkles, Lock, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   accessTiers,
@@ -12,6 +12,7 @@ import {
   formatRand,
   computePricing,
   includesGloves,
+  OFF_PEAK_HOURS,
   type AccessTier,
   type ContractLength,
 } from '@/lib/memberships'
@@ -24,8 +25,8 @@ const iconMap = {
 
 function StepBadge({ n, label }: { n: number; label: string }) {
   return (
-    <div className="mb-5 flex items-center gap-3">
-      <span className="flex size-7 items-center justify-center rounded-full bg-cobalt font-display text-sm font-bold text-accent-foreground">
+    <div className="mb-2.5 flex items-center gap-3 lg:mb-5">
+      <span className="flex size-6 items-center justify-center rounded-full bg-cobalt font-display text-sm font-bold text-accent-foreground lg:size-7">
         {n}
       </span>
       <span className="font-display text-sm font-bold uppercase tracking-widest text-light-grey">
@@ -43,7 +44,6 @@ export function MembershipFinder({
   const [tierId, setTierId] = useState<AccessTier['id']>('anytime')
   const [membershipId, setMembershipId] = useState<string>('anytime-twice')
   const [length, setLength] = useState<ContractLength>(12)
-  const [view, setView] = useState<'monthly' | 'total'>('monthly')
 
   const tier = useMemo(() => accessTiers.find((t) => t.id === tierId)!, [tierId])
   const membership = useMemo(
@@ -71,48 +71,13 @@ export function MembershipFinder({
 
   return (
     <div className="mx-auto max-w-5xl">
-      {/* MOBILE: sticky live price so selections update in view without scrolling */}
-      <div className="sticky top-16 z-30 mb-6 lg:hidden">
-        <div className="glass flex items-center justify-between gap-3 rounded-xl border border-neon-blue/40 px-4 py-3 blue-glow">
-          <div className="min-w-0">
-            <p className="truncate font-display text-xs font-bold uppercase tracking-wide text-neon-blue">
-              {tier.name} · {length} Month
-            </p>
-            <p className="truncate text-[11px] text-light-grey">{membership.name}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            {pricing.hasDiscount && (
-              <p className="text-[11px] font-semibold leading-none text-light-grey line-through">
-                {formatRand(pricing.listMonthly)}
-              </p>
-            )}
-            <p
-              className={cn(
-                'font-display text-2xl font-black leading-none tracking-tight text-glow',
-                pricing.hasDiscount ? 'text-neon-green' : 'text-foreground',
-              )}
-            >
-              {formatRand(pricing.monthly)}
-            </p>
-            <p className="text-[10px] uppercase tracking-wide text-light-grey">
-              /mo{perMember ? ' · per member' : ''}
-              {pricing.hasDiscount ? (
-                <span className="ml-1 font-bold text-neon-green">-{pricing.discountPercent}%</span>
-              ) : gloves ? (
-                <span className="ml-1 font-bold text-neon-green">+ Gloves</span>
-              ) : null}
-            </p>
-          </div>
-        </div>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
         {/* LEFT: configurator */}
-        <div className="space-y-6 lg:space-y-10">
+        <div className="space-y-4 lg:space-y-10">
           {/* STEP 1 */}
           <div>
             <StepBadge n={1} label="Select Access Type" />
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {accessTiers.map((t) => {
                 const Icon = iconMap[t.icon]
                 const active = t.id === tierId
@@ -122,25 +87,25 @@ export function MembershipFinder({
                     type="button"
                     onClick={() => selectTier(t)}
                     className={cn(
-                      'group flex flex-col rounded-xl border p-4 text-left transition-all duration-200',
+                      'group flex flex-col rounded-xl border p-2.5 text-center transition-all duration-200 sm:p-4 sm:text-left',
                       active
                         ? 'border-neon-blue bg-cobalt/10 blue-glow'
                         : 'border-steel bg-card hover:border-neon-blue/60',
                     )}
                     aria-pressed={active}
                   >
-                    <span className="flex items-center gap-2.5">
+                    <span className="flex flex-col items-center gap-1.5 sm:flex-row sm:gap-2.5">
                       <Icon
                         className={cn(
-                          'size-6 shrink-0 transition-colors',
+                          'size-5 shrink-0 transition-colors sm:size-6',
                           active ? 'text-neon-blue' : 'text-light-grey group-hover:text-neon-blue',
                         )}
                       />
-                      <span className="font-display text-base font-bold uppercase leading-tight tracking-tight text-foreground">
+                      <span className="font-display text-xs font-bold uppercase leading-tight tracking-tight text-foreground sm:text-base">
                         {t.name}
                       </span>
                     </span>
-                    <span className="mt-2 text-xs leading-relaxed text-light-grey">
+                    <span className="mt-2 hidden text-xs leading-relaxed text-light-grey sm:block">
                       {t.tagline}
                     </span>
                   </button>
@@ -152,7 +117,10 @@ export function MembershipFinder({
           {/* STEP 2 */}
           <div>
             <StepBadge n={2} label="Select Frequency" />
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div
+              className="grid gap-2 sm:gap-3"
+              style={{ gridTemplateColumns: `repeat(${tier.memberships.length}, minmax(0, 1fr))` }}
+            >
               {tier.memberships.map((m) => {
                 const active = m.id === membership.id
                 return (
@@ -161,26 +129,28 @@ export function MembershipFinder({
                     type="button"
                     onClick={() => setMembershipId(m.id)}
                     className={cn(
-                      'flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200',
+                      'group flex flex-col rounded-xl border p-2.5 text-center transition-all duration-200 sm:p-4 sm:text-left',
                       active
-                        ? 'border-neon-blue bg-cobalt/10'
+                        ? 'border-neon-blue bg-cobalt/10 blue-glow'
                         : 'border-steel bg-card hover:border-neon-blue/60',
                     )}
                     aria-pressed={active}
                   >
-                    <span
-                      className={cn(
-                        'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-                        active ? 'border-neon-blue bg-neon-blue' : 'border-steel',
-                      )}
-                    >
-                      {active && <Check className="size-3 text-background" />}
-                    </span>
-                    <span>
-                      <span className="block font-semibold text-foreground">{m.name}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-light-grey">
-                        {m.blurb}
+                    <span className="flex flex-col items-center gap-1.5 sm:flex-row sm:gap-2.5">
+                      <span
+                        className={cn(
+                          'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                          active ? 'border-neon-blue bg-neon-blue' : 'border-steel',
+                        )}
+                      >
+                        {active && <Check className="size-3 text-background" />}
                       </span>
+                      <span className="font-display text-xs font-bold uppercase leading-tight tracking-tight text-foreground sm:text-base sm:normal-case sm:font-semibold sm:tracking-normal">
+                        {m.name}
+                      </span>
+                    </span>
+                    <span className="mt-2 hidden text-xs leading-relaxed text-light-grey sm:block">
+                      {m.blurb}
                     </span>
                   </button>
                 )
@@ -200,7 +170,7 @@ export function MembershipFinder({
                     type="button"
                     onClick={() => setLength(c.value)}
                     className={cn(
-                      'relative rounded-lg py-3 text-center transition-all duration-200',
+                      'relative rounded-lg py-2.5 text-center transition-all duration-200 sm:py-3',
                       active ? 'bg-cobalt text-accent-foreground' : 'text-light-grey hover:text-foreground',
                     )}
                     aria-pressed={active}
@@ -227,7 +197,7 @@ export function MembershipFinder({
         <div className="lg:sticky lg:top-24">
           <div className="glass overflow-hidden rounded-2xl">
             {/* badges */}
-            <div className="flex flex-wrap gap-2 border-b border-steel/60 bg-cobalt/10 px-6 py-4">
+            <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-steel/60 bg-cobalt/10 px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-6 sm:py-4">
               {length === 6 && (
                 <Badge icon={<Sparkles className="size-3.5" />}>Most Popular</Badge>
               )}
@@ -254,73 +224,31 @@ export function MembershipFinder({
               </h3>
               <p className="mt-1 text-sm text-light-grey">{length} Month Contract</p>
 
-              {/* view toggle */}
-              <div className="mt-5 flex rounded-lg border border-steel bg-background p-1 text-xs font-semibold uppercase tracking-wide">
-                <button
-                  type="button"
-                  onClick={() => setView('monthly')}
-                  className={cn(
-                    'flex-1 rounded-md py-2 transition-colors',
-                    view === 'monthly' ? 'bg-cobalt text-accent-foreground' : 'text-light-grey',
-                  )}
-                  aria-pressed={view === 'monthly'}
-                >
-                  Monthly Price
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView('total')}
-                  className={cn(
-                    'flex-1 rounded-md py-2 transition-colors',
-                    view === 'total' ? 'bg-cobalt text-accent-foreground' : 'text-light-grey',
-                  )}
-                  aria-pressed={view === 'total'}
-                >
-                  Total Value
-                </button>
-              </div>
-
               {/* price */}
               <div className="mt-6">
                 {pricing.hasDiscount && (
                   <p className="mb-1 flex items-center gap-2">
                     <span className="font-display text-2xl font-bold tracking-tight text-light-grey line-through">
-                      {formatRand(view === 'monthly' ? pricing.listMonthly : pricing.listTotalContract)}
+                      {formatRand(pricing.listMonthly)}
                     </span>
                     <span className="rounded-full bg-neon-green px-2 py-0.5 font-display text-[11px] font-black uppercase tracking-wide text-background">
                       Save {pricing.discountPercent}%
                     </span>
                   </p>
                 )}
-                {view === 'monthly' ? (
-                  <p className="flex items-end gap-2">
-                    <span
-                      className={cn(
-                        'font-display text-5xl font-black tracking-tight text-glow',
-                        pricing.hasDiscount ? 'text-neon-green' : 'text-foreground',
-                      )}
-                    >
-                      {formatRand(pricing.monthly)}
-                    </span>
-                    <span className="pb-1.5 text-sm text-light-grey">
-                      / month{perMember ? ' · per member' : ''}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="flex items-end gap-2">
-                    <span
-                      className={cn(
-                        'font-display text-5xl font-black tracking-tight text-glow',
-                        pricing.hasDiscount ? 'text-neon-green' : 'text-foreground',
-                      )}
-                    >
-                      {formatRand(pricing.totalContract)}
-                    </span>
-                    <span className="pb-1.5 text-sm text-light-grey">
-                      total{perMember ? ' · per member' : ''}
-                    </span>
-                  </p>
-                )}
+                <p className="flex items-end gap-2">
+                  <span
+                    className={cn(
+                      'font-display text-5xl font-black tracking-tight text-glow',
+                      pricing.hasDiscount ? 'text-neon-green' : 'text-foreground',
+                    )}
+                  >
+                    {formatRand(pricing.monthly)}
+                  </span>
+                  <span className="pb-1.5 text-sm text-light-grey">
+                    / month{perMember ? ' · per member' : ''}
+                  </span>
+                </p>
                 {pricing.monthlySaving > 0 ? (
                   <p className="mt-2 text-sm font-medium text-neon-blue">
                     Save {formatRand(pricing.monthlySaving)}/month vs the 3-month plan
@@ -330,13 +258,25 @@ export function MembershipFinder({
                 )}
                 {perMember && (
                   <p className="mt-1 text-xs text-light-grey">
-                    Total for two members:{' '}
-                    {formatRand(
-                      (view === 'monthly' ? pricing.monthly : pricing.totalContract) * 2,
-                    )}
+                    Total for two members: {formatRand(pricing.monthly * 2)} / month
                   </p>
                 )}
+                <p className="mt-1 text-xs text-light-grey">
+                  {formatRand(pricing.totalContract)} total over {length} months
+                </p>
               </div>
+
+              {/* off-peak hours notice */}
+              {isOffPeak && (
+                <div className="mt-6 flex items-center gap-3 rounded-xl border border-neon-blue/40 bg-cobalt/10 p-3">
+                  <Clock className="size-5 shrink-0 text-neon-blue" />
+                  <p className="text-xs leading-relaxed text-light-grey">
+                    Off-Peak sessions can only be used between{' '}
+                    <span className="font-semibold text-foreground">{OFF_PEAK_HOURS}</span> (off-peak
+                    hours).
+                  </p>
+                </div>
+              )}
 
               {/* free gloves perk */}
               {gloves ? (
@@ -384,6 +324,12 @@ export function MembershipFinder({
 
               {/* trust points */}
               <ul className="mt-6 space-y-2 border-t border-steel/60 pt-5">
+                {isOffPeak && (
+                  <li className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Clock className="size-4 shrink-0 text-neon-blue" />
+                    Sessions usable {OFF_PEAK_HOURS} (off-peak hours)
+                  </li>
+                )}
                 {trustPoints.map((point) => (
                   <li key={point} className="flex items-center gap-2 text-sm text-light-grey">
                     <Check className="size-4 shrink-0 text-neon-blue" />
@@ -427,7 +373,7 @@ function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide',
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide sm:gap-1.5 sm:text-xs',
         highlight
           ? 'bg-neon-blue text-background'
           : 'border border-neon-blue/40 text-neon-blue',
