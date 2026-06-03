@@ -6,7 +6,7 @@ import { SessionMilestone } from '@/components/session-milestone'
 import { CtaBanner } from '@/components/cta-banner'
 import {
   getActiveChowWinners,
-  getActiveSessionMilestone,
+  getActiveSessionMilestones,
   getSetting,
 } from '@/lib/content-queries'
 
@@ -20,15 +20,15 @@ const RANKINGS_URL =
   'https://global-rankings.uptivo.fit/?rankingsCode=CRMRN9NP&brand=false&max=100'
 
 export default async function MembersPage() {
-  const [winners, milestone, chowChallenge] = await Promise.all([
+  const [winners, milestones, chowChallenge] = await Promise.all([
     getActiveChowWinners(),
-    getActiveSessionMilestone(),
+    getActiveSessionMilestones(),
     getSetting('chow_challenge'),
   ])
   return (
     <main>
       {/* session milestone celebration — managed from /admin */}
-      <SessionMilestone milestone={milestone} />
+      <SessionMilestone milestones={milestones} />
 
       {/* CHOW winners — managed from /admin */}
       <ChowWinners winners={winners} challenge={chowChallenge} />

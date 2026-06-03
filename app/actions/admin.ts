@@ -93,6 +93,9 @@ export async function logout() {
   revalidatePath('/admin')
 }
 
+// ── Save state (for confirmation toasts in the admin UI) ──
+export type SaveState = { ok: boolean; message: string; at: number } | null
+
 // ── Helpers ──
 function str(formData: FormData, key: string) {
   return String(formData.get(key) ?? '').trim()
@@ -217,4 +220,25 @@ export async function deleteSessionMilestone(formData: FormData) {
   const id = num(formData, 'id')
   if (id > 0) await db.delete(sessionMilestones).where(eq(sessionMilestones.id, id))
   revalidateAll()
+}
+
+// ── State-returning wrappers (used with useActionState for save confirmations) ──
+export async function saveSettingState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  await saveSetting(formData)
+  return { ok: true, message: 'Saved', at: Date.now() }
+}
+
+export async function saveChowWinnerState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  await saveChowWinner(formData)
+  return { ok: true, message: 'Saved', at: Date.now() }
+}
+
+export async function saveSessionMilestoneState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  await saveSessionMilestone(formData)
+  return { ok: true, message: 'Saved', at: Date.now() }
+}
+
+export async function saveSpecialState(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  await saveSpecial(formData)
+  return { ok: true, message: 'Saved', at: Date.now() }
 }
