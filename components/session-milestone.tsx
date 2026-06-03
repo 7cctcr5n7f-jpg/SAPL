@@ -14,14 +14,14 @@ function MilestoneCard({
     <div
       className={
         'overflow-hidden rounded-3xl border border-neon-green/50 bg-black/40 backdrop-blur green-glow ' +
-        (compact ? 'flex h-full flex-col' : 'sm:flex')
+        (compact ? 'flex h-full flex-col lg:flex-row' : 'sm:flex')
       }
     >
       {milestone.imageUrl ? (
         <div
           className={
-            'relative w-full shrink-0 ' +
-            (compact ? 'h-52' : 'h-56 sm:h-auto sm:w-2/5')
+            'relative w-full shrink-0 bg-black/40 ' +
+            (compact ? 'h-56 lg:h-auto lg:w-1/2 lg:self-stretch' : 'h-56 sm:h-auto sm:w-2/5')
           }
         >
           <Image
@@ -29,18 +29,18 @@ function MilestoneCard({
             alt={`${milestone.name} celebrating ${milestone.sessions} sessions`}
             fill
             sizes={compact ? '(max-width: 1024px) 100vw, 400px' : '(max-width: 640px) 100vw, 320px'}
-            className="object-cover"
+            className={compact ? 'object-cover lg:object-contain' : 'object-cover'}
           />
         </div>
       ) : null}
-      <div className={'flex flex-1 flex-col justify-center ' + (compact ? 'p-6' : 'p-7 sm:p-9')}>
+      <div className={'flex flex-1 flex-col justify-center ' + (compact ? 'p-6 lg:p-8' : 'p-7 sm:p-9')}>
         <span className="inline-flex w-fit items-center gap-2 rounded-full border border-neon-green/50 bg-neon-green/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-neon-green">
           <PartyPopper className="size-4" /> Milestone Unlocked
         </span>
         <p
           className={
             'mt-5 font-display font-black uppercase leading-none tracking-tight text-neon-green text-glow ' +
-            (compact ? 'text-5xl' : 'text-6xl sm:text-7xl')
+            (compact ? 'text-5xl lg:text-6xl' : 'text-6xl sm:text-7xl')
           }
         >
           {milestone.sessions}
