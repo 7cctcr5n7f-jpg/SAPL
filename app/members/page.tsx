@@ -14,6 +14,7 @@ export const metadata: Metadata = {
   title: 'Members',
   description:
     'The TENROUNDS members hub — celebrate our weekly CHOW winners and track the live global member rankings powered by Uptivo.',
+  alternates: { canonical: '/members' },
 }
 
 const RANKINGS_URL =

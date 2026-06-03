@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: 'Meet The Team',
   description:
     'Meet the TENROUNDS coaching team — qualified trainers providing guidance, motivation and support on the floor every round in Pretoria East.',
+  alternates: { canonical: '/meet-the-team' },
 }
 
 const onFloor = [

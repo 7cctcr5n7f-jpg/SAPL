@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: 'About Us',
   description:
     'The TENROUNDS story — a boutique HIIT gym in Pretoria built for busy people who want real results through coach-supported 30-minute workouts.',
+  alternates: { canonical: '/about' },
 }
 
 const pillars = [
