@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Infinity as InfinityIcon, Sun, Users, Check, ArrowRight, Sparkles, Lock } from 'lucide-react'
+import { Infinity as InfinityIcon, Sun, Users, Check, ArrowRight, Sparkles, Lock, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   accessTiers,
@@ -12,6 +12,7 @@ import {
   formatRand,
   computePricing,
   includesGloves,
+  OFF_PEAK_HOURS,
   type AccessTier,
   type ContractLength,
 } from '@/lib/memberships'
@@ -196,7 +197,7 @@ export function MembershipFinder({
         <div className="lg:sticky lg:top-24">
           <div className="glass overflow-hidden rounded-2xl">
             {/* badges */}
-            <div className="flex flex-wrap gap-2 border-b border-steel/60 bg-cobalt/10 px-6 py-4">
+            <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-steel/60 bg-cobalt/10 px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-6 sm:py-4">
               {length === 6 && (
                 <Badge icon={<Sparkles className="size-3.5" />}>Most Popular</Badge>
               )}
@@ -265,6 +266,18 @@ export function MembershipFinder({
                 </p>
               </div>
 
+              {/* off-peak hours notice */}
+              {isOffPeak && (
+                <div className="mt-6 flex items-center gap-3 rounded-xl border border-neon-blue/40 bg-cobalt/10 p-3">
+                  <Clock className="size-5 shrink-0 text-neon-blue" />
+                  <p className="text-xs leading-relaxed text-light-grey">
+                    Off-Peak sessions can only be used between{' '}
+                    <span className="font-semibold text-foreground">{OFF_PEAK_HOURS}</span> (off-peak
+                    hours).
+                  </p>
+                </div>
+              )}
+
               {/* free gloves perk */}
               {gloves ? (
                 <div className="green-glow relative mt-6 flex items-center gap-4 overflow-hidden rounded-xl border-2 border-neon-green/70 bg-neon-green/10 p-3">
@@ -311,6 +324,12 @@ export function MembershipFinder({
 
               {/* trust points */}
               <ul className="mt-6 space-y-2 border-t border-steel/60 pt-5">
+                {isOffPeak && (
+                  <li className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Clock className="size-4 shrink-0 text-neon-blue" />
+                    Sessions usable {OFF_PEAK_HOURS} (off-peak hours)
+                  </li>
+                )}
                 {trustPoints.map((point) => (
                   <li key={point} className="flex items-center gap-2 text-sm text-light-grey">
                     <Check className="size-4 shrink-0 text-neon-blue" />
@@ -354,7 +373,7 @@ function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide',
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide sm:gap-1.5 sm:text-xs',
         highlight
           ? 'bg-neon-blue text-background'
           : 'border border-neon-blue/40 text-neon-blue',

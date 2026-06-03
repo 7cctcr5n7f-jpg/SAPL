@@ -33,7 +33,7 @@ export const accessTiers: AccessTier[] = [
       },
       {
         id: 'anytime-twice',
-        name: 'Twice Per Week',
+        name: '2x Per Week',
         blurb: 'Two coached sessions every week at any hour.',
         prices: { 3: 1400, 6: 1100, 12: 900 },
       },
@@ -53,7 +53,7 @@ export const accessTiers: AccessTier[] = [
       },
       {
         id: 'offpeak-twice',
-        name: 'Twice Per Week',
+        name: '2x Per Week',
         blurb: 'Two coached sessions every week, off-peak.',
         prices: { 3: 1200, 6: 950, 12: 750 },
       },
@@ -99,6 +99,9 @@ export const contractLengths: { value: ContractLength; label: string; badge?: st
   { value: 6, label: '6 Months', badge: 'Most Popular' },
   { value: 12, label: '12 Months', badge: 'Best Value' },
 ]
+
+// Off-peak access is restricted to these daily hours.
+export const OFF_PEAK_HOURS = '13:00 – 16:00 daily'
 
 export const trustPoints = [
   'No Class Times',
