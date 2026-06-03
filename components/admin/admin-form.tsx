@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Check, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import type { SaveState } from '@/app/actions/admin'
 
 type Action = (prev: SaveState, formData: FormData) => Promise<SaveState>
@@ -65,6 +65,14 @@ export function AdminForm({
             className="inline-flex items-center gap-1.5 rounded-md border border-neon-green/50 bg-neon-green/10 px-3 py-1.5 text-sm font-semibold text-neon-green"
           >
             <Check className="size-4" /> Saved!
+          </span>
+        ) : state && !state.ok ? (
+          <span
+            role="alert"
+            aria-live="assertive"
+            className="inline-flex items-center gap-1.5 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-sm font-semibold text-destructive"
+          >
+            <AlertTriangle className="size-4" /> {state.message}
           </span>
         ) : null}
       </div>
