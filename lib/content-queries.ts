@@ -1,6 +1,7 @@
 import 'server-only'
 import { and, asc, desc, eq, gt, isNull, lte, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { sessionPacks } from '@/lib/memberships'
 import {
   chowWinners,
   membershipSignups,
@@ -32,15 +33,50 @@ async function getActiveSpecials(): Promise<Special[]> {
 }
 
 export async function getPopupSpecials(): Promise<Special[]> {
-  return (await getActiveSpecials()).filter((s) => s.showPopup)
+  return (await getActiveSpecials()).filter((s) => s.showPopup && s.kind !== 'sessions')
 }
 
 export async function getInlineSpecials(): Promise<Special[]> {
-  return (await getActiveSpecials()).filter((s) => s.showInline)
+  return (await getActiveSpecials()).filter((s) => s.showInline && s.kind !== 'sessions')
 }
 
 export async function getBarSpecials(): Promise<Special[]> {
-  return (await getActiveSpecials()).filter((s) => s.showBar)
+  return (await getActiveSpecials()).filter((s) => s.showBar && s.kind !== 'sessions')
+}
+
+// Active session-pack specials (shown above the pay-as-you-go session prices).
+export async function getSessionSpecials(): Promise<Special[]> {
+  return (await getActiveSpecials()).filter((s) => s.kind === 'sessions')
+}
+
+// Compute a discounted session-pack price for a given special.
+function sessionPackSpecialPrice(price: number, s: Special): number {
+  const v = s.sessionDiscountValue
+  if (v <= 0) return price
+  const discounted =
+    s.sessionDiscountType === 'amount' ? price - v : Math.round(price * (1 - v / 100))
+  return Math.max(0, discounted)
+}
+
+// Map of session-pack quantity -> best (lowest) discounted price across active session specials.
+export async function getSessionPackDiscounts(): Promise<Record<number, number>> {
+  const list = await getSessionSpecials()
+  const map: Record<number, number> = {}
+  for (const s of list) {
+    if (s.sessionDiscountValue <= 0) continue
+    const qtys = (s.sessionPackQuantities || '')
+      .split(',')
+      .map((q) => Number(q.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0)
+    for (const pack of sessionPacks) {
+      if (!qtys.includes(pack.quantity)) continue
+      const discounted = sessionPackSpecialPrice(pack.price, s)
+      if (discounted >= pack.price) continue
+      map[pack.quantity] =
+        map[pack.quantity] != null ? Math.min(map[pack.quantity], discounted) : discounted
+    }
+  }
+  return map
 }
 
 // Map of membershipId -> best (highest) active discount percent.

@@ -132,6 +132,14 @@ export async function saveSpecial(formData: FormData) {
       .map((v) => String(v).trim())
       .filter(Boolean)
       .join(','),
+    kind: str(formData, 'kind') === 'sessions' ? 'sessions' : 'membership',
+    sessionPackQuantities: formData
+      .getAll('sessionPackQuantities')
+      .map((v) => String(v).trim())
+      .filter(Boolean)
+      .join(','),
+    sessionDiscountType: str(formData, 'sessionDiscountType') === 'amount' ? 'amount' : 'percent',
+    sessionDiscountValue: num(formData, 'sessionDiscountValue'),
     active: bool(formData, 'active'),
     sortOrder: num(formData, 'sortOrder'),
     startsAt: dateOrNull(formData, 'startsAt'),

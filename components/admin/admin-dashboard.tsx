@@ -40,8 +40,9 @@ function SpecialForm({ special }: { special?: Special }) {
     .filter(Boolean)
   return (
     <div className={cardCls}>
-      <AdminForm action={saveSpecialState} submitLabel={special ? 'Save Changes' : 'Create Special'}>
+      <AdminForm action={saveSpecialState} submitLabel={special ? 'Save Changes' : 'Create Membership Special'}>
         <input type="hidden" name="id" defaultValue={special?.id ?? 0} />
+        <input type="hidden" name="kind" value="membership" />
         <FieldGrid>
           <TextField label="Title" name="title" defaultValue={special?.title} required placeholder="First Class Free" />
           <TextField label="Badge" name="badge" defaultValue={special?.badge} placeholder="Limited Offer" />
@@ -75,6 +76,95 @@ function SpecialForm({ special }: { special?: Special }) {
           </div>
         </FieldGrid>
         <DiscountSelect selected={selectedIds} />
+
+        <FieldGrid>
+          <TextField label="Starts (optional)" name="startsAt" type="datetime-local" defaultValue={toLocalInput(special?.startsAt ?? null)} />
+          <TextField label="Ends (optional)" name="endsAt" type="datetime-local" defaultValue={toLocalInput(special?.endsAt ?? null)} />
+        </FieldGrid>
+        <FieldGrid>
+          <TextField label="Sort order" name="sortOrder" type="number" defaultValue={String(special?.sortOrder ?? 0)} />
+          <div className="flex items-end pb-2">
+            <CheckField label="Active (visible on site)" name="active" defaultChecked={special ? special.active : true} />
+          </div>
+        </FieldGrid>
+      </AdminForm>
+      {special ? (
+        <form action={deleteSpecial} className="mt-3 border-t border-steel/60 pt-3">
+          <input type="hidden" name="id" defaultValue={special.id} />
+          <button type="submit" className={deleteBtn}>
+            <Trash2 className="size-4" /> Delete
+          </button>
+        </form>
+      ) : null}
+    </div>
+  )
+}
+
+const SESSION_PACKS: { value: number; label: string }[] = [
+  { value: 1, label: 'Single' },
+  { value: 10, label: '10 Pack' },
+  { value: 20, label: '20 Pack' },
+  { value: 30, label: '30 Pack' },
+]
+
+function SessionSpecialForm({ special }: { special?: Special }) {
+  const selectedQtys = (special?.sessionPackQuantities ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return (
+    <div className={cardCls}>
+      <AdminForm action={saveSpecialState} submitLabel={special ? 'Save Changes' : 'Create Sessions Special'}>
+        <input type="hidden" name="id" defaultValue={special?.id ?? 0} />
+        <input type="hidden" name="kind" value="sessions" />
+        <FieldGrid>
+          <TextField label="Title" name="title" defaultValue={special?.title} required placeholder="Summer Session Sale" />
+          <TextField label="Badge" name="badge" defaultValue={special?.badge} placeholder="Sessions Special" />
+        </FieldGrid>
+        <TextArea label="Description" name="description" defaultValue={special?.description} />
+
+        {/* Which packs the discount applies to */}
+        <div className="rounded-lg border border-steel/60 bg-background/50 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-light-grey">
+            Apply discount to session packs
+          </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {SESSION_PACKS.map((p) => (
+              <label key={p.value} className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  name="sessionPackQuantities"
+                  value={p.value}
+                  defaultChecked={selectedQtys.includes(String(p.value))}
+                  className="size-4 accent-[var(--color-neon-green)]"
+                />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Discount type + value */}
+        <FieldGrid>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-light-grey">Discount type</span>
+            <select
+              name="sessionDiscountType"
+              defaultValue={special?.sessionDiscountType ?? 'percent'}
+              className="w-full rounded-md border border-steel bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-neon-blue"
+            >
+              <option value="percent">Percentage (%)</option>
+              <option value="amount">Amount (R)</option>
+            </select>
+          </label>
+          <TextField
+            label="Discount value"
+            name="sessionDiscountValue"
+            type="number"
+            defaultValue={String(special?.sessionDiscountValue ?? 0)}
+            placeholder="20"
+          />
+        </FieldGrid>
 
         <FieldGrid>
           <TextField label="Starts (optional)" name="startsAt" type="datetime-local" defaultValue={toLocalInput(special?.startsAt ?? null)} />
@@ -160,6 +250,8 @@ export function AdminDashboard({
   }) {
   const femaleWinner = winners.find((w) => w.label.toLowerCase().includes('female'))
   const maleWinner = winners.find((w) => !w.label.toLowerCase().includes('female'))
+  const membershipSpecials = specials.filter((s) => s.kind !== 'sessions')
+  const sessionSpecials = specials.filter((s) => s.kind === 'sessions')
 
   const [tab, setTab] = useState<TabKey>('bookings')
 
@@ -318,21 +410,56 @@ export function AdminDashboard({
           <Tag className="size-5 text-neon-blue" />
           <h2 className="font-display text-2xl font-black uppercase tracking-tight">Specials</h2>
         </div>
-        <div className="mt-5 flex flex-col gap-5">
-          {specials.length === 0 ? (
-            <p className="text-sm text-light-grey">No specials yet. Add one below.</p>
-          ) : (
-            specials.map((s) => <SpecialForm key={s.id} special={s} />)
-          )}
-        </div>
-        <details className="group mt-6">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-dashed border-neon-blue/50 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-neon-blue transition-colors hover:bg-neon-blue/10">
-            <Plus className="size-4" /> Add New Special
-          </summary>
-          <div className="mt-4">
-            <SpecialForm />
+
+        {/* Membership Specials */}
+        <div className="mt-8">
+          <h3 className="font-display text-lg font-black uppercase tracking-tight text-neon-green">
+            Membership Specials
+          </h3>
+          <p className="mt-1 text-sm text-light-grey">
+            Shown in the green-bordered banner above the membership finder. Can also discount selected memberships.
+          </p>
+          <div className="mt-5 flex flex-col gap-5">
+            {membershipSpecials.length === 0 ? (
+              <p className="text-sm text-light-grey">No membership specials yet. Add one below.</p>
+            ) : (
+              membershipSpecials.map((s) => <SpecialForm key={s.id} special={s} />)
+            )}
           </div>
-        </details>
+          <details className="group mt-6">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-dashed border-neon-blue/50 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-neon-blue transition-colors hover:bg-neon-blue/10">
+              <Plus className="size-4" /> Add Membership Special
+            </summary>
+            <div className="mt-4">
+              <SpecialForm />
+            </div>
+          </details>
+        </div>
+
+        {/* Sessions Specials */}
+        <div className="mt-12 border-t border-steel pt-10">
+          <h3 className="font-display text-lg font-black uppercase tracking-tight text-neon-green">
+            Sessions Specials
+          </h3>
+          <p className="mt-1 text-sm text-light-grey">
+            Shown above the pay-as-you-go session prices. Discount the Single, 10, 20 or 30 packs by a percentage or a rand amount.
+          </p>
+          <div className="mt-5 flex flex-col gap-5">
+            {sessionSpecials.length === 0 ? (
+              <p className="text-sm text-light-grey">No sessions specials yet. Add one below.</p>
+            ) : (
+              sessionSpecials.map((s) => <SessionSpecialForm key={s.id} special={s} />)
+            )}
+          </div>
+          <details className="group mt-6">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-dashed border-neon-green/50 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-neon-green transition-colors hover:bg-neon-green/10">
+              <Plus className="size-4" /> Add Sessions Special
+            </summary>
+            <div className="mt-4">
+              <SessionSpecialForm />
+            </div>
+          </details>
+        </div>
       </section>
       </div>
       )}

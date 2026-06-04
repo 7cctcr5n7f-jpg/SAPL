@@ -15,6 +15,15 @@ export const specials = pgTable('specials', {
   discountPercent: integer('discount_percent').notNull().default(0),
   // Comma-separated membership IDs the discount applies to (see lib/memberships.ts)
   discountMembershipIds: text('discount_membership_ids').notNull().default(''),
+  // Which kind of special this is: 'membership' (shown inline above the finder) or
+  // 'sessions' (shown above the session-pack prices and discounts session packs).
+  kind: text('kind').notNull().default('membership'),
+  // For session specials: comma-separated pack quantities the discount applies to (e.g. "1,10,20,30")
+  sessionPackQuantities: text('session_pack_quantities').notNull().default(''),
+  // For session specials: 'percent' (off) or 'amount' (rand off)
+  sessionDiscountType: text('session_discount_type').notNull().default('percent'),
+  // For session specials: the discount value (percent or rand depending on sessionDiscountType)
+  sessionDiscountValue: integer('session_discount_value').notNull().default(0),
   active: boolean('active').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
   startsAt: timestamp('starts_at', { withTimezone: true }),
