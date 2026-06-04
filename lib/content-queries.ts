@@ -6,11 +6,13 @@ import {
   chowWinners,
   membershipSignups,
   sessionMilestones,
+  sessionPurchases,
   settings,
   specials,
   type ChowWinner,
   type MembershipSignup,
   type SessionMilestone,
+  type SessionPurchase,
   type Special,
 } from '@/lib/db/schema'
 
@@ -91,6 +93,71 @@ export async function getSessionPackDiscounts(): Promise<Record<number, number>>
     }
   }
   return map
+}
+
+// Resolve the authoritative price + bonus for a session pack, applying any
+// currently-active session special. Used server-side at checkout so the amount
+// charged can never be tampered with from the client.
+export type ResolvedSessionPack = {
+  quantity: number
+  unitLabel: string
+  baseAmount: number
+  amount: number
+  bonusSessions: number
+  totalSessions: number
+  special: Special | null
+}
+
+export async function resolveSessionPack(
+  quantity: number,
+): Promise<ResolvedSessionPack | null> {
+  const pack = sessionPacks.find((p) => p.quantity === quantity)
+  if (!pack) return null
+
+  const [discounts, bonuses, sessionSpecials] = await Promise.all([
+    getSessionPackDiscounts(),
+    getSessionPackBonuses(),
+    getSessionSpecials(),
+  ])
+
+  const discounted = discounts[pack.quantity]
+  const amount = discounted != null && discounted < pack.price ? discounted : pack.price
+  const bonusSessions = bonuses[pack.quantity] ?? 0
+
+  // Identify which special applies (for the receipt/record), if any.
+  let special: Special | null = null
+  for (const s of sessionSpecials) {
+    const qtys = (s.sessionPackQuantities || '')
+      .split(',')
+      .map((q) => Number(q.trim()))
+    const bonusQtys = (s.sessionPackBonuses || '')
+      .split(',')
+      .map((pair) => Number(pair.split(':')[0]?.trim()))
+    if (qtys.includes(pack.quantity) || bonusQtys.includes(pack.quantity)) {
+      special = s
+      break
+    }
+  }
+
+  return {
+    quantity: pack.quantity,
+    unitLabel: pack.quantity === 1 ? 'Single Session' : `${pack.quantity} Pack`,
+    baseAmount: pack.price,
+    amount,
+    bonusSessions,
+    totalSessions: pack.quantity + bonusSessions,
+    special,
+  }
+}
+
+// All online session purchases, newest first (admin only).
+export async function getSessionPurchases(): Promise<SessionPurchase[]> {
+  return db.select().from(sessionPurchases).orderBy(desc(sessionPurchases.createdAt))
+}
+
+export async function getSessionPurchase(id: number): Promise<SessionPurchase | null> {
+  const rows = await db.select().from(sessionPurchases).where(eq(sessionPurchases.id, id)).limit(1)
+  return rows[0] ?? null
 }
 
 // Map of membershipId -> best (highest) active discount percent.

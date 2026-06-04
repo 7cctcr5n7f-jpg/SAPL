@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { blockedDays, chowWinners, membershipSignups, sessionMilestones, settings, specials, trialBookings } from '@/lib/db/schema'
+import { blockedDays, chowWinners, membershipSignups, sessionMilestones, sessionPurchases, settings, specials, trialBookings } from '@/lib/db/schema'
 import {
   clearAdminCookie,
   isAdminAuthed,
@@ -54,8 +54,30 @@ export async function deleteSignup(formData: FormData) {
   }
 }
 
-// ── Blocked / unavailable days ──
-export async function saveBlockedDay(formData: FormData) {
+  // ── Session purchases ──
+  const PURCHASE_STATUSES = ['New', 'Processed', 'Used', 'Cancelled'] as const
+
+  export async function updateSessionPurchaseStatus(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get('id'))
+  const status = String(formData.get('status') ?? '').trim()
+  if (id && (PURCHASE_STATUSES as readonly string[]).includes(status)) {
+  await db.update(sessionPurchases).set({ status }).where(eq(sessionPurchases.id, id))
+  revalidatePath('/admin')
+  }
+  }
+
+  export async function deleteSessionPurchase(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get('id'))
+  if (id) {
+  await db.delete(sessionPurchases).where(eq(sessionPurchases.id, id))
+  revalidatePath('/admin')
+  }
+  }
+
+  // ── Blocked / unavailable days ──
+  export async function saveBlockedDay(formData: FormData) {
   await requireAdmin()
   const day = String(formData.get('day') ?? '').trim()
   const reason = String(formData.get('reason') ?? '').trim()

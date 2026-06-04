@@ -91,7 +91,7 @@ export default async function MembershipsPage() {
       </section>
 
       {/* pay-as-you-go sessions */}
-      <section className="bg-charcoal py-20 lg:py-28">
+      <section id="sessions" className="scroll-mt-24 bg-charcoal py-20 lg:py-28">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
           <SessionPacks
             discounts={sessionDiscounts}

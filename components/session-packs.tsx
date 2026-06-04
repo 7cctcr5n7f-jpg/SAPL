@@ -1,4 +1,5 @@
-import { MapPin, Check, Flame, Gift } from 'lucide-react'
+import Link from 'next/link'
+import { MapPin, Check, Flame, Gift, ArrowRight } from 'lucide-react'
 import { SectionHeading } from '@/components/section-heading'
 import { SpecialMoreInfo } from '@/components/specials/special-more-info'
 import { sessionPacks, sessionPrice, formatRand } from '@/lib/memberships'
@@ -123,6 +124,18 @@ export function SessionPacks({
                 </span>{' '}
                 per session
               </p>
+              <Link
+                href={`/buy-sessions?pack=${pack.quantity}`}
+                className={cn(
+                  'group mt-4 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2.5 font-display text-xs font-bold uppercase tracking-wide transition-all sm:mt-auto sm:text-sm',
+                  hasSpecial
+                    ? 'bg-neon-green text-background hover:green-glow'
+                    : 'bg-cobalt text-accent-foreground hover:bg-neon-blue hover:blue-glow',
+                )}
+              >
+                Buy Now
+                <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+              </Link>
             </div>
           )
         })}
@@ -131,7 +144,7 @@ export function SessionPacks({
       <div className="mt-8 flex flex-col items-start gap-3 rounded-xl border border-steel bg-charcoal p-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-center gap-2 text-sm text-light-grey">
           <MapPin className="size-4 shrink-0 text-neon-blue" />
-          Session packs are purchased in person at the club — no booking or contract required.
+          Buy online and pay securely, or pop in to the club — no booking or contract required.
         </p>
         <p className="flex items-center gap-2 text-sm text-light-grey">
           <Check className="size-4 shrink-0 text-neon-blue" />

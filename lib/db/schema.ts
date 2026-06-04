@@ -134,6 +134,42 @@ export const membershipSignups = pgTable('membership_signups', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// Online session-pack purchases submitted from /buy-sessions (paid via PayFast)
+export const sessionPurchases = pgTable('session_purchases', {
+  id: serial('id').primaryKey(),
+  // ── Purchased pack ──
+  packQuantity: integer('pack_quantity').notNull().default(0), // paid sessions in the pack (e.g. 30)
+  bonusSessions: integer('bonus_sessions').notNull().default(0), // free bonus sessions from a special
+  totalSessions: integer('total_sessions').notNull().default(0), // packQuantity + bonusSessions
+  unitLabel: text('unit_label').notNull().default(''), // e.g. "30 Pack" / "Single Session"
+  baseAmount: integer('base_amount').notNull().default(0), // full price before any special
+  amount: integer('amount').notNull().default(0), // amount actually charged (Rand)
+  specialId: integer('special_id'), // applied sessions special, if any
+  specialTitle: text('special_title').notNull().default(''),
+  // ── Member details ──
+  firstName: text('first_name').notNull(),
+  surname: text('surname').notNull(),
+  email: text('email').notNull(),
+  contactNumber: text('contact_number').notNull(),
+  idNumber: text('id_number').notNull(),
+  emergencyContactName: text('emergency_contact_name').notNull().default(''),
+  emergencyContactNumber: text('emergency_contact_number').notNull().default(''),
+  // ── Agreements ──
+  agreeTerms: boolean('agree_terms').notNull().default(false),
+  agreeCancellation: boolean('agree_cancellation').notNull().default(false),
+  agreeHealth: boolean('agree_health').notNull().default(false),
+  agreePrivacy: boolean('agree_privacy').notNull().default(false),
+  // ── Signature (PNG data URL) ──
+  signature: text('signature').notNull().default(''),
+  // ── Payment / workflow ──
+  paymentStatus: text('payment_status').notNull().default('Pending'), // 'Pending' | 'Paid' | 'Failed' | 'Cancelled'
+  pfPaymentId: text('pf_payment_id').notNull().default(''), // PayFast payment id from ITN
+  status: text('status').notNull().default('New'),
+  confirmationSent: boolean('confirmation_sent').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+})
+
 export type Special = typeof specials.$inferSelect
 export type ChowWinner = typeof chowWinners.$inferSelect
 export type SettingRow = typeof settings.$inferSelect
@@ -141,3 +177,4 @@ export type SessionMilestone = typeof sessionMilestones.$inferSelect
 export type TrialBooking = typeof trialBookings.$inferSelect
 export type BlockedDay = typeof blockedDays.$inferSelect
 export type MembershipSignup = typeof membershipSignups.$inferSelect
+export type SessionPurchase = typeof sessionPurchases.$inferSelect

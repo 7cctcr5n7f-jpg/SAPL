@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, Tag, Trophy, Dumbbell, CalendarCheck, Users, CalendarOff } from 'lucide-react'
+import { Plus, Trash2, Tag, Trophy, Dumbbell, CalendarCheck, Users, CalendarOff, ShoppingCart } from 'lucide-react'
 import {
   deleteSessionMilestone,
   deleteSpecial,
@@ -18,9 +18,10 @@ import { DiscountSelect } from '@/components/admin/discount-select'
 import { TrialBookingsTable } from '@/components/admin/trial-bookings-table'
 import { BlockedDaysManager } from '@/components/admin/blocked-days-manager'
 import { SignupsTable } from '@/components/admin/signups-table'
-import type { BlockedDay, ChowWinner, MembershipSignup, SessionMilestone, Special, TrialBooking } from '@/lib/db/schema'
+import { SessionPurchasesTable } from '@/components/admin/session-purchases-table'
+import type { BlockedDay, ChowWinner, MembershipSignup, SessionMilestone, SessionPurchase, Special, TrialBooking } from '@/lib/db/schema'
 
-type TabKey = 'bookings' | 'signups' | 'chow' | 'celebration' | 'specials'
+type TabKey = 'bookings' | 'signups' | 'purchases' | 'chow' | 'celebration' | 'specials'
 
 function toLocalInput(d: Date | null) {
   if (!d) return ''
@@ -268,6 +269,7 @@ export function AdminDashboard({
   bookings,
   blockedDays,
   signups,
+  purchases,
   chowChallenge,
   }: {
   specials: Special[]
@@ -276,6 +278,7 @@ export function AdminDashboard({
   bookings: TrialBooking[]
   blockedDays: BlockedDay[]
   signups: MembershipSignup[]
+  purchases: SessionPurchase[]
   chowChallenge: string
   }) {
   const femaleWinner = winners.find((w) => w.label.toLowerCase().includes('female'))
@@ -288,6 +291,7 @@ export function AdminDashboard({
   const tabs: { key: TabKey; label: string; icon: typeof CalendarCheck }[] = [
     { key: 'bookings', label: 'Bookings', icon: CalendarCheck },
     { key: 'signups', label: 'Signups', icon: Users },
+    { key: 'purchases', label: 'Sessions', icon: ShoppingCart },
     { key: 'chow', label: 'CHOW', icon: Trophy },
     { key: 'celebration', label: 'Celebration', icon: Dumbbell },
     { key: 'specials', label: 'Specials', icon: Tag },
@@ -371,6 +375,22 @@ export function AdminDashboard({
           </p>
           <div className="mt-6">
             <SignupsTable signups={signups} />
+          </div>
+        </section>
+      )}
+
+      {/* TAB — Session Purchases */}
+      {tab === 'purchases' && (
+        <section className="mt-10" role="tabpanel">
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="size-5 text-neon-blue" />
+            <h2 className="font-display text-2xl font-black uppercase tracking-tight">Session Purchases</h2>
+          </div>
+          <p className="mt-1 text-sm text-light-grey">
+            Pay-as-you-go session packs bought online via PayFast. Expand a row for full details, update their status, or open the receipt PDF.
+          </p>
+          <div className="mt-6">
+            <SessionPurchasesTable purchases={purchases} />
           </div>
         </section>
       )}
