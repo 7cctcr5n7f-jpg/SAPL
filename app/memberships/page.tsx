@@ -12,7 +12,13 @@ import { JsonLd } from '@/components/json-ld'
 import { faqSchema, breadcrumbSchema } from '@/lib/seo'
 import { pricingFaqs } from '@/lib/content'
 import { SpecialInline } from '@/components/specials/special-inline'
-import { getInlineSpecials, getMembershipDiscounts } from '@/lib/content-queries'
+import {
+  getInlineSpecials,
+  getMembershipDiscounts,
+  getSessionSpecials,
+  getSessionPackDiscounts,
+  getSessionPackBonuses,
+} from '@/lib/content-queries'
 
 export const metadata: Metadata = {
   title: 'Pricing & Memberships',
@@ -50,10 +56,14 @@ const benefits = [
 ]
 
 export default async function MembershipsPage() {
-  const [inlineSpecials, discounts] = await Promise.all([
-    getInlineSpecials(),
-    getMembershipDiscounts(),
-  ])
+  const [inlineSpecials, discounts, sessionSpecials, sessionDiscounts, sessionBonuses] =
+    await Promise.all([
+      getInlineSpecials(),
+      getMembershipDiscounts(),
+      getSessionSpecials(),
+      getSessionPackDiscounts(),
+      getSessionPackBonuses(),
+    ])
   return (
     <main>
       <JsonLd data={[faqSchema(pricingFaqs), breadcrumbSchema([
@@ -81,9 +91,13 @@ export default async function MembershipsPage() {
       </section>
 
       {/* pay-as-you-go sessions */}
-      <section className="bg-charcoal py-20 lg:py-28">
+      <section id="sessions" className="scroll-mt-24 bg-charcoal py-20 lg:py-28">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <SessionPacks />
+          <SessionPacks
+            discounts={sessionDiscounts}
+            bonuses={sessionBonuses}
+            special={sessionSpecials[0] ?? null}
+          />
         </div>
       </section>
 

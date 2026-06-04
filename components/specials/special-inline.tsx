@@ -11,7 +11,9 @@ export function SpecialInline({ specials }: { specials: Special[] }) {
       {/* soft ambient glow — keeps it lively without any hard box */}
       <div className="animate-pulse-glow pointer-events-none absolute left-1/2 top-1/2 size-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neon-green/15 blur-[140px]" />
 
-      <div className="relative mx-auto max-w-3xl px-5 text-center lg:px-8">
+      <div className="relative mx-auto max-w-3xl px-5 lg:px-8">
+        {/* green-bordered card to make the special pop, matching the free-gloves accent */}
+        <div className="green-glow relative rounded-3xl border-2 border-neon-green/70 bg-neon-green/5 px-6 py-10 text-center sm:px-10">
         <span className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.25em] text-neon-green">
           <Flame className="size-4" /> Limited-Time Offer
         </span>
@@ -62,6 +64,7 @@ export function SpecialInline({ specials }: { specials: Special[] }) {
               ) : null}
             </div>
           ))}
+        </div>
         </div>
       </div>
     </section>

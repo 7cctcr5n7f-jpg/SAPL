@@ -15,6 +15,17 @@ export const specials = pgTable('specials', {
   discountPercent: integer('discount_percent').notNull().default(0),
   // Comma-separated membership IDs the discount applies to (see lib/memberships.ts)
   discountMembershipIds: text('discount_membership_ids').notNull().default(''),
+  // Which kind of special this is: 'membership' (shown inline above the finder) or
+  // 'sessions' (shown above the session-pack prices and discounts session packs).
+  kind: text('kind').notNull().default('membership'),
+  // For session specials: comma-separated pack quantities the discount applies to (e.g. "1,10,20,30")
+  sessionPackQuantities: text('session_pack_quantities').notNull().default(''),
+  // For session specials: bonus sessions per pack as "qty:bonus" pairs (e.g. "30:6,20:4")
+  sessionPackBonuses: text('session_pack_bonuses').notNull().default(''),
+  // For session specials: 'percent' (off) or 'amount' (rand off)
+  sessionDiscountType: text('session_discount_type').notNull().default('percent'),
+  // For session specials: the discount value (percent or rand depending on sessionDiscountType)
+  sessionDiscountValue: integer('session_discount_value').notNull().default(0),
   active: boolean('active').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
   startsAt: timestamp('starts_at', { withTimezone: true }),
@@ -123,6 +134,42 @@ export const membershipSignups = pgTable('membership_signups', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// Online session-pack purchases submitted from /buy-sessions (paid via PayFast)
+export const sessionPurchases = pgTable('session_purchases', {
+  id: serial('id').primaryKey(),
+  // ── Purchased pack ──
+  packQuantity: integer('pack_quantity').notNull().default(0), // paid sessions in the pack (e.g. 30)
+  bonusSessions: integer('bonus_sessions').notNull().default(0), // free bonus sessions from a special
+  totalSessions: integer('total_sessions').notNull().default(0), // packQuantity + bonusSessions
+  unitLabel: text('unit_label').notNull().default(''), // e.g. "30 Pack" / "Single Session"
+  baseAmount: integer('base_amount').notNull().default(0), // full price before any special
+  amount: integer('amount').notNull().default(0), // amount actually charged (Rand)
+  specialId: integer('special_id'), // applied sessions special, if any
+  specialTitle: text('special_title').notNull().default(''),
+  // ── Member details ──
+  firstName: text('first_name').notNull(),
+  surname: text('surname').notNull(),
+  email: text('email').notNull(),
+  contactNumber: text('contact_number').notNull(),
+  idNumber: text('id_number').notNull(),
+  emergencyContactName: text('emergency_contact_name').notNull().default(''),
+  emergencyContactNumber: text('emergency_contact_number').notNull().default(''),
+  // ── Agreements ──
+  agreeTerms: boolean('agree_terms').notNull().default(false),
+  agreeCancellation: boolean('agree_cancellation').notNull().default(false),
+  agreeHealth: boolean('agree_health').notNull().default(false),
+  agreePrivacy: boolean('agree_privacy').notNull().default(false),
+  // ── Signature (PNG data URL) ──
+  signature: text('signature').notNull().default(''),
+  // ── Payment / workflow ──
+  paymentStatus: text('payment_status').notNull().default('Pending'), // 'Pending' | 'Paid' | 'Failed' | 'Cancelled'
+  pfPaymentId: text('pf_payment_id').notNull().default(''), // PayFast payment id from ITN
+  status: text('status').notNull().default('New'),
+  confirmationSent: boolean('confirmation_sent').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+})
+
 export type Special = typeof specials.$inferSelect
 export type ChowWinner = typeof chowWinners.$inferSelect
 export type SettingRow = typeof settings.$inferSelect
@@ -130,3 +177,4 @@ export type SessionMilestone = typeof sessionMilestones.$inferSelect
 export type TrialBooking = typeof trialBookings.$inferSelect
 export type BlockedDay = typeof blockedDays.$inferSelect
 export type MembershipSignup = typeof membershipSignups.$inferSelect
+export type SessionPurchase = typeof sessionPurchases.$inferSelect

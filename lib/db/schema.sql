@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS specials (
   show_bar                BOOLEAN NOT NULL DEFAULT FALSE,
   discount_percent        INTEGER NOT NULL DEFAULT 0,
   discount_membership_ids TEXT NOT NULL DEFAULT '',
+  kind                    TEXT NOT NULL DEFAULT 'membership',
+  session_pack_quantities TEXT NOT NULL DEFAULT '',
+  session_pack_bonuses    TEXT NOT NULL DEFAULT '',
+  session_discount_type   TEXT NOT NULL DEFAULT 'percent',
+  session_discount_value  INTEGER NOT NULL DEFAULT 0,
   active                  BOOLEAN NOT NULL DEFAULT TRUE,
   sort_order              INTEGER NOT NULL DEFAULT 0,
   starts_at               TIMESTAMPTZ,
@@ -112,4 +117,35 @@ CREATE TABLE IF NOT EXISTS membership_signups (
   signature               TEXT NOT NULL DEFAULT '',
   status                  TEXT NOT NULL DEFAULT 'New',
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Online session-pack purchases submitted from /buy-sessions (paid via PayFast)
+CREATE TABLE IF NOT EXISTS session_purchases (
+  id                       SERIAL PRIMARY KEY,
+  pack_quantity            INTEGER NOT NULL DEFAULT 0,
+  bonus_sessions           INTEGER NOT NULL DEFAULT 0,
+  total_sessions           INTEGER NOT NULL DEFAULT 0,
+  unit_label               TEXT NOT NULL DEFAULT '',
+  base_amount              INTEGER NOT NULL DEFAULT 0,
+  amount                   INTEGER NOT NULL DEFAULT 0,
+  special_id               INTEGER,
+  special_title            TEXT NOT NULL DEFAULT '',
+  first_name               TEXT NOT NULL,
+  surname                  TEXT NOT NULL,
+  email                    TEXT NOT NULL,
+  contact_number           TEXT NOT NULL,
+  id_number                TEXT NOT NULL,
+  emergency_contact_name   TEXT NOT NULL DEFAULT '',
+  emergency_contact_number TEXT NOT NULL DEFAULT '',
+  agree_terms              BOOLEAN NOT NULL DEFAULT FALSE,
+  agree_cancellation       BOOLEAN NOT NULL DEFAULT FALSE,
+  agree_health             BOOLEAN NOT NULL DEFAULT FALSE,
+  agree_privacy            BOOLEAN NOT NULL DEFAULT FALSE,
+  signature                TEXT NOT NULL DEFAULT '',
+  payment_status           TEXT NOT NULL DEFAULT 'Pending',
+  pf_payment_id            TEXT NOT NULL DEFAULT '',
+  status                   TEXT NOT NULL DEFAULT 'New',
+  confirmation_sent        BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at                  TIMESTAMPTZ
 );
