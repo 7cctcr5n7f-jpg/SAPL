@@ -112,6 +112,11 @@ function SessionSpecialForm({ special }: { special?: Special }) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+  const bonusMap: Record<string, string> = {}
+  for (const pair of (special?.sessionPackBonuses ?? '').split(',')) {
+    const [qty, bonus] = pair.split(':').map((s) => s.trim())
+    if (qty && bonus) bonusMap[qty] = bonus
+  }
   return (
     <div className={cardCls}>
       <AdminForm action={saveSpecialState} submitLabel={special ? 'Save Changes' : 'Create Sessions Special'}>
@@ -165,6 +170,31 @@ function SessionSpecialForm({ special }: { special?: Special }) {
             placeholder="20"
           />
         </FieldGrid>
+
+        {/* Bonus sessions per pack (e.g. buy 30, get 6 extra = 36) */}
+        <div className="rounded-lg border border-steel/60 bg-background/50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-light-grey">
+            Bonus sessions (optional)
+          </p>
+          <p className="mb-3 text-xs leading-relaxed text-light-grey">
+            Add extra free sessions to a pack — e.g. enter 6 on the 30 Pack so members get 36 sessions.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {SESSION_PACKS.map((p) => (
+              <TextField
+                key={p.value}
+                label={`${p.label} bonus`}
+                name={`sessionBonus_${p.value}`}
+                type="number"
+                defaultValue={bonusMap[String(p.value)] ?? ''}
+                placeholder="0"
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Optional image — shows a "More info" button on the special when set */}
+        <ImageField label="More-info image (optional)" name="imageUrl" defaultValue={special?.imageUrl} />
 
         <FieldGrid>
           <TextField label="Starts (optional)" name="startsAt" type="datetime-local" defaultValue={toLocalInput(special?.startsAt ?? null)} />

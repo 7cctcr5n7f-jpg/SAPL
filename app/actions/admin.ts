@@ -138,6 +138,13 @@ export async function saveSpecial(formData: FormData) {
       .map((v) => String(v).trim())
       .filter(Boolean)
       .join(','),
+    sessionPackBonuses: [1, 10, 20, 30]
+      .map((qty) => {
+        const bonus = Number(formData.get(`sessionBonus_${qty}`))
+        return Number.isFinite(bonus) && bonus > 0 ? `${qty}:${bonus}` : ''
+      })
+      .filter(Boolean)
+      .join(','),
     sessionDiscountType: str(formData, 'sessionDiscountType') === 'amount' ? 'amount' : 'percent',
     sessionDiscountValue: num(formData, 'sessionDiscountValue'),
     active: bool(formData, 'active'),

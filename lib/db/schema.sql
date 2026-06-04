@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS specials (
   discount_membership_ids TEXT NOT NULL DEFAULT '',
   kind                    TEXT NOT NULL DEFAULT 'membership',
   session_pack_quantities TEXT NOT NULL DEFAULT '',
+  session_pack_bonuses    TEXT NOT NULL DEFAULT '',
   session_discount_type   TEXT NOT NULL DEFAULT 'percent',
   session_discount_value  INTEGER NOT NULL DEFAULT 0,
   active                  BOOLEAN NOT NULL DEFAULT TRUE,

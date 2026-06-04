@@ -17,6 +17,7 @@ import {
   getMembershipDiscounts,
   getSessionSpecials,
   getSessionPackDiscounts,
+  getSessionPackBonuses,
 } from '@/lib/content-queries'
 
 export const metadata: Metadata = {
@@ -55,12 +56,14 @@ const benefits = [
 ]
 
 export default async function MembershipsPage() {
-  const [inlineSpecials, discounts, sessionSpecials, sessionDiscounts] = await Promise.all([
-    getInlineSpecials(),
-    getMembershipDiscounts(),
-    getSessionSpecials(),
-    getSessionPackDiscounts(),
-  ])
+  const [inlineSpecials, discounts, sessionSpecials, sessionDiscounts, sessionBonuses] =
+    await Promise.all([
+      getInlineSpecials(),
+      getMembershipDiscounts(),
+      getSessionSpecials(),
+      getSessionPackDiscounts(),
+      getSessionPackBonuses(),
+    ])
   return (
     <main>
       <JsonLd data={[faqSchema(pricingFaqs), breadcrumbSchema([
@@ -90,7 +93,11 @@ export default async function MembershipsPage() {
       {/* pay-as-you-go sessions */}
       <section className="bg-charcoal py-20 lg:py-28">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <SessionPacks discounts={sessionDiscounts} special={sessionSpecials[0] ?? null} />
+          <SessionPacks
+            discounts={sessionDiscounts}
+            bonuses={sessionBonuses}
+            special={sessionSpecials[0] ?? null}
+          />
         </div>
       </section>
 

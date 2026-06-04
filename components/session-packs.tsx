@@ -1,14 +1,17 @@
-import { MapPin, Check, Flame } from 'lucide-react'
+import { MapPin, Check, Flame, Gift } from 'lucide-react'
 import { SectionHeading } from '@/components/section-heading'
+import { SpecialMoreInfo } from '@/components/specials/special-more-info'
 import { sessionPacks, sessionPrice, formatRand } from '@/lib/memberships'
 import { cn } from '@/lib/utils'
 import type { Special } from '@/lib/db/schema'
 
 export function SessionPacks({
   discounts = {},
+  bonuses = {},
   special,
 }: {
   discounts?: Record<number, number>
+  bonuses?: Record<number, number>
   special?: Special | null
 }) {
   return (
@@ -33,16 +36,25 @@ export function SessionPacks({
               <p className="mt-0.5 text-sm leading-relaxed text-light-grey">{special.description}</p>
             ) : null}
           </div>
+          {special.imageUrl ? (
+            <div className="shrink-0 sm:ml-auto">
+              <SpecialMoreInfo imageUrl={special.imageUrl} title={special.title} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:gap-4 lg:grid-cols-4">
         {sessionPacks.map((pack) => {
           const specialPrice = discounts[pack.quantity]
-          const hasSpecial = specialPrice != null && specialPrice < pack.price
-          const per = sessionPrice(
-            hasSpecial ? { ...pack, price: specialPrice } : pack,
-          )
+          const hasDiscount = specialPrice != null && specialPrice < pack.price
+          const bonus = bonuses[pack.quantity] ?? 0
+          const hasBonus = bonus > 0
+          const hasSpecial = hasDiscount || hasBonus
+          const totalSessions = pack.quantity + bonus
+          const effectivePrice = hasDiscount ? specialPrice : pack.price
+          // per-session price reflects bonus sessions too (price ÷ total sessions)
+          const per = Math.round(effectivePrice / totalSessions)
           return (
             <div
               key={pack.quantity}
@@ -72,7 +84,7 @@ export function SessionPacks({
               >
                 {pack.quantity === 1 ? 'Single' : `${pack.quantity} Pack`}
               </p>
-              {hasSpecial ? (
+              {hasDiscount ? (
                 <p className="mt-3 flex flex-wrap items-end gap-x-2 gap-y-1">
                   <span className="font-display text-xl font-bold tracking-tight text-light-grey line-through sm:text-2xl">
                     {formatRand(pack.price)}
@@ -83,15 +95,27 @@ export function SessionPacks({
                 </p>
               ) : (
                 <p className="mt-3 flex items-end gap-1">
-                  <span className="font-display text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+                  <span
+                    className={cn(
+                      'font-display text-3xl font-black tracking-tight sm:text-4xl',
+                      hasBonus ? 'text-neon-green' : 'text-foreground',
+                    )}
+                  >
                     {formatRand(pack.price)}
                   </span>
                 </p>
               )}
               <p className="mt-2 text-xs text-light-grey sm:text-sm">
-                {pack.quantity === 1
-                  ? 'Single drop-in session'
-                  : `${pack.quantity} sessions`}
+                {hasBonus ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-neon-green">
+                    <Gift className="size-3.5" />
+                    {pack.quantity} + {bonus} free = {totalSessions} sessions
+                  </span>
+                ) : pack.quantity === 1 ? (
+                  'Single drop-in session'
+                ) : (
+                  `${pack.quantity} sessions`
+                )}
               </p>
               <p className="mt-3 border-t border-steel/60 pt-3 text-xs text-light-grey sm:mt-4 sm:pt-4 sm:text-sm">
                 <span className={cn('font-semibold', hasSpecial ? 'text-neon-green' : 'text-foreground')}>

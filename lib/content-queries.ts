@@ -58,6 +58,20 @@ function sessionPackSpecialPrice(price: number, s: Special): number {
   return Math.max(0, discounted)
 }
 
+// Map of session-pack quantity -> total bonus sessions across active session specials.
+export async function getSessionPackBonuses(): Promise<Record<number, number>> {
+  const list = await getSessionSpecials()
+  const map: Record<number, number> = {}
+  for (const s of list) {
+    for (const pair of (s.sessionPackBonuses || '').split(',')) {
+      const [q, b] = pair.split(':').map((x) => Number(x.trim()))
+      if (!Number.isFinite(q) || !Number.isFinite(b) || q <= 0 || b <= 0) continue
+      map[q] = (map[q] ?? 0) + b
+    }
+  }
+  return map
+}
+
 // Map of session-pack quantity -> best (lowest) discounted price across active session specials.
 export async function getSessionPackDiscounts(): Promise<Record<number, number>> {
   const list = await getSessionSpecials()

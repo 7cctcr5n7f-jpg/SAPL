@@ -20,6 +20,8 @@ export const specials = pgTable('specials', {
   kind: text('kind').notNull().default('membership'),
   // For session specials: comma-separated pack quantities the discount applies to (e.g. "1,10,20,30")
   sessionPackQuantities: text('session_pack_quantities').notNull().default(''),
+  // For session specials: bonus sessions per pack as "qty:bonus" pairs (e.g. "30:6,20:4")
+  sessionPackBonuses: text('session_pack_bonuses').notNull().default(''),
   // For session specials: 'percent' (off) or 'amount' (rand off)
   sessionDiscountType: text('session_discount_type').notNull().default('percent'),
   // For session specials: the discount value (percent or rand depending on sessionDiscountType)
