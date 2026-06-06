@@ -1,0 +1,810 @@
+"use client"
+
+import { useState, useTransition } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Stat } from "@/components/brand/bits"
+import { PairingsBoard } from "@/components/team/pairings-board"
+import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
+import { createPlayerAccount } from "@/lib/actions/members"
+import { toast } from "sonner"
+import {
+  Users,
+  Plus,
+  Crown,
+  Users2,
+  Activity,
+  MapPin,
+  Pencil,
+  UserPlus,
+  Copy,
+  Check,
+  Trash2,
+  Wallet,
+  Building2,
+} from "lucide-react"
+import { useRouter } from "next/navigation"
+import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { fmtZAR } from "@/lib/format"
+import { cn } from "@/lib/utils"
+import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+
+type Team = {
+  id: number
+  name: string
+  teamType: string
+  homeClubId: number | null
+  homeClubName: string | null
+  homeClubLogoUrl: string | null
+  avgLi: number
+  playerCount: number
+  maxPlayers: number
+  saplRegion: string | null
+  divisionName: string
+  divisionId: number | null
+  tpr: number
+  captainName: string | null
+  played: number
+  won: number
+  points: number
+  rank: number | null
+  clubPaysFees: boolean
+  rosterCount: number
+  paidCount: number
+  pairingCategories: PairingCategory[]
+  pairingRoster: PairingPlayer[]
+  pairingInvites: { id: number; email: string; category: string | null }[]
+}
+
+// Team-type accent colours so the list is scannable at a glance.
+const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> = {
+  "Club Team": {
+    dot: "bg-sky-500",
+    badge: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    bar: "bg-sky-500",
+  },
+  "Company Team": {
+    dot: "bg-amber-500",
+    badge: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    bar: "bg-amber-500",
+  },
+  "Private Team": {
+    dot: "bg-emerald-500",
+    badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    bar: "bg-emerald-500",
+  },
+}
+function typeStyle(t: string) {
+  return TYPE_STYLES[t] ?? { dot: "bg-muted-foreground", badge: "", bar: "bg-muted-foreground" }
+}
+type FreeAgent = { playerId: number; name: string; li: number }
+type Venue = { id: number; name: string; remaining: number; hosts: boolean; available: boolean }
+
+/**
+ * Venue options for a home-club picker. Only venues with remaining hosting
+ * capacity are selectable, except the team's current venue which is always
+ * kept so editing never silently drops an existing assignment.
+ */
+function venueOptions(venues: Venue[], currentId: number | null) {
+  return venues.filter((v) => v.available || v.id === currentId)
+}
+
+export function OrgHub({
+  orgId,
+  teams,
+  freeAgents,
+  venues,
+  playerFee,
+}: {
+  orgId: number
+  teams: Team[]
+  freeAgents: FreeAgent[]
+  venues: Venue[]
+  playerFee: number
+}) {
+  const [pending, start] = useTransition()
+  const [assignFor, setAssignFor] = useState<Team | null>(null)
+  const [squadFor, setSquadFor] = useState<Team | null>(null)
+  const [editFor, setEditFor] = useState<Team | null>(null)
+  const [deleteFor, setDeleteFor] = useState<Team | null>(null)
+  const [search, setSearch] = useState("")
+
+  // List filters
+  const [fType, setFType] = useState<string>("all")
+  const [fDivision, setFDivision] = useState<"all" | "assigned" | "unassigned">("all")
+  const [fPayer, setFPayer] = useState<"all" | "team" | "players">("all")
+  const [fClub, setFClub] = useState<string>("all")
+
+  const clubFilterOptions = Array.from(
+    new Map(teams.filter((t) => t.homeClubName).map((t) => [t.homeClubName as string, t.homeClubName as string])).keys(),
+  ).sort()
+
+  const visibleTeams = teams.filter((t) => {
+    if (fType !== "all" && t.teamType !== fType) return false
+    if (fDivision === "assigned" && t.divisionId == null) return false
+    if (fDivision === "unassigned" && t.divisionId != null) return false
+    if (fPayer === "team" && !t.clubPaysFees) return false
+    if (fPayer === "players" && t.clubPaysFees) return false
+    if (fClub !== "all" && t.homeClubName !== fClub) return false
+    return true
+  })
+
+  function confirmDelete() {
+    if (!deleteFor) return
+    const id = deleteFor.id
+    start(async () => {
+      const res = await deleteTeam(id)
+      if (res.ok) {
+        toast.success("Team deleted")
+        setDeleteFor(null)
+      } else toast.error(res.error ?? "Failed to delete")
+    })
+  }
+
+  function doAssign(playerId: number) {
+    if (!assignFor) return
+    const fd = new FormData()
+    fd.set("teamId", String(assignFor.id))
+    fd.set("playerId", String(playerId))
+    start(async () => {
+      const res = await assignCaptain(fd)
+      if (res.ok) {
+        toast.success("Captain assigned")
+        setAssignFor(null)
+      } else toast.error(res.error ?? "Failed")
+    })
+  }
+
+  const filteredAgents = freeAgents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+
+  const totalPlayers = teams.reduce((s, t) => s + t.playerCount, 0)
+  const withCaptain = teams.filter((t) => t.captainName).length
+  const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Add players to the league, then build squads and assign captains.
+        </p>
+        <AddPlayerDialog />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Stat label="Teams" value={teams.length} />
+        <Stat label="Total Players" value={totalPlayers} />
+        <Stat label="Avg TPR" value={avgTpr} />
+        <Stat label="Captains Assigned" value={`${withCaptain}/${teams.length}`} />
+      </div>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" /> Teams
+          </CardTitle>
+          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterSelect
+              label="Type"
+              value={fType}
+              onChange={setFType}
+              options={[
+                { value: "all", label: "All types" },
+                ...TEAM_TYPES.map((t) => ({ value: t, label: t })),
+              ]}
+            />
+            <FilterSelect
+              label="Division"
+              value={fDivision}
+              onChange={(v) => setFDivision(v as typeof fDivision)}
+              options={[
+                { value: "all", label: "All teams" },
+                { value: "assigned", label: "In a division" },
+                { value: "unassigned", label: "Unassigned" },
+              ]}
+            />
+            <FilterSelect
+              label="Pays"
+              value={fPayer}
+              onChange={(v) => setFPayer(v as typeof fPayer)}
+              options={[
+                { value: "all", label: "Any payer" },
+                { value: "team", label: "Team pays" },
+                { value: "players", label: "Players pay" },
+              ]}
+            />
+            <FilterSelect
+              label="Club"
+              value={fClub}
+              onChange={setFClub}
+              options={[
+                { value: "all", label: "All clubs" },
+                ...clubFilterOptions.map((c) => ({ value: c, label: c })),
+              ]}
+            />
+            <span className="ml-auto text-xs text-muted-foreground">
+              {visibleTeams.length} of {teams.length} teams
+            </span>
+          </div>
+
+          {/* Color key */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+            {TEAM_TYPES.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <span className={cn("h-2.5 w-2.5 rounded-full", typeStyle(t).dot)} />
+                {t}
+              </span>
+            ))}
+          </div>
+
+          {teams.length === 0 && <p className="text-sm text-muted-foreground">No teams yet.</p>}
+          {teams.length > 0 && visibleTeams.length === 0 && (
+            <p className="text-sm text-muted-foreground">No teams match the current filters.</p>
+          )}
+
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {visibleTeams.map((t) => {
+              const ts = typeStyle(t.teamType)
+              // Only the 8 dedicated squad players carry a league fee — any extra
+              // subs play free. So a team-funded total is always 8 × the fee
+              // (R4000 at R500), regardless of how many players are on the roster.
+              const billablePlayers = TEAM_SQUAD_SIZE
+              const teamTotal = billablePlayers * playerFee
+              return (
+                <div key={t.id} className="flex items-stretch gap-0 bg-card hover:bg-secondary/30">
+                  <span className={cn("w-1 shrink-0", ts.bar)} aria-hidden />
+                  <div className="flex flex-1 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {t.homeClubLogoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={t.homeClubLogoUrl || "/placeholder.svg"}
+                            alt={`${t.homeClubName ?? "Club"} logo`}
+                            className="h-5 w-5 shrink-0 rounded-sm object-contain"
+                          />
+                        ) : (
+                          // Fallback crest so every team shows a club marker even
+                          // when its venue has no uploaded logo.
+                          <span
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground"
+                            aria-hidden
+                          >
+                            <Building2 className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        <span className="font-semibold">{t.name}</span>
+                        <Badge variant="outline" className={cn("gap-1", ts.badge)}>
+                          <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
+                          {t.teamType}
+                        </Badge>
+                        <Badge variant={t.divisionId != null ? "outline" : "secondary"}>
+                          {t.divisionId != null ? t.divisionName : "Unassigned"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
+                        </span>
+                        <span>
+                          {t.playerCount}/{t.maxPlayers} players
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {t.homeClubName ? `${t.homeClubName}` : "No home club"}
+                          {t.saplRegion ? ` · ${t.saplRegion}` : ""}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Wallet className="h-3 w-3" />
+                          {t.clubPaysFees
+                            ? `Team pays · ${billablePlayers} × ${fmtZAR(playerFee)} = ${fmtZAR(teamTotal)}`
+                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {t.captainName ? (
+                        <Badge className="gap-1">
+                          <Crown className="h-3 w-3" /> {t.captainName}
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive">No captain</Badge>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setEditFor(t)} aria-label="Edit team">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSquadFor(t)}>
+                        <Users2 className="mr-1 h-4 w-4" /> Squad
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setAssignFor(t)}>
+                        {t.captainName ? "Captain" : "Add captain"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteFor(t)}
+                        aria-label="Delete team"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadFor(null)}>
+        <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>{squadFor?.name} �� Squad &amp; Pairings</DialogTitle>
+          </DialogHeader>
+          {squadFor && (
+            <PairingsBoard
+              teamId={squadFor.id}
+              categories={squadFor.pairingCategories}
+              roster={squadFor.pairingRoster}
+              invites={squadFor.pairingInvites}
+              clubPaysFees={squadFor.clubPaysFees}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {editFor && (
+        <EditTeamDialog
+          key={editFor.id}
+          team={editFor}
+          venues={venues}
+          pending={pending}
+          start={start}
+          onClose={() => setEditFor(null)}
+        />
+      )}
+
+      <Dialog open={!!assignFor} onOpenChange={(o) => !o && setAssignFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign captain — {assignFor?.name}</DialogTitle>
+          </DialogHeader>
+          <Input placeholder="Search free agents..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">
+            {filteredAgents.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted-foreground">No available players found.</p>
+            )}
+            {filteredAgents.map((a) => (
+              <button
+                key={a.playerId}
+                disabled={pending}
+                onClick={() => doAssign(a.playerId)}
+                className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-left transition hover:border-primary hover:bg-secondary/50 disabled:opacity-50"
+              >
+                <span className="text-sm font-medium">{a.name}</span>
+                <Badge variant="outline">LI {a.li.toFixed(1)}</Badge>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete team</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Permanently delete <span className="font-semibold text-foreground">{deleteFor?.name}</span>? This removes its
+            roster, pairings, invites and payments, and detaches it from any scheduled fixtures. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteFor(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={pending}>
+              {pending ? "Deleting…" : "Delete team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="hidden sm:inline">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 rounded-md border border-input bg-background px-2.5 text-sm text-foreground"
+        aria-label={`Filter by ${label}`}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function CreateTeamDialog({
+  orgId,
+  venues,
+  pending,
+  start,
+}: {
+  orgId: number
+  venues: Venue[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="outline">
+            <Plus className="mr-1 h-4 w-4" /> New team
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create team</DialogTitle>
+        </DialogHeader>
+        <form
+          action={(fd) => {
+            fd.set("orgId", String(orgId))
+            start(async () => {
+              const res = await createTeam(fd)
+              if (res.ok) {
+                toast.success("Team created")
+                setOpen(false)
+              } else toast.error(res.error ?? "Failed")
+            })
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="name">Team name</Label>
+            <Input id="name" name="name" placeholder="e.g. Tuks Premier B" required />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="teamType">Team type</Label>
+              <select
+                id="teamType"
+                name="teamType"
+                defaultValue="Club Team"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {TEAM_TYPES.map((tt) => (
+                  <option key={tt} value={tt}>
+                    {tt}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="homeClubId">Home club / venue</Label>
+              <select
+                id="homeClubId"
+                name="homeClubId"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">None</option>
+                {venueOptions(venues, null).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.remaining} left)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            New teams start unassigned. The league office places them into a division.
+          </p>
+          {venues.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Tip: add a venue in Venue Management to set a home club and SAPL region.
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="submit" disabled={pending}>
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Edit a team's basic registration details. Division is intentionally NOT here —
+// placement into a division is controlled by the league office.
+function EditTeamDialog({
+  team,
+  venues,
+  pending,
+  start,
+  onClose,
+}: {
+  team: Team
+  venues: Venue[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(team.name)
+  const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
+  const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
+
+  function save() {
+    if (!name.trim()) {
+      toast.error("Team name is required")
+      return
+    }
+    start(async () => {
+      const res = await updateTeamRegistration({
+        teamId: team.id,
+        name,
+        homeClubId: homeClubId ? Number(homeClubId) : null,
+        clubPaysFees,
+      })
+      if (res.ok) {
+        toast.success("Team updated")
+        onClose()
+      } else toast.error(res.error ?? "Failed")
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit team</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="editName">Team name</Label>
+            <Input id="editName" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editHomeClub">Home club / venue</Label>
+            <select
+              id="editHomeClub"
+              value={homeClubId}
+              onChange={(e) => setHomeClubId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">No home club</option>
+              {venueOptions(venues, team.homeClubId).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                  {v.id === team.homeClubId ? " (current)" : ` (${v.remaining} left)`}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Division placement is managed by the league office and can&apos;t be changed here.
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium">Team pays player fees</p>
+              <p className="text-xs text-muted-foreground">
+                {clubPaysFees
+                  ? "The team covers entry fees for its players."
+                  : "Each player pays their own fee from their dashboard."}
+              </p>
+            </div>
+            <Switch checked={clubPaysFees} onCheckedChange={setClubPaysFees} aria-label="Toggle team pays fees" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending}>
+            {pending ? "Saving…" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Club admins (and higher) can create a player account from here. The new
+// player is added as a free agent so they immediately show up in squad and
+// captain assignment lists.
+function AddPlayerDialog() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [pending, start] = useTransition()
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [email, setEmail] = useState("")
+  const [gender, setGender] = useState("male")
+  const [currentLi, setCurrentLi] = useState("")
+  const [created, setCreated] = useState<{ name: string; email: string; password: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  function reset() {
+    setFirstName("")
+    setLastName("")
+    setEmail("")
+    setGender("male")
+    setCurrentLi("")
+  }
+
+  function submit() {
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      toast.error("First name, last name and email are required.")
+      return
+    }
+    start(async () => {
+      const res = await createPlayerAccount({
+        firstName,
+        lastName,
+        email,
+        gender,
+        currentLi: currentLi ? Number(currentLi) : 0,
+      })
+      if (res.ok && res.password) {
+        toast.success(`${firstName} ${lastName} added`)
+        setCreated({ name: `${firstName} ${lastName}`, email: email.trim().toLowerCase(), password: res.password })
+        setOpen(false)
+        reset()
+        router.refresh()
+      } else {
+        toast.error(res.error ?? "Could not add player")
+      }
+    })
+  }
+
+  async function copy() {
+    if (!created) return
+    await navigator.clipboard.writeText(created.password)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o) reset()
+        }}
+      >
+        <DialogTrigger
+          render={
+            <Button size="sm">
+              <UserPlus className="mr-1.5 h-4 w-4" /> Add player
+            </Button>
+          }
+        />
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add a player</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="pFirst">First name</Label>
+                <Input id="pFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pLast">Last name</Label>
+                <Input id="pLast" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pEmail">Email</Label>
+              <Input
+                id="pEmail"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="pGender">Gender</Label>
+                <select
+                  id="pGender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pLi">League Index (0–7)</Label>
+                <Input
+                  id="pLi"
+                  type="number"
+                  min={0}
+                  max={7}
+                  step="0.1"
+                  value={currentLi}
+                  onChange={(e) => setCurrentLi(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A temporary password is generated automatically — you can share it after creating the player.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={submit} disabled={pending}>
+              {pending ? "Adding…" : "Add player"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Player account created</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground text-pretty">
+            Share these sign-in details with <span className="text-foreground">{created?.name}</span> (
+            {created?.email}). They should change the password after signing in.
+          </p>
+          <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-background p-3">
+            <code className="flex-1 break-all font-mono text-base text-foreground">{created?.password}</code>
+            <Button type="button" size="sm" variant="secondary" onClick={copy}>
+              {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+              <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCreated(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

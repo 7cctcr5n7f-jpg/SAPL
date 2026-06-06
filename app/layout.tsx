@@ -1,57 +1,44 @@
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono, Archivo } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import { Navbar } from '@/components/navbar'
-import { SiteFooter } from '@/components/site-footer'
-import { WhatsAppFloat } from '@/components/whatsapp-float'
-import { SpecialsGlobal } from '@/components/specials/specials-global'
-import { JsonLd } from '@/components/json-ld'
-import { localBusinessSchema, websiteSchema } from '@/lib/seo'
-import { business } from '@/lib/business'
-import './globals.css'
+import { Analytics } from "@vercel/analytics/next"
+import { Toaster } from "@/components/ui/sonner"
+import type { Metadata } from "next"
+import { Geist } from "next/font/google"
+import { Oswald } from "next/font/google"
+import "./globals.css"
 
-const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
-const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
-const archivo = Archivo({
-  subsets: ['latin'],
-  variable: '--font-archivo',
-  weight: ['600', '700', '800', '900'],
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+})
+
+const oswald = Oswald({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-oswald",
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(business.url),
   title: {
-    default: 'TENROUNDS | 30-Minute HIIT Gym in Garsfontein, Pretoria East',
-    template: '%s | TENROUNDS',
+    default: "South African Padel League",
+    template: "%s — SAPL",
   },
   description:
-    'TENROUNDS is a boutique HIIT gym in Garsfontein, Pretoria East delivering coach-supported 30-minute workouts with no class times. Strength, cardio and functional training for real results.',
-  alternates: { canonical: '/' },
-  openGraph: {
-    type: 'website',
-    locale: 'en_ZA',
-    siteName: 'TENROUNDS',
-    url: business.url,
-    title: 'TENROUNDS | 30-Minute HIIT Gym in Garsfontein, Pretoria East',
-    description:
-      'Coach-supported 30-minute HIIT workouts with no class times in Garsfontein, Pretoria East.',
-    images: [{ url: '/hero-athlete.png', width: 1200, height: 630, alt: 'TENROUNDS HIIT gym' }],
+    "The premier padel competition platform. Live rankings, standings, fixtures, Team Power Ratings, Club Performance Index, and the road to the Tshwane Masters.",
+  generator: "v0.app",
+  keywords: ["padel", "league", "Tshwane", "rankings", "TPR", "CPI", "South Africa"],
+  icons: {
+    icon: [
+      { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
+      { url: "/icon-dark-32x32.png", media: "(prefers-color-scheme: dark)" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-icon.png",
   },
-  keywords: [
-    'HIIT Gym Pretoria',
-    'Functional Fitness Pretoria',
-    'Boutique Gym Pretoria',
-    'Fitness Classes Pretoria East',
-    '30 Minute Workout Pretoria',
-    'Personal Training Alternative Pretoria',
-    'Strength and Conditioning Pretoria',
-    'Corporate Wellness Pretoria',
-  ],
-  generator: 'v0.app',
 }
 
 export const viewport = {
-  themeColor: '#0b0b0b',
+  themeColor: "#0A0A0A",
+  width: "device-width",
+  initialScale: 1,
 }
 
 export default function RootLayout({
@@ -60,17 +47,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-background">
-      <body
-        className={`${geist.variable} ${geistMono.variable} ${archivo.variable} font-sans antialiased`}
-      >
-        <JsonLd data={[localBusinessSchema(), websiteSchema()]} />
-        <SpecialsGlobal />
-        <Navbar />
+    <html lang="en" className={`${geist.variable} ${oswald.variable} bg-background`}>
+      <body className="font-sans antialiased">
         {children}
-        <SiteFooter />
-        <WhatsAppFloat />
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        <Toaster position="top-center" />
+        {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
     </html>
   )
