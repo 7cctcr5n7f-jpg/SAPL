@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   Dialog,
@@ -40,7 +41,7 @@ import {
   CircleAlert,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { TEAM_TYPES, TEAM_SQUAD_SIZE, SA_PROVINCES, PAIRING_LAYOUT } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
@@ -210,7 +211,7 @@ export function OrgHub({
         <p className="text-sm text-muted-foreground">
           Add players to the league, then build squads and assign captains.
         </p>
-        <AddPlayerDialog />
+        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -906,27 +907,48 @@ function CaptainDialog({
   )
 }
 
-// Club admins (and higher) can create a player account from here. The new
-// player is added as a free agent so they immediately show up in squad and
-// captain assignment lists.
-function AddPlayerDialog() {
+// Club admins (and higher) can create a player account from here with a full
+// profile, and optionally assign the new player straight onto one of their
+// teams. If no team is chosen the player joins as a free agent so they appear
+// in squad and captain assignment lists.
+function AddPlayerDialog({ teams }: { teams: { id: number; name: string }[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, start] = useTransition()
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
   const [gender, setGender] = useState("male")
   const [currentLi, setCurrentLi] = useState("")
-  const [created, setCreated] = useState<{ name: string; email: string; password: string } | null>(null)
+  const [province, setProvince] = useState("Gauteng")
+  const [city, setCity] = useState("")
+  const [playtomicUrl, setPlaytomicUrl] = useState("")
+  const [preferredCategory, setPreferredCategory] = useState("")
+  const [bio, setBio] = useState("")
+  const [assignTeamId, setAssignTeamId] = useState("")
+  const [created, setCreated] = useState<{ name: string; email: string; password: string; team: string | null } | null>(
+    null,
+  )
   const [copied, setCopied] = useState(false)
+
+  // All pairing categories, filtered by the selected gender, for the dropdown.
+  const categoryOptions =
+    gender === "female" ? [...PAIRING_LAYOUT.female.categories] : [...PAIRING_LAYOUT.male.categories]
 
   function reset() {
     setFirstName("")
     setLastName("")
     setEmail("")
+    setPhone("")
     setGender("male")
     setCurrentLi("")
+    setProvince("Gauteng")
+    setCity("")
+    setPlaytomicUrl("")
+    setPreferredCategory("")
+    setBio("")
+    setAssignTeamId("")
   }
 
   function submit() {
@@ -939,12 +961,26 @@ function AddPlayerDialog() {
         firstName,
         lastName,
         email,
+        phone: phone.trim() || null,
         gender,
         currentLi: currentLi ? Number(currentLi) : 0,
+        province,
+        city: city.trim() || null,
+        playtomicUrl: playtomicUrl.trim() || null,
+        preferredCategory: preferredCategory || null,
+        bio: bio.trim() || null,
+        assignTeamId: assignTeamId ? Number(assignTeamId) : null,
       })
       if (res.ok && res.password) {
-        toast.success(`${firstName} ${lastName} added`)
-        setCreated({ name: `${firstName} ${lastName}`, email: email.trim().toLowerCase(), password: res.password })
+        toast.success(
+          res.assignedTeamName ? `${firstName} ${lastName} added to ${res.assignedTeamName}` : `${firstName} ${lastName} added`,
+        )
+        setCreated({
+          name: `${firstName} ${lastName}`,
+          email: email.trim().toLowerCase(),
+          password: res.password,
+          team: res.assignedTeamName ?? null,
+        })
         setOpen(false)
         reset()
         router.refresh()
@@ -960,6 +996,8 @@ function AddPlayerDialog() {
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }
+
+  const selectClass = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
 
   return (
     <>
@@ -977,59 +1015,165 @@ function AddPlayerDialog() {
             </Button>
           }
         />
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add a player</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="pFirst">First name</Label>
-                <Input id="pFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" />
+          <div className="space-y-5">
+            {/* Identity */}
+            <div className="space-y-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Player details</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pFirst">First name</Label>
+                  <Input id="pFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pLast">Last name</Label>
+                  <Input id="pLast" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="pLast">Last name</Label>
-                <Input id="pLast" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pEmail">Email</Label>
+                  <Input
+                    id="pEmail"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pPhone">Contact number</Label>
+                  <Input
+                    id="pPhone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="082 123 4567"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pGender">Gender</Label>
+                  <select
+                    id="pGender"
+                    value={gender}
+                    onChange={(e) => {
+                      setGender(e.target.value)
+                      setPreferredCategory("")
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pLi">League Index (0–7)</Label>
+                  <Input
+                    id="pLi"
+                    type="number"
+                    min={0}
+                    max={7}
+                    step="0.1"
+                    value={currentLi}
+                    onChange={(e) => setCurrentLi(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pEmail">Email</Label>
-              <Input
-                id="pEmail"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                autoComplete="off"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="pGender">Gender</Label>
-                <select
-                  id="pGender"
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
+
+            {/* Location & profile */}
+            <div className="space-y-4 border-t border-border pt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Profile</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pProvince">Province</Label>
+                  <select
+                    id="pProvince"
+                    value={province}
+                    onChange={(e) => setProvince(e.target.value)}
+                    className={selectClass}
+                  >
+                    {SA_PROVINCES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pCity">City / town</Label>
+                  <Input id="pCity" value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Pretoria" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pCat">Preferred category</Label>
+                  <select
+                    id="pCat"
+                    value={preferredCategory}
+                    onChange={(e) => setPreferredCategory(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">No preference</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pPlay">Playtomic profile URL</Label>
+                  <Input
+                    id="pPlay"
+                    value={playtomicUrl}
+                    onChange={(e) => setPlaytomicUrl(e.target.value)}
+                    placeholder="https://playtomic.io/…"
+                    autoComplete="off"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="pLi">League Index (0–7)</Label>
-                <Input
-                  id="pLi"
-                  type="number"
-                  min={0}
-                  max={7}
-                  step="0.1"
-                  value={currentLi}
-                  onChange={(e) => setCurrentLi(e.target.value)}
-                  placeholder="0"
+                <Label htmlFor="pBio">Bio (optional)</Label>
+                <Textarea
+                  id="pBio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="A short note about this player…"
+                  rows={2}
                 />
               </div>
             </div>
+
+            {/* Team assignment */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label htmlFor="pTeam">Assign to a team</Label>
+              <select
+                id="pTeam"
+                value={assignTeamId}
+                onChange={(e) => setAssignTeamId(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Free agent (no team yet)</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Pick a team to add the player straight to its roster, or leave as a free agent.
+              </p>
+            </div>
+
             <p className="text-xs text-muted-foreground">
               A temporary password is generated automatically — you can share it after creating the player.
             </p>
@@ -1053,6 +1197,12 @@ function AddPlayerDialog() {
           <p className="text-sm text-muted-foreground text-pretty">
             Share these sign-in details with <span className="text-foreground">{created?.name}</span> (
             {created?.email}). They should change the password after signing in.
+            {created?.team ? (
+              <>
+                {" "}
+                Added to <span className="text-foreground">{created.team}</span>.
+              </>
+            ) : null}
           </p>
           <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-background p-3">
             <code className="flex-1 break-all font-mono text-base text-foreground">{created?.password}</code>
