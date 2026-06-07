@@ -4,10 +4,15 @@ import { BRAND } from "@/lib/constants"
 const apiKey = process.env.RESEND_API_KEY
 const resend = apiKey ? new Resend(apiKey) : null
 
-// Sender + reply-to use the verified SAPL domain mailbox. Override with
-// RESEND_FROM if a different verified sender is ever configured.
+// Reply-to always uses the SAPL mailbox so replies reach the admin inbox.
 export const ADMIN_EMAIL = "admin@southafricapadelleague.co.za"
+// Preferred branded sender. This only works once southafricapadelleague.co.za
+// is verified in Resend (https://resend.com/domains). Override with RESEND_FROM.
 const FROM = process.env.RESEND_FROM ?? `SAPL <${ADMIN_EMAIL}>`
+// Resend's shared, always-verified sender. Used as an automatic fallback when
+// the branded domain isn't verified yet, so password resets/activations still
+// go out instead of failing.
+const FALLBACK_FROM = "SAPL <onboarding@resend.dev>"
 
 type SendArgs = {
   to: string
@@ -27,10 +32,40 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
     return { sent: false }
   }
   try {
-    await resend.emails.send({ from: FROM, to, subject, html, text: text ?? "", replyTo: ADMIN_EMAIL })
-    return { sent: true }
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to,
+      subject,
+      html,
+      text: text ?? "",
+      replyTo: ADMIN_EMAIL,
+    })
+    if (!error) return { sent: true }
+
+    // Most common failure: the branded domain isn't verified in Resend yet
+    // (statusCode 403 / "domain is not verified"). Fall back to Resend's shared
+    // verified sender so the email still goes out, keeping reply-to intact.
+    const isUnverifiedDomain =
+      (error as { statusCode?: number }).statusCode === 403 || /not verified/i.test(error.message ?? "")
+    if (isUnverifiedDomain && FROM !== FALLBACK_FROM) {
+      console.log("[v0] Branded sender not verified — retrying with fallback sender. Original error:", error.message)
+      const retry = await resend.emails.send({
+        from: FALLBACK_FROM,
+        to,
+        subject,
+        html,
+        text: text ?? "",
+        replyTo: ADMIN_EMAIL,
+      })
+      if (!retry.error) return { sent: true }
+      console.log("[v0] Resend fallback send failed:", retry.error.message)
+      return { sent: false }
+    }
+
+    console.log("[v0] Resend send failed:", error.message)
+    return { sent: false }
   } catch (err) {
-    console.log("[v0] Resend send failed:", err instanceof Error ? err.message : err)
+    console.log("[v0] Resend send threw:", err instanceof Error ? err.message : err)
     return { sent: false }
   }
 }
