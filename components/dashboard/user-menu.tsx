@@ -8,7 +8,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { User, LogOut, UserCog } from "lucide-react"
@@ -49,13 +48,13 @@ export function UserMenu({
         {initials(name) || <User className="h-4 w-4" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 px-1.5 py-1">
           <span className="truncate text-sm font-semibold">{name}</span>
           <span className="truncate text-xs font-normal text-muted-foreground">{email}</span>
           <span className="mt-1 inline-block w-fit rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             {role.replace("_", " ")}
           </span>
-        </DropdownMenuLabel>
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/dashboard/profile" />}>
           <UserCog className="h-4 w-4" />
