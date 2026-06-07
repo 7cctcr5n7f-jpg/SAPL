@@ -147,6 +147,14 @@ export const clubs = pgTable(
     // Ordered per-court mode list, one entry per court: "team" | "public" |
     // "none". Source of truth that the counts above are derived from.
     courtSlots: jsonb("courtSlots").$type<string[]>().notNull().default([]),
+    // Per-court hosting time choice, aligned to `courtSlots`. Hosting courts
+    // hold "17:00" | "18:30" | "both"; no-host courts hold "". Venues with fewer
+    // than 4 courts are forced to "both" (a fixture cannot fit in one slot).
+    slotTimeslots: jsonb("slotTimeslots").$type<string[]>().notNull().default([]),
+    // Denormalised union of the league-night slots this venue will host
+    // (subset of ["17:00","18:30"]). Derived from slotTimeslots; read by the
+    // fixture generator so it never schedules a venue at a time it won't host.
+    hostTimeslots: jsonb("hostTimeslots").$type<string[]>().notNull().default([]),
     logoUrl: text("logoUrl"),
     playtomicUrl: text("playtomicUrl"),
     contactName: text("contactName"),

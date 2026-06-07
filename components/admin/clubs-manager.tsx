@@ -5,13 +5,11 @@ import Image from "next/image"
 import {
   Building2,
   MapPin,
-  Trophy,
   Plus,
   Pencil,
   Trash2,
   ExternalLink,
   Check,
-  Users,
   UserPlus,
   Crown,
 } from "lucide-react"
@@ -29,7 +27,18 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VenueImageUploader } from "@/components/admin/venue-image-uploader"
-import { SAPL_REGIONS, normaliseCourtSlots, deriveSlotCounts, type CourtSlotMode } from "@/lib/constants"
+import { Stat } from "@/components/brand/bits"
+import {
+  SAPL_REGIONS,
+  normaliseCourtSlots,
+  normaliseSlotTimeslots,
+  deriveSlotCounts,
+  summariseHostTimeslots,
+  canChooseTimeslot,
+  SLOT_TIMESLOT_OPTIONS,
+  type CourtSlotMode,
+  type SlotTimeslot,
+} from "@/lib/constants"
 import { saveClub, deleteClub, setClubTeamCaptain } from "@/lib/actions/clubs"
 import { createPlayerAccount } from "@/lib/actions/members"
 import type { ClubRow, PlayerOption } from "@/lib/queries-clubs"
@@ -45,6 +54,7 @@ const EMPTY = {
   saplRegion: "",
   courts: 0,
   courtSlots: [] as CourtSlotMode[],
+  slotTimeslots: [] as string[],
   logoUrl: "",
   playtomicUrl: "",
   contactName: "",
@@ -83,7 +93,18 @@ export function ClubsManager({
     [clubs, regionFilter],
   )
 
+  // Headline stats recompute from the region-filtered set so the widgets always
+  // reflect the venues currently shown.
+  const stats = useMemo(() => {
+    const totalCapacity = filtered.reduce((s, c) => s + c.hostingCapacity, 0)
+    const totalUsed = filtered.reduce((s, c) => s + c.used, 0)
+    const thursdayHosts = filtered.filter((c) => c.hostsThursday).length
+    const clubsWithTeams = filtered.filter((c) => c.teamsEntering > 0).length
+    return { venues: filtered.length, totalCapacity, totalUsed, thursdayHosts, clubsWithTeams }
+  }, [filtered])
+
   const counts = useMemo(() => deriveSlotCounts(form.courtSlots), [form.courtSlots])
+  const canChoose = canChooseTimeslot(form.courts)
 
   function openCreate() {
     setForm({ ...EMPTY })
@@ -92,6 +113,7 @@ export function ClubsManager({
   }
 
   function openEdit(c: ClubRow) {
+    const slots = normaliseCourtSlots(c.courts, c.courtSlots as CourtSlotMode[])
     setForm({
       id: c.id,
       name: c.name,
@@ -99,7 +121,8 @@ export function ClubsManager({
       address: c.address ?? "",
       saplRegion: c.saplRegion ?? "",
       courts: c.courts,
-      courtSlots: normaliseCourtSlots(c.courts, c.courtSlots as CourtSlotMode[]),
+      courtSlots: slots,
+      slotTimeslots: normaliseSlotTimeslots(c.courts, slots, c.slotTimeslots),
       logoUrl: c.logoUrl ?? "",
       playtomicUrl: c.playtomicUrl ?? "",
       contactName: c.contactName ?? "",
@@ -112,14 +135,25 @@ export function ClubsManager({
 
   function setCourts(courts: number) {
     const n = Math.max(0, Math.min(20, Math.floor(courts || 0)))
-    setForm((f) => ({ ...f, courts: n, courtSlots: normaliseCourtSlots(n, f.courtSlots) }))
+    setForm((f) => {
+      const courtSlots = normaliseCourtSlots(n, f.courtSlots)
+      return { ...f, courts: n, courtSlots, slotTimeslots: normaliseSlotTimeslots(n, courtSlots, f.slotTimeslots) }
+    })
   }
 
   function setSlot(index: number, mode: CourtSlotMode) {
     setForm((f) => {
       const next = [...f.courtSlots]
       next[index] = mode
-      return { ...f, courtSlots: next }
+      return { ...f, courtSlots: next, slotTimeslots: normaliseSlotTimeslots(f.courts, next, f.slotTimeslots) }
+    })
+  }
+
+  function setSlotTime(index: number, time: SlotTimeslot) {
+    setForm((f) => {
+      const next = [...f.slotTimeslots]
+      next[index] = time
+      return { ...f, slotTimeslots: next }
     })
   }
 
@@ -138,6 +172,7 @@ export function ClubsManager({
         saplRegion: form.saplRegion,
         courts: form.courts,
         courtSlots: form.courtSlots,
+        slotTimeslots: form.slotTimeslots,
         logoUrl: form.logoUrl,
         playtomicUrl: form.playtomicUrl,
         contactName: form.contactName,
@@ -188,6 +223,14 @@ export function ClubsManager({
             {r.replace("Tshwane ", "")}
           </FilterChip>
         ))}
+      </div>
+
+      {/* Headline stats — react to the active region filter */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Stat label="Venues" value={stats.venues} />
+        <Stat label="Hosting Capacity" value={stats.totalCapacity} sub={`${stats.totalUsed} in use`} />
+        <Stat label="Clubs With Teams" value={stats.clubsWithTeams} />
+        <Stat label="Thursday Hosts" value={stats.thursdayHosts} />
       </div>
 
       {filtered.length === 0 ? (
@@ -253,42 +296,80 @@ export function ClubsManager({
               />
             </Field>
 
-            {/* Per-court slot configuration */}
+            {/* Per-slot configuration */}
             {form.courts > 0 ? (
               <div className="space-y-2 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Court usage</p>
+                  <p className="text-sm font-medium">Slot usage</p>
                   <span className="text-xs text-muted-foreground">
                     {counts.teamsEntering} team · {counts.publicSlots} public · capacity {counts.hostingCapacity}
                   </span>
                 </div>
-                <div className="space-y-1.5">
-                  {form.courtSlots.map((mode, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Court {i + 1}</span>
-                      <div className="flex flex-1 gap-1">
-                        {(["team", "public", "none"] as CourtSlotMode[]).map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setSlot(i, m)}
-                            className={cn(
-                              "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
-                              mode === m
-                                ? SLOT_META[m].className
-                                : "border-border bg-card text-muted-foreground hover:text-foreground",
+                <div className="space-y-2">
+                  {form.courtSlots.map((mode, i) => {
+                    const hosting = mode === "team" || mode === "public"
+                    return (
+                      <div key={i} className="rounded-md border border-border bg-card/50 p-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">Slot {i + 1}</span>
+                          <div className="flex flex-1 gap-1">
+                            {(["team", "public", "none"] as CourtSlotMode[]).map((m) => (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setSlot(i, m)}
+                                className={cn(
+                                  "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
+                                  mode === m
+                                    ? SLOT_META[m].className
+                                    : "border-border bg-card text-muted-foreground hover:text-foreground",
+                                )}
+                              >
+                                {SLOT_META[m].short}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {hosting ? (
+                          <div className="mt-2 flex items-center gap-2 pl-12">
+                            <span className="shrink-0 text-[11px] uppercase tracking-wider text-muted-foreground">
+                              Hosts at
+                            </span>
+                            {canChoose ? (
+                              <div className="flex flex-1 gap-1">
+                                {SLOT_TIMESLOT_OPTIONS.map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setSlotTime(i, opt.value)}
+                                    className={cn(
+                                      "flex-1 rounded-md border px-2 py-1 text-xs font-medium transition",
+                                      (form.slotTimeslots[i] || "both") === opt.value
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-border bg-card text-muted-foreground hover:text-foreground",
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="rounded-md border border-border bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground">
+                                17:00 &amp; 18:30 (required)
+                              </span>
                             )}
-                          >
-                            {SLOT_META[m].short}
-                          </button>
-                        ))}
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Team courts field one of your own teams. Public courts open this venue as a home venue for a public
-                  team. No-host courts are not used for league fixtures.
+                  Team slots field one of your own teams. Public slots open this venue as a home venue for a public
+                  team. No-host slots are not used for league fixtures.{" "}
+                  {canChoose
+                    ? "Choose which league-night time each hosting slot will run."
+                    : "With fewer than 4 courts a fixture must split across 17:00 and 18:30, so both times are required."}
                 </p>
               </div>
             ) : null}
@@ -562,6 +643,15 @@ function CapacityStat({ label, value, className }: { label: string; value: numbe
   )
 }
 
+function TextStat({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className="text-right">
+      <p className={cn("text-sm font-semibold", className)}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -582,7 +672,6 @@ function ClubRowItem({
   onDelete: () => void
   deleting: boolean
 }) {
-  const full = club.hosts && club.hostingCapacity > 0 && club.remaining === 0
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-secondary/30">
       {/* Logo */}
@@ -613,19 +702,6 @@ function ClubRowItem({
               <MapPin className="h-3 w-3" /> {club.saplRegion.replace("Tshwane ", "")}
             </span>
           ) : null}
-          <span className="inline-flex items-center gap-1">
-            <Trophy className="h-3 w-3" /> {club.courts} courts
-          </span>
-          {club.teamsEntering > 0 ? (
-            <span className="inline-flex items-center gap-1">
-              <Users className="h-3 w-3" /> {club.teamsEntering} entering
-            </span>
-          ) : null}
-          {club.publicSlots > 0 ? (
-            <span className="inline-flex items-center gap-1 text-emerald-600">
-              {club.publicSlots} public
-            </span>
-          ) : null}
           {club.playtomicUrl ? (
             <a
               href={club.playtomicUrl}
@@ -639,15 +715,15 @@ function ClubRowItem({
         </div>
       </div>
 
-      {/* Capacity breakdown: Capacity · Assigned · Remaining */}
+      {/* Hosting summary: Teams · Hosting time · Remaining (public slots open) */}
       {club.hosts ? (
         <div className="hidden shrink-0 items-center gap-4 sm:flex">
-          <CapacityStat label="Capacity" value={club.hostingCapacity} />
-          <CapacityStat label="Assigned" value={club.used} />
+          <CapacityStat label="Teams" value={club.teamsEntering} />
+          <TextStat label="Hosting time" value={summariseHostTimeslots(club.hostTimeslots)} />
           <CapacityStat
             label="Remaining"
-            value={club.remaining}
-            className={full ? "text-destructive" : "text-emerald-600"}
+            value={club.publicRemaining}
+            className={club.publicRemaining === 0 ? "text-destructive" : "text-emerald-600"}
           />
         </div>
       ) : (

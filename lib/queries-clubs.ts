@@ -51,6 +51,8 @@ export type ClubRow = {
   saplRegion: string | null
   courts: number
   courtSlots: string[]
+  slotTimeslots: string[]
+  hostTimeslots: string[]
   hostingCapacity: number
   hostsThursday: boolean
   teamsEntering: number
@@ -69,6 +71,9 @@ export type ClubRow = {
   hosts: boolean
   used: number
   remaining: number
+  // How many of this venue's PUBLIC slots are still open for an external team
+  // to claim as its home venue (publicSlots - public teams already homed here).
+  publicRemaining: number
 }
 
 const clubColumns = {
@@ -82,6 +87,8 @@ const clubColumns = {
   saplRegion: clubs.saplRegion,
   courts: clubs.courts,
   courtSlots: clubs.courtSlots,
+  slotTimeslots: clubs.slotTimeslots,
+  hostTimeslots: clubs.hostTimeslots,
   hostingCapacity: clubs.hostingCapacity,
   hostsThursday: clubs.hostsThursday,
   teamsEntering: clubs.teamsEntering,
@@ -167,14 +174,19 @@ export async function getClubsWithUsage(organisationId?: number): Promise<ClubRo
     // its own hosting slots — guarantee that by taking the larger of the two.
     const homed = usageMap.get(c.id) ?? 0
     const used = Math.max(homed, c.teamsEntering ?? 0)
+    // Public teams homed here = total homed minus the venue's own entered teams.
+    const publicUsed = Math.max(0, homed - (c.teamsEntering ?? 0))
     return {
       ...c,
       orgName: c.orgName ?? "—",
       courtSlots: Array.isArray(c.courtSlots) ? c.courtSlots : [],
+      slotTimeslots: Array.isArray(c.slotTimeslots) ? c.slotTimeslots : [],
+      hostTimeslots: Array.isArray(c.hostTimeslots) ? c.hostTimeslots : [],
       clubTeams: clubTeamsMap.get(c.id) ?? [],
       hosts: c.hostsThursday,
       used,
       remaining: Math.max(0, c.hostingCapacity - used),
+      publicRemaining: Math.max(0, (c.publicSlots ?? 0) - publicUsed),
     }
   })
 }

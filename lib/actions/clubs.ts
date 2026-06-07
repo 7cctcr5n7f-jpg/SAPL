@@ -5,7 +5,7 @@ import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/l
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
-import { normaliseCourtSlots, deriveSlotCounts, type CourtSlotMode } from "@/lib/constants"
+import { normaliseCourtSlots, deriveSlotCounts, normaliseSlotTimeslots, deriveHostTimeslots, type CourtSlotMode } from "@/lib/constants"
 import { reconcileClubTeams } from "@/lib/club-teams"
 
 function slugify(input: string) {
@@ -69,6 +69,10 @@ type ClubInput = {
   // Ordered per-court mode list. Length should match `courts`; it is normalised
   // server-side so capacity/teams/public counts can never disagree with it.
   courtSlots: (CourtSlotMode | string)[]
+  // Per-court hosting time choice aligned to courtSlots ("17:00"|"18:30"|"both"
+  // for hosting courts). Normalised server-side; venues with <4 courts are
+  // forced to "both".
+  slotTimeslots?: (string | null)[]
   logoUrl?: string
   playtomicUrl?: string
   contactName?: string
@@ -101,6 +105,10 @@ export async function saveClub(input: ClubInput) {
   // capacity is naturally bounded by the court count.
   const slots = normaliseCourtSlots(courts, input.courtSlots)
   const { teamsEntering, publicSlots, hostingCapacity, hostsThursday } = deriveSlotCounts(slots)
+  // Hosting times per slot (forced to "both" under 4 courts), plus the venue's
+  // derived union of league-night slots it will host.
+  const slotTimeslots = normaliseSlotTimeslots(courts, slots, input.slotTimeslots)
+  const hostTimeslots = deriveHostTimeslots(slotTimeslots)
 
   const saplRegion = input.saplRegion || null
 
@@ -111,6 +119,8 @@ export async function saveClub(input: ClubInput) {
     saplRegion,
     courts,
     courtSlots: slots,
+    slotTimeslots,
+    hostTimeslots,
     hostingCapacity,
     hostsThursday,
     teamsEntering,

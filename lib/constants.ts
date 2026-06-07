@@ -99,6 +99,78 @@ export type FixtureTimeslot = (typeof FIXTURE_TIMESLOTS)[number]
 // Max fixtures a venue can host on one league night (one per slot).
 export const MAX_FIXTURES_PER_VENUE_NIGHT = FIXTURE_TIMESLOTS.length
 
+// ---------------------------------------------------------------------------
+// Hosting time slots
+// ---------------------------------------------------------------------------
+// A SAPL fixture (tie) is 4 rubbers played on 4 courts. A venue with 4+ courts
+// can run a whole fixture inside ONE league-night time slot, so it may choose
+// to host at 17:00, 18:30 or both. A venue with fewer than 4 courts cannot fit
+// a fixture in a single slot — it must split the 4 rubbers across 17:00 and
+// 18:30 — so such venues are forced to "both" and cannot choose.
+export const MIN_COURTS_FOR_TIMESLOT_CHOICE = 4
+
+// Per-hosting-slot time choice stored against each team/public court.
+export type SlotTimeslot = "17:00" | "18:30" | "both"
+
+export const SLOT_TIMESLOT_OPTIONS: { value: SlotTimeslot; label: string }[] = [
+  { value: "17:00", label: "17:00" },
+  { value: "18:30", label: "18:30" },
+  { value: "both", label: "Both" },
+]
+
+export function canChooseTimeslot(courts: number): boolean {
+  return Math.floor(courts || 0) >= MIN_COURTS_FOR_TIMESLOT_CHOICE
+}
+
+/**
+ * Build a per-court time-slot array aligned to `courtSlots`. Non-hosting courts
+ * ("none") get an empty string. Hosting courts get "17:00" | "18:30" | "both".
+ * When the venue cannot choose (fewer than 4 courts) every hosting court is
+ * forced to "both".
+ */
+export function normaliseSlotTimeslots(
+  courts: number,
+  courtSlots: CourtSlotMode[],
+  times?: (string | null)[] | null,
+): string[] {
+  const forced = !canChooseTimeslot(courts)
+  const valid = new Set<SlotTimeslot>(["17:00", "18:30", "both"])
+  const src = Array.isArray(times) ? times : []
+  return courtSlots.map((mode, i) => {
+    if (mode === "none") return ""
+    if (forced) return "both"
+    const t = src[i]
+    return t && valid.has(t as SlotTimeslot) ? (t as SlotTimeslot) : "both"
+  })
+}
+
+/**
+ * Expand a per-court time-slot array into the distinct league-night slots the
+ * venue is willing to host, ordered 17:00 then 18:30. "both" expands to both.
+ */
+export function deriveHostTimeslots(slotTimeslots: string[]): FixtureTimeslot[] {
+  let early = false
+  let late = false
+  for (const t of slotTimeslots) {
+    if (t === "17:00" || t === "both") early = true
+    if (t === "18:30" || t === "both") late = true
+  }
+  const out: FixtureTimeslot[] = []
+  if (early) out.push("17:00")
+  if (late) out.push("18:30")
+  return out
+}
+
+/** Short human label for a venue's offered timeslots ("17:00" / "18:30" / "Both"). */
+export function summariseHostTimeslots(hostTimeslots: string[]): string {
+  const early = hostTimeslots.includes("17:00")
+  const late = hostTimeslots.includes("18:30")
+  if (early && late) return "Both"
+  if (early) return "17:00"
+  if (late) return "18:30"
+  return "—"
+}
+
 // Playoff scheduling offsets relative to the regular season.
 export const REGIONAL_FINALS_GAP_DAYS = 9 // after the final league round
 export const TSHWANE_MASTERS_GAP_DAYS = 7 // after the regional finals
