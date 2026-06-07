@@ -9,7 +9,7 @@ import {
   getCategories,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, players, user, userMeta, payments } from "@/lib/db/schema"
+import { organisations, players, user as authUser, userMeta, payments } from "@/lib/db/schema"
 import { eq, and, desc } from "drizzle-orm"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage, getPlayerOptions } from "@/lib/queries-clubs"
@@ -65,7 +65,7 @@ export default async function OrgPage() {
     if (captainMap.has(cid)) continue
     const [p] = await db.select().from(players).where(eq(players.userId, cid)).limit(1)
     if (!p) continue
-    const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, cid)).limit(1)
+    const [u] = await db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, cid)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
     captainMap.set(cid, {
       playerId: p.id,
@@ -82,6 +82,9 @@ export default async function OrgPage() {
   // crest and the region it plays in — auto-derived from the venue.
   const clubInfo = await getClubsWithUsage()
   const clubById = new Map(clubInfo.map((c) => [c.id, c]))
+
+  // Per-player league fee (R500); a full team's total is 8 × this.
+  const playerFee = await getPlayerFee()
 
   const teamData = []
   for (const row of orgTeamRows) {
@@ -164,8 +167,6 @@ export default async function OrgPage() {
     hosts: c.hosts,
     available: c.hosts && c.remaining > 0,
   }))
-
-  const playerFee = await getPlayerFee()
 
   // Venue management for this club owner. Org admins manage only their own
   // venues; league/super admins manage every venue. Players list powers the

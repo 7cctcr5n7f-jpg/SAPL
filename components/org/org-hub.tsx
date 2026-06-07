@@ -452,7 +452,7 @@ export function OrgHub({
       <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadFor(null)}>
         <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
           <DialogHeader>
-            <DialogTitle>{squadFor?.name} �� Squad &amp; Pairings</DialogTitle>
+            <DialogTitle>{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
           </DialogHeader>
           {squadFor && (
             <PairingsBoard
@@ -475,6 +475,22 @@ export function OrgHub({
           start={start}
           locked={locked}
           onClose={() => setEditFor(null)}
+        />
+      )}
+
+      {captainFor?.captain && (
+        <CaptainDialog
+          key={captainFor.id}
+          team={captainFor}
+          captain={captainFor.captain}
+          pending={pending}
+          start={start}
+          onReassign={() => {
+            const t = captainFor
+            setCaptainFor(null)
+            setAssignFor(t)
+          }}
+          onClose={() => setCaptainFor(null)}
         />
       )}
 
@@ -746,6 +762,144 @@ function EditTeamDialog({
           <Button onClick={save} disabled={pending}>
             {pending ? "Saving…" : "Save changes"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// View and edit a team captain's contact details. Email is the captain's login
+// identity so it's shown read-only; name and phone can be edited inline.
+function CaptainDialog({
+  team,
+  captain,
+  pending,
+  start,
+  onReassign,
+  onClose,
+}: {
+  team: Team
+  captain: Captain
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+  onReassign: () => void
+  onClose: () => void
+}) {
+  const [first, ...rest] = captain.name.split(" ")
+  const [firstName, setFirstName] = useState(first ?? "")
+  const [lastName, setLastName] = useState(rest.join(" "))
+  const [phone, setPhone] = useState(captain.phone ?? "")
+  const [editing, setEditing] = useState(false)
+
+  function save() {
+    if (!firstName.trim() || !lastName.trim()) {
+      toast.error("First and last name are required.")
+      return
+    }
+    start(async () => {
+      const res = await updateCaptainContact({
+        teamId: team.id,
+        playerId: captain.playerId,
+        firstName,
+        lastName,
+        phone: phone.trim() || null,
+      })
+      if (res.ok) {
+        toast.success("Captain updated")
+        onClose()
+      } else toast.error(res.error ?? "Failed to update captain")
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Crown className="h-4 w-4 text-primary" /> Team captain
+          </DialogTitle>
+        </DialogHeader>
+
+        {editing ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="capFirst">First name</Label>
+                <Input id="capFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="capLast">Last name</Label>
+                <Input id="capLast" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="capPhone">Contact number</Label>
+              <Input
+                id="capPhone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 082 123 4567"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Email ({captain.email ?? "unknown"}) is the captain&apos;s login and can&apos;t be changed here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Crown className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">{captain.name}</p>
+                <p className="text-xs text-muted-foreground">Captain · {team.name}</p>
+              </div>
+            </div>
+            <a
+              href={captain.email ? `mailto:${captain.email}` : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
+                captain.email ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
+              )}
+            >
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span className="truncate">{captain.email ?? "No email on file"}</span>
+            </a>
+            <a
+              href={captain.phone ? `tel:${captain.phone}` : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
+                captain.phone ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
+              )}
+            >
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              <span className="truncate">{captain.phone ?? "No contact number on file"}</span>
+            </a>
+          </div>
+        )}
+
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+          {editing ? (
+            <>
+              <Button variant="ghost" onClick={() => setEditing(false)} disabled={pending}>
+                Back
+              </Button>
+              <Button onClick={save} disabled={pending}>
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" className="text-muted-foreground" onClick={onReassign}>
+                Reassign captain
+              </Button>
+              <Button onClick={() => setEditing(true)}>
+                <Pencil className="mr-1.5 h-4 w-4" /> Edit details
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

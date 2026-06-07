@@ -237,7 +237,10 @@ export async function updateCaptainContact(input: {
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
   return { ok: true }
-}  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+}
+
+export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean) {
+  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { error: "Team not found" }
   try {
     await requireOrgOwner(team.organisationId)

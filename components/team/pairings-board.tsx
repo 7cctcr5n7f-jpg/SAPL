@@ -16,7 +16,7 @@ import { PAIRING_LAYOUT } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
-import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
 type Invite = { id: number; email: string; category: string | null }
 
