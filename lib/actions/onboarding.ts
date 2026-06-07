@@ -18,23 +18,23 @@ export async function createPlayerProfile(
   const firstName = String(formData.get("firstName") ?? "").trim()
   const lastName = String(formData.get("lastName") ?? "").trim()
   const gender = String(formData.get("gender") ?? "male")
-  const province = String(formData.get("province") ?? "Gauteng")
-  const city = String(formData.get("city") ?? "").trim()
-  const li = Number(formData.get("currentLi") ?? 0)
   const playtomicUrl = String(formData.get("playtomicUrl") ?? "").trim()
   const phone = String(formData.get("phone") ?? "").trim()
   const lookingForTeam = formData.get("lookingForTeam") === "on"
 
-  const preferredFormats = (formData.getAll("preferredFormats") as string[]).filter((f) =>
-    ["mixed", "standard"].includes(f),
-  )
+  // League Index, province, city and preferred formats are no longer collected
+  // here — players can't set their own LI. These default and are managed later
+  // by a league admin under Player Management.
+  const li = 0
+  const province = "Gauteng"
+  const city = ""
+  const preferredFormats: string[] = []
   const anyClub = formData.get("anyClub") === "on"
   const preferredClubIds = anyClub
     ? []
     : (formData.getAll("preferredClubIds") as string[]).map((v) => Number(v)).filter((n) => Number.isFinite(n))
 
   if (!firstName || !lastName) return { error: "First and last name are required." }
-  if (Number.isNaN(li) || li < 0 || li > 7) return { error: "League Index must be between 0 and 7." }
 
   // Ensure user_meta exists (default role: player)
   const [existingMeta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1)
