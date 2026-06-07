@@ -57,18 +57,18 @@ export default function RulesPage() {
         </ol>
       </Block>
 
-      <Block title="Categories & Eligibility (League Index)">
+      <Block title="Pairings & Eligibility (League Index)">
         <p className="mb-4">
-          Every category enforces a per-player LI range and a team-average LI cap. A player&apos;s LI reflects their
-          highest Playtomic rating over the last six months — keeping line-ups honest.
+          Each team fields four pairings — three mens tiers split by the pair&apos;s average League Index, plus one open
+          ladies pairing. A player&apos;s LI reflects their highest Playtomic rating over the last six months, keeping
+          line-ups honest.
         </p>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Category</TableHead>
+              <TableHead>Pairing</TableHead>
               <TableHead>Session</TableHead>
-              <TableHead className="text-right">Player LI</TableHead>
-              <TableHead className="text-right">Team Avg Max</TableHead>
+              <TableHead className="text-right">Pair Average LI</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,9 +80,12 @@ export default function RulesPage() {
                 </TableCell>
                 <TableCell>{c.session}</TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {c.playerMinLi.toFixed(1)}–{c.playerMaxLi.toFixed(1)}
+                  {c.name === "Ladies Open"
+                    ? "Any"
+                    : c.name === "Mens Open"
+                      ? "Over 3.5"
+                      : `Up to ${c.avgTeamMaxLi.toFixed(1)}`}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{c.avgTeamMaxLi.toFixed(1)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

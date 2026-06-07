@@ -180,12 +180,13 @@ export async function runSeed() {
         })
         .returning()
 
-      // roster: 4 players (2 male, 2 female) with division-appropriate LI
+      // roster: 8 players (6 male across 3 pairings + 2 female open) with
+      // division-appropriate LI
       const baseLi = 4.0 - DIVISIONS[i].level * 0.4 // Premier higher LI
       const roster: { id: number; gender: string; li: number }[] = []
-      for (let p = 0; p < 4; p++) {
+      for (let p = 0; p < 8; p++) {
         playerCounter++
-        const gender = p < 2 ? "male" : "female"
+        const gender = p < 6 ? "male" : "female"
         const first = gender === "male" ? pick(MALE_FIRST) : pick(FEMALE_FIRST)
         const li = Math.round((baseLi + (rand() - 0.5)) * 10) / 10
         const liClamped = Math.min(5, Math.max(1.5, li))

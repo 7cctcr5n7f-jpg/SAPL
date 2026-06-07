@@ -35,9 +35,9 @@ const SCOPE_COPY: Record<FixtureScope, string> = {
 // The four courts played each match night, in running order.
 const COURTS = [...CATEGORY_RULES].sort((a, b) => a.sortOrder - b.sortOrder).map((c) => c.name)
 
-// "Mens Advanced" -> "Mens A", "Ladies Beginner" -> "Ladies B"
+// "Mens Open" -> "Mens O", "Mens Beginner" -> "Mens B", "Mens Intermediate" -> "Mens I"
 function shortCategory(name: string) {
-  return name.replace("Advanced", "A").replace("Beginner", "B")
+  return name.replace("Beginner", "B").replace("Intermediate", "I").replace("Open", "O")
 }
 
 function teamLabel(name: string | null, slot: number | null) {

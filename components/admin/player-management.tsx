@@ -10,12 +10,18 @@ import { CATEGORY_RULES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, Loader2, Pencil, Check, X } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Check, X, Mars, Venus } from "lucide-react"
 
 const ALL_CATEGORIES = CATEGORY_RULES.map((c) => c.name)
 
 function categoriesFor(p: ManagedPlayer): string[] {
   return eligibleCategoriesForPlayer(p.gender, p.currentLi)
+}
+
+function GenderIcon({ gender, className = "" }: { gender: "male" | "female"; className?: string }) {
+  if (gender === "female")
+    return <Venus className={`h-4 w-4 text-pink-500 ${className}`} aria-label="Female" role="img" />
+  return <Mars className={`h-4 w-4 text-blue-500 ${className}`} aria-label="Male" role="img" />
 }
 
 export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
@@ -202,8 +208,10 @@ function PlayerRow({ player, onSaved }: { player: ManagedPlayer; onSaved: () => 
   return (
     <tr className="border-b border-border last:border-0 hover:bg-secondary/20">
       <td className="px-3 py-2">
-        <div className="font-medium text-foreground">{player.name}</div>
-        <div className="text-xs capitalize text-muted-foreground">{player.gender}</div>
+        <div className="flex items-center gap-2">
+          <GenderIcon gender={player.gender} />
+          <span className="font-medium text-foreground">{player.name}</span>
+        </div>
       </td>
       <td className="px-3 py-2 text-xs text-muted-foreground">
         <div className="truncate">{player.email ?? "—"}</div>
@@ -302,8 +310,10 @@ function PlayerCard({ player, onSaved }: { player: ManagedPlayer; onSaved: () =>
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-medium text-foreground">{player.name}</div>
-          <div className="text-xs capitalize text-muted-foreground">{player.gender}</div>
+          <div className="flex items-center gap-2">
+            <GenderIcon gender={player.gender} />
+            <span className="font-medium text-foreground">{player.name}</span>
+          </div>
         </div>
         <PrimaryCategory player={player} />
       </div>

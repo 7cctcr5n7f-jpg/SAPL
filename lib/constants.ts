@@ -99,25 +99,27 @@ export type CategoryRule = {
   sortOrder: number
 }
 
-// A team fields exactly 4 pairs (8 players): a beginner + advanced pair for each
-// gender. The LI boundary splits beginner from advanced:
-//   Ladies — beginner up to 2.5 LI, advanced over 2.5 LI
-//   Mens   — beginner up to 3.0 LI, advanced over 3.0 LI
-export const LADIES_LI_SPLIT = 2.5
-export const MENS_LI_SPLIT = 3.0
+// A team fields exactly 4 pairs (8 players): three mens pairings split by the
+// pair's *average* League Index, plus one open ladies pairing (any LI average):
+//   Mens Beginner     — pair average LI up to 2.5
+//   Mens Intermediate — pair average LI up to 3.5
+//   Mens Open         — pair average LI over 3.5 (no upper cap)
+//   Ladies Open       — any LI average
+export const MENS_BEGINNER_AVG_MAX = 2.5
+export const MENS_INTERMEDIATE_AVG_MAX = 3.5
 const LI_MAX = 7.0
 
 export const CATEGORY_RULES: CategoryRule[] = [
-  { name: "Ladies Beginner", gender: "female", session: 1, isFeatureCourt: false, avgTeamMaxLi: LADIES_LI_SPLIT, playerMinLi: 1.0, playerMaxLi: LADIES_LI_SPLIT, sortOrder: 1 },
-  { name: "Ladies Advanced", gender: "female", session: 1, isFeatureCourt: true, avgTeamMaxLi: LI_MAX, playerMinLi: LADIES_LI_SPLIT, playerMaxLi: LI_MAX, sortOrder: 2 },
-  { name: "Mens Beginner", gender: "male", session: 1, isFeatureCourt: false, avgTeamMaxLi: MENS_LI_SPLIT, playerMinLi: 1.0, playerMaxLi: MENS_LI_SPLIT, sortOrder: 3 },
-  { name: "Mens Advanced", gender: "male", session: 1, isFeatureCourt: true, avgTeamMaxLi: LI_MAX, playerMinLi: MENS_LI_SPLIT, playerMaxLi: LI_MAX, sortOrder: 4 },
+  { name: "Mens Beginner", gender: "male", session: 1, isFeatureCourt: false, avgTeamMaxLi: MENS_BEGINNER_AVG_MAX, playerMinLi: 1.0, playerMaxLi: MENS_BEGINNER_AVG_MAX, sortOrder: 1 },
+  { name: "Mens Intermediate", gender: "male", session: 1, isFeatureCourt: false, avgTeamMaxLi: MENS_INTERMEDIATE_AVG_MAX, playerMinLi: 1.0, playerMaxLi: MENS_INTERMEDIATE_AVG_MAX, sortOrder: 2 },
+  { name: "Mens Open", gender: "male", session: 2, isFeatureCourt: true, avgTeamMaxLi: LI_MAX, playerMinLi: 1.0, playerMaxLi: LI_MAX, sortOrder: 3 },
+  { name: "Ladies Open", gender: "female", session: 2, isFeatureCourt: true, avgTeamMaxLi: LI_MAX, playerMinLi: 1.0, playerMaxLi: LI_MAX, sortOrder: 4 },
 ]
 
-// Pairing categories grouped by gender for the two-column lineup UI.
+// Pairing categories grouped by gender for the lineup UI.
 export const PAIRING_LAYOUT = {
-  female: { label: "Ladies", categories: ["Ladies Beginner", "Ladies Advanced"] },
-  male: { label: "Mens", categories: ["Mens Beginner", "Mens Advanced"] },
+  male: { label: "Mens", categories: ["Mens Beginner", "Mens Intermediate", "Mens Open"] },
+  female: { label: "Ladies", categories: ["Ladies Open"] },
 } as const
 
 // Full squad size: 4 pairs x 2 players.

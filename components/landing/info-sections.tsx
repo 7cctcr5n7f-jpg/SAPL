@@ -213,10 +213,10 @@ export function BuildYourTeam() {
 /* ----------------------- Section 4: What Does A Team Look Like ------------------- */
 
 const CATEGORIES = [
-  { name: "Mens Pairing 1", li: "Up to 3.0 LI", group: "Mens" },
-  { name: "Mens Pairing 2", li: "Over 3.0 LI", group: "Mens" },
-  { name: "Ladies Pairing 1", li: "Up to 2.5 LI", group: "Ladies" },
-  { name: "Ladies Pairing 2", li: "Over 2.5 LI", group: "Ladies" },
+  { name: "Mens Beginner", li: "Avg up to 2.5 LI", group: "Mens" },
+  { name: "Mens Intermediate", li: "Avg up to 3.5 LI", group: "Mens" },
+  { name: "Mens Open", li: "Avg over 3.5 LI", group: "Mens" },
+  { name: "Ladies Open", li: "Any LI", group: "Ladies" },
 ]
 
 export function TeamComposition() {
@@ -230,8 +230,8 @@ export function TeamComposition() {
               8 Players. 4 Pairings. 1 Goal.
             </h2>
             <p className="mt-5 max-w-md text-pretty leading-relaxed text-muted-foreground">
-              Each SAPL team fields 8 players: two mens pairings and two ladies pairings, split by League Index. Every
-              pairing earns points for the team.
+              Each SAPL team fields 8 players: three mens pairings split by average League Index, plus one open ladies
+              pairing. Every pairing earns points for the team.
             </p>
             <div className="mt-10 flex gap-10">
               {[
@@ -274,14 +274,14 @@ const SESSIONS = [
   {
     no: "01",
     label: "Session 1",
-    support: { name: "Mens Beginner", tag: "Up to 3.0 LI" },
-    main: { name: "Ladies Advanced", tag: "Over 2.5 LI" },
+    support: { name: "Mens Beginner", tag: "Avg up to 2.5 LI" },
+    main: { name: "Mens Intermediate", tag: "Avg up to 3.5 LI" },
   },
   {
     no: "02",
     label: "Session 2",
-    support: { name: "Ladies Beginner", tag: "Up to 2.5 LI" },
-    main: { name: "Mens Advanced", tag: "Over 3.0 LI" },
+    support: { name: "Ladies Open", tag: "Any LI" },
+    main: { name: "Mens Open", tag: "Avg over 3.5 LI" },
   },
 ]
 
