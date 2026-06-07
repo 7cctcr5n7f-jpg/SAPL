@@ -6,7 +6,7 @@ const resend = apiKey ? new Resend(apiKey) : null
 
 // Sender + reply-to use the verified SAPL domain mailbox. Override with
 // RESEND_FROM if a different verified sender is ever configured.
-export const ADMIN_EMAIL = "mail@southafricapadelleague.co.za"
+export const ADMIN_EMAIL = "admin@southafricapadelleague.co.za"
 const FROM = process.env.RESEND_FROM ?? `SAPL <${ADMIN_EMAIL}>`
 
 type SendArgs = {
