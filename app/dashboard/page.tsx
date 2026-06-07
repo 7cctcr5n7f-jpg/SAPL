@@ -4,51 +4,59 @@ import {
   getPlayerByUserId,
   getPlayerMemberships,
   getPlayerPayments,
+  getPlayerTeamFees,
+  getOutstandingFees,
   getUserNotifications,
 } from "@/lib/queries-dashboard"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { TeamsPanel } from "@/components/dashboard/teams-panel"
+import { TeamFees } from "@/components/dashboard/team-fees"
+import { AdminOutstandingFees } from "@/components/dashboard/admin-outstanding-fees"
 import { Stat } from "@/components/brand/bits"
 import { fmtZAR } from "@/lib/format"
-import { ArrowUpRight } from "lucide-react"
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
+  const isAdmin = me.role === "league_admin" || me.role === "super_admin"
   const player = me.playerId ? await getPlayerByUserId(me.id) : null
   const memberships = player ? await getPlayerMemberships(player.id) : []
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
+  const teamFees = player ? await getPlayerTeamFees(player.id) : []
+  const outstandingFees = isAdmin ? await getOutstandingFees() : []
   const notifications = await getUserNotifications(me.id, 5)
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
-  const pendingInvites = memberships.filter((m) => m.membership.status === "invited")
-  const outstanding = payments
-    .filter((p) => p.status === "pending")
-    .reduce((sum, p) => sum + p.amount + p.vatAmount, 0)
+  const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
+  const outstanding =
+    payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
+
+  // Reshape memberships for the TeamsPanel (handles invites + active + history).
+  const teamEntries = memberships.map((m) => ({
+    membershipId: m.membership.id,
+    status: m.membership.status,
+    teamId: m.team.id,
+    teamName: m.team.name,
+    orgName: m.org?.name ?? "—",
+    divisionName: m.division?.name ?? "Unassigned",
+    tpr: m.team.tpr,
+    role: m.membership.role,
+  }))
 
   return (
     <div>
-      <PageHeader
-        title={`Welcome, ${me.name.split(" ")[0]}`}
-        subtitle="Your league command centre."
-        action={
-          <Button render={<Link href="/dashboard/profile" />} variant="outline" size="sm">
-            Edit Profile
-          </Button>
-        }
-      />
+      <PageHeader title={`Welcome, ${me.name.split(" ")[0]}`} subtitle="Your league command centre." />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <Stat label="League Index" value={player ? player.currentLi.toFixed(2) : "—"} />
+            <Stat label="Playtomic Rating" value={player?.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <Stat label="Team TPR" value={player?.currentTpr ? Math.round(player.currentTpr) : "—"} />
+            <Stat label="LI" value={player ? player.currentLi.toFixed(2) : "—"} />
           </CardContent>
         </Card>
         <Card>
@@ -63,68 +71,39 @@ export default async function DashboardOverview() {
         </Card>
       </div>
 
-      {pendingInvites.length > 0 && (
-        <Card className="mt-6 border-primary/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              Pending Invitations
-              <Badge>{pendingInvites.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {pendingInvites.map((m) => (
-              <div key={m.membership.id} className="flex items-center justify-between gap-4 rounded-md bg-secondary px-4 py-3">
-                <div>
-                  <p className="font-semibold">{m.team.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {m.org?.name} · {m.division?.name ?? "Unassigned"}
-                  </p>
-                </div>
-                <Button render={<Link href="/dashboard/teams" />} size="sm">
-                  Respond
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {/* Fees — pay status per team. PayFast link will be wired in later. */}
+      {player && (
+        <section className="mt-8">
+          <h2 className="heading mb-3 text-lg">Fees</h2>
+          {teamFees.length > 0 ? (
+            <TeamFees fees={teamFees} />
+          ) : (
+            <Card>
+              <CardContent className="pt-6 text-sm text-muted-foreground">
+                You have no outstanding league fees right now.
+              </CardContent>
+            </Card>
+          )}
+        </section>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-base">My Teams</CardTitle>
-            <Link href="/dashboard/teams" className="text-xs text-primary hover:underline">
-              View all
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activeTeams.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                You&apos;re not on a team yet.{" "}
-                <Link href="/marketplace" className="text-primary hover:underline">
-                  Find a team
-                </Link>
-                .
-              </p>
-            )}
-            {activeTeams.map((m) => (
-              <Link
-                key={m.membership.id}
-                href={`/teams/${m.team.id}`}
-                className="flex items-center justify-between rounded-md border border-border px-4 py-3 transition-colors hover:border-primary/50"
-              >
-                <div>
-                  <p className="font-semibold">{m.team.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {m.division?.name ?? "Unassigned"} · TPR {Math.round(m.team.tpr)}
-                  </p>
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
+      {/* My Teams — invitations, active teams and history all live here now. */}
+      {player && (
+        <section className="mt-8">
+          <h2 className="heading mb-3 text-lg">My Teams</h2>
+          <TeamsPanel entries={teamEntries} />
+        </section>
+      )}
 
+      {/* Admins: chase up outstanding player payments across the league. */}
+      {isAdmin && (
+        <section className="mt-8">
+          <h2 className="heading mb-3 text-lg">Outstanding Fees</h2>
+          <AdminOutstandingFees fees={outstandingFees} />
+        </section>
+      )}
+
+      <section className="mt-8">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Recent Activity</CardTitle>
@@ -145,7 +124,7 @@ export default async function DashboardOverview() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      </section>
     </div>
   )
 }

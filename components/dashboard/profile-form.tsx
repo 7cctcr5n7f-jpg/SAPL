@@ -6,15 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { CATEGORY_RULES, PLAYER_FORMATS } from "@/lib/constants"
 
 type PlayerLike = {
   bio: string | null
   city: string | null
   playtomicUrl: string | null
   currentLi: number
-  preferredCategory: string | null
-  preferredFormats: string[] | null
+  playtomicRating: number | null
   preferredClubIds: number[] | null
   anyClub: boolean
   lookingForTeam: boolean
@@ -22,7 +20,16 @@ type PlayerLike = {
 
 type Club = { id: number; name: string }
 
-export function ProfileForm({ player, clubs }: { player: PlayerLike; clubs: Club[] }) {
+export function ProfileForm({
+  player,
+  clubs,
+  canEditRatings = false,
+}: {
+  player: PlayerLike
+  clubs: Club[]
+  /** League admins may set ratings; players can only view them. */
+  canEditRatings?: boolean
+}) {
   const [state, action, pending] = useActionState(updateProfile, null)
   const [anyClub, setAnyClub] = useState(player.anyClub)
   const [selectedClubs, setSelectedClubs] = useState<number[]>(player.preferredClubIds ?? [])
@@ -33,82 +40,70 @@ export function ProfileForm({ player, clubs }: { player: PlayerLike; clubs: Club
 
   return (
     <form action={action} className="space-y-5">
+      {/* Ratings — only league admins can change these. For everyone else they
+          are read-only (the player just supplies their Playtomic link below). */}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="currentLi">League Index (Playtomic, last 6 months)</Label>
+          <Label htmlFor="playtomicRating">Playtomic Rating</Label>
+          {canEditRatings ? (
+            <Input
+              id="playtomicRating"
+              name="playtomicRating"
+              type="number"
+              step="0.01"
+              min="0"
+              max="7"
+              defaultValue={player.playtomicRating ?? ""}
+              placeholder="e.g. 3.50"
+            />
+          ) : (
+            <>
+              <p className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm">
+                {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "Not set yet"}
+              </p>
+              <p className="text-xs text-muted-foreground">Set by the league from your Playtomic profile.</p>
+            </>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="currentLi">League Index (LI)</Label>
+          {canEditRatings ? (
+            <Input
+              id="currentLi"
+              name="currentLi"
+              type="number"
+              step="0.01"
+              min="0"
+              max="7"
+              defaultValue={player.currentLi}
+            />
+          ) : (
+            <>
+              <p className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm">
+                {player.currentLi.toFixed(2)}
+              </p>
+              <p className="text-xs text-muted-foreground">Your league level, managed by the league.</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="playtomicUrl">Playtomic Profile URL</Label>
           <Input
-            id="currentLi"
-            name="currentLi"
-            type="number"
-            step="0.01"
-            min="0"
-            max="7"
-            defaultValue={player.currentLi}
-            required
+            id="playtomicUrl"
+            name="playtomicUrl"
+            defaultValue={player.playtomicUrl ?? ""}
+            placeholder="https://playtomic.io/user/..."
           />
-          <p className="text-xs text-muted-foreground">Your highest Playtomic rating in the past 6 months (0–7).</p>
+          <p className="text-xs text-muted-foreground">Add your link so the league can verify your rating.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="city">City</Label>
           <Input id="city" name="city" defaultValue={player.city ?? ""} placeholder="Pretoria" />
         </div>
       </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="playtomicUrl">Playtomic Profile URL</Label>
-        <Input
-          id="playtomicUrl"
-          name="playtomicUrl"
-          defaultValue={player.playtomicUrl ?? ""}
-          placeholder="https://playtomic.io/user/..."
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="preferredCategory">Preferred Category</Label>
-        <select
-          id="preferredCategory"
-          name="preferredCategory"
-          defaultValue={player.preferredCategory ?? ""}
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <option value="">No preference</option>
-          {CATEGORY_RULES.map((c) => (
-            <option key={c.name} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Formats the player wants to play */}
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Formats I want to play</legend>
-        <p className="text-xs text-muted-foreground">Pick one or both. Your level decides which category you land in.</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {PLAYER_FORMATS.map((f) => {
-            const checked = (player.preferredFormats ?? []).includes(f.value)
-            return (
-              <label
-                key={f.value}
-                className="flex items-start gap-3 rounded-md border border-border bg-secondary px-4 py-3"
-              >
-                <input
-                  type="checkbox"
-                  name="preferredFormats"
-                  value={f.value}
-                  defaultChecked={checked}
-                  className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
-                />
-                <span className="text-sm">
-                  <span className="font-semibold">{f.label}</span>
-                  <span className="block text-xs text-muted-foreground">{f.description}</span>
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      </fieldset>
 
       {/* Preferred home clubs */}
       <fieldset className="space-y-2">

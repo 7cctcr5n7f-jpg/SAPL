@@ -171,6 +171,8 @@ export const players = pgTable(
     // Playtomic linkage
     playtomicUserId: text("playtomicUserId"),
     playtomicUrl: text("playtomicUrl"),
+    // Player's Playtomic rating, set by league admins (players are read-only).
+    playtomicRating: doublePrecision("playtomicRating"),
     currentTpr: doublePrecision("currentTpr"),
     highestTpr: doublePrecision("highestTpr"),
     // Marketplace

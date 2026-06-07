@@ -209,7 +209,7 @@ export async function generateSeason(formData: FormData) {
 
   revalidatePath("/admin")
   revalidatePath("/admin/fixtures")
-  revalidatePath("/admin/playoffs")
+  revalidatePath("/admin")
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/fixtures")
   return { ok: true, count: total, divisions: divs.length }
@@ -315,7 +315,7 @@ export async function generatePlayoffs(formData: FormData) {
     })
   }
 
-  revalidatePath("/admin/playoffs")
+  revalidatePath("/admin")
   return { ok: true }
 }
 
@@ -404,7 +404,7 @@ export async function pullPlayoffTeams(formData: FormData) {
     }
   }
 
-  revalidatePath("/admin/playoffs")
+  revalidatePath("/admin")
   return { ok: true, filled }
 }
 
@@ -433,7 +433,7 @@ export async function setPlayoffSchedule(formData: FormData) {
     .set({ matchDate: dateStr ? new Date(dateStr) : null, timeslot, venueClubId, venue })
     .where(eq(playoffs.id, id))
 
-  revalidatePath("/admin/playoffs")
+  revalidatePath("/admin")
   return { ok: true }
 }
 

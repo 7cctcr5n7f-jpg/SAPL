@@ -69,21 +69,17 @@ export function DashboardNav({
 
   const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
 
-  items.push({ href: "/dashboard/profile", label: "My Profile", icon: ICONS.profile })
-  items.push({ href: "/dashboard/teams", label: "My Teams", icon: ICONS.roster })
   items.push({ href: "/dashboard/fixtures", label: "Fixtures", icon: ICONS.fixtures })
-  items.push({ href: "/dashboard/payments", label: "Fees", icon: ICONS.payments })
 
   if (isCaptainView) {
     items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
   }
   if (isOrgView) {
-    items.push({ href: "/dashboard/org", label: "Team Admin", icon: ICONS.org })
+    items.push({ href: "/dashboard/org", label: "Team Management", icon: ICONS.org })
   }
   if (isAdminView) {
-    items.push({ href: "/admin", label: "League Control", icon: ICONS.admin })
-    items.push({ href: "/admin/clubs", label: "Venues", icon: ICONS.venues })
-    items.push({ href: "/admin/playoffs", label: "Playoffs", icon: ICONS.playoffs })
+    items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
+    items.push({ href: "/admin/clubs", label: "Club Management", icon: ICONS.venues })
     items.push({ href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce })
     items.push({ href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors })
   }

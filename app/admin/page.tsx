@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { getAdminSummary, getSeasonsWithDivisions, getRegions } from "@/lib/queries-admin"
+import { getAdminSummary, getSeasonsWithDivisions, getRegions, getPlayoffs, getPlayoffVenues } from "@/lib/queries-admin"
 import { getPlacementBoard } from "@/lib/queries-placement"
 import { db } from "@/lib/db"
 import { seasons as seasonsTable } from "@/lib/db/schema"
@@ -9,12 +9,16 @@ import { Stat } from "@/components/brand/bits"
 import { ControlPanel } from "@/components/admin/control-panel"
 import { PlacementBoard } from "@/components/admin/placement/placement-board"
 import { SeasonSwitcher } from "@/components/admin/placement/season-switcher"
+import { PlayoffsManager } from "@/components/admin/playoffs-manager"
 import { cn } from "@/lib/utils"
 
 const TABS = [
-  { id: "seasons", label: "Seasons" },
-  { id: "placement", label: "Placement" },
+  { id: "seasons", label: "Season Setup" },
+  { id: "placement", label: "Division Assignment" },
+  { id: "playoffs", label: "Playoffs" },
 ] as const
+
+type TabId = (typeof TABS)[number]["id"]
 
 export default async function AdminPage({
   searchParams,
@@ -22,7 +26,7 @@ export default async function AdminPage({
   searchParams: Promise<{ tab?: string; season?: string }>
 }) {
   const sp = await searchParams
-  const activeTab = sp.tab === "placement" ? "placement" : "seasons"
+  const activeTab: TabId = TABS.some((t) => t.id === sp.tab) ? (sp.tab as TabId) : "seasons"
 
   const [summary, seasons, regions] = await Promise.all([
     getAdminSummary(),
@@ -32,7 +36,7 @@ export default async function AdminPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="League Control" subtitle="Operate the South African Padel League" />
+      <PageHeader title="League Management" subtitle="Operate the South African Padel League" />
 
       <div className="grid grid-cols-2 gap-4">
         <Stat label="Registered Teams" value={summary.teamCount} />
@@ -77,8 +81,10 @@ export default async function AdminPage({
             })),
           }))}
         />
-      ) : (
+      ) : activeTab === "placement" ? (
         <PlacementTab seasonParam={sp.season} />
+      ) : (
+        <PlayoffsTab />
       )}
     </div>
   )
@@ -107,7 +113,7 @@ async function PlacementTab({ seasonParam }: { seasonParam?: string }) {
         <div className="rounded-lg border border-border bg-card p-10 text-center">
           <p className="text-lg font-semibold">No divisions for this season</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Create divisions for this season in the Seasons tab, then return to seed teams.
+            Create divisions for this season in the Season Setup tab, then return to seed teams.
           </p>
         </div>
       ) : (
@@ -119,5 +125,50 @@ async function PlacementTab({ seasonParam }: { seasonParam?: string }) {
         />
       )}
     </div>
+  )
+}
+
+async function PlayoffsTab() {
+  // Operate on the current season (fall back to newest) so brackets, pull and
+  // scheduling all target one season.
+  const allSeasons = await db
+    .select()
+    .from(seasonsTable)
+    .orderBy(desc(seasonsTable.isCurrent), desc(seasonsTable.id))
+  const season = allSeasons[0] ?? null
+
+  const [playoffs, venues] = await Promise.all([
+    season ? getPlayoffs(season.id) : Promise.resolve([]),
+    getPlayoffVenues(),
+  ])
+
+  if (!season) {
+    return <p className="text-sm text-muted-foreground">Create a season first to manage playoffs.</p>
+  }
+
+  return (
+    <PlayoffsManager
+      seasonId={season.id}
+      seasonName={season.name}
+      venues={venues.map((v) => ({ id: v.id, name: v.name, courts: v.courts }))}
+      playoffs={playoffs.map((p) => ({
+        id: p.id,
+        type: p.type,
+        round: p.round,
+        divisionId: p.divisionId,
+        homeName: p.homeName,
+        awayName: p.awayName,
+        homeResolved: p.homeResolved,
+        awayResolved: p.awayResolved,
+        homeScore: p.homeScore,
+        awayScore: p.awayScore,
+        status: p.status,
+        bracketPosition: p.bracketPosition,
+        matchDate: p.matchDate ? new Date(p.matchDate).toISOString() : null,
+        timeslot: p.timeslot,
+        venueClubId: p.venueClubId,
+        venue: p.venue,
+      }))}
+    />
   )
 }

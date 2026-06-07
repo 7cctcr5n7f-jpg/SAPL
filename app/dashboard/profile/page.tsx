@@ -19,12 +19,13 @@ export default async function ProfilePage() {
       <NoProfile
         title="My Profile"
         subtitle="Manage your league identity and marketplace visibility."
-        message="Finish setting up your player profile to manage your ratings, formats and marketplace visibility."
+        message="Finish setting up your player profile to manage your ratings and marketplace visibility."
       />
     )
   }
 
   const clubs = await getClubOptions()
+  const canEditRatings = me.role === "league_admin" || me.role === "super_admin"
 
   const eligibleNames = eligibleCategoriesForPlayer(player.gender as "male" | "female", player.currentLi)
   const eligible = CATEGORY_RULES.filter((c) => eligibleNames.includes(c.name))
@@ -40,7 +41,7 @@ export default async function ProfilePage() {
               <CardTitle className="text-base">Player Details</CardTitle>
             </CardHeader>
             <CardContent>
-              <ProfileForm player={player} clubs={clubs} />
+              <ProfileForm player={player} clubs={clubs} canEditRatings={canEditRatings} />
             </CardContent>
           </Card>
         </div>
@@ -51,8 +52,11 @@ export default async function ProfilePage() {
               <CardTitle className="text-base">Ratings</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
-              <Stat label="Current LI" value={player.currentLi.toFixed(2)} />
-              <Stat label="Highest LI" value={player.highestLi.toFixed(2)} />
+              <Stat
+                label="Playtomic Rating"
+                value={player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
+              />
+              <Stat label="LI" value={player.currentLi.toFixed(2)} />
               <Stat label="Team TPR" value={player.currentTpr ? Math.round(player.currentTpr) : "—"} />
               <Stat label="Status" value={player.lookingForTeam ? "Open" : "Closed"} />
             </CardContent>

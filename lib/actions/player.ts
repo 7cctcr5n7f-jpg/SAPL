@@ -12,27 +12,36 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
   const me = await getCurrentUser()
   if (!me?.playerId) return { error: "Not authorised" }
 
+  const canEditRatings = me.role === "league_admin" || me.role === "super_admin"
+
   const bio = String(formData.get("bio") ?? "").slice(0, 500)
   const city = String(formData.get("city") ?? "")
   const playtomicUrl = String(formData.get("playtomicUrl") ?? "")
-  const currentLi = Number(formData.get("currentLi") ?? 0)
-  const preferredCategory = String(formData.get("preferredCategory") ?? "")
   const lookingForTeam = formData.get("lookingForTeam") === "on"
 
-  // Formats: subset of ["mixed", "standard"] sent as repeated form fields.
-  const preferredFormats = (formData.getAll("preferredFormats") as string[]).filter((f) =>
-    ["mixed", "standard"].includes(f),
-  )
   // Preferred clubs: "anyClub" checkbox + repeated club id fields.
   const anyClub = formData.get("anyClub") === "on"
   const preferredClubIds = anyClub
     ? []
     : (formData.getAll("preferredClubIds") as string[]).map((v) => Number(v)).filter((n) => Number.isFinite(n))
 
-  if (currentLi < 0 || currentLi > 7) return { error: "League Index must be between 0 and 7." }
-
   const [existing] = await db.select().from(players).where(eq(players.id, me.playerId)).limit(1)
-  const highestLi = Math.max(existing?.highestLi ?? 0, currentLi)
+
+  // Ratings (LI + Playtomic rating) are league-managed: only admins may change them.
+  const ratingUpdate: { currentLi?: number; highestLi?: number; liDate?: Date; playtomicRating?: number | null } = {}
+  if (canEditRatings) {
+    const currentLi = Number(formData.get("currentLi") ?? existing?.currentLi ?? 0)
+    if (currentLi < 0 || currentLi > 7) return { error: "League Index must be between 0 and 7." }
+    const rawRating = formData.get("playtomicRating")
+    const playtomicRating = rawRating === null || String(rawRating).trim() === "" ? null : Number(rawRating)
+    if (playtomicRating != null && (playtomicRating < 0 || playtomicRating > 7)) {
+      return { error: "Playtomic rating must be between 0 and 7." }
+    }
+    ratingUpdate.currentLi = currentLi
+    ratingUpdate.highestLi = Math.max(existing?.highestLi ?? 0, currentLi)
+    ratingUpdate.liDate = new Date()
+    ratingUpdate.playtomicRating = playtomicRating
+  }
 
   await db
     .update(players)
@@ -40,16 +49,12 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
       bio,
       city,
       playtomicUrl: playtomicUrl || null,
-      currentLi,
-      highestLi,
-      liDate: new Date(),
-      preferredCategory: preferredCategory || null,
-      preferredFormats,
       preferredClubIds,
       anyClub,
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
+      ...ratingUpdate,
     })
     .where(eq(players.id, me.playerId))
 
@@ -93,7 +98,6 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
     }
   }
 
-  revalidatePath("/dashboard/teams")
   revalidatePath("/dashboard")
   return { success: accept ? "You joined the team." : "Invitation declined." }
 }
@@ -149,8 +153,7 @@ export async function payTeamFee(teamId: number) {
     })
   }
 
-  revalidatePath("/dashboard/payments")
-  revalidatePath("/dashboard/teams")
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return { success: `Payment received for ${team.name}.` }
@@ -163,6 +166,6 @@ export async function leaveTeam(membershipId: number) {
     .update(teamMembers)
     .set({ status: "removed", updatedAt: new Date() })
     .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.playerId)))
-  revalidatePath("/dashboard/teams")
+  revalidatePath("/dashboard")
   return { success: "You left the team." }
 }
