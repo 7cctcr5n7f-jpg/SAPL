@@ -16,7 +16,7 @@ import { PAIRING_LAYOUT } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
-import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
 type Invite = { id: number; email: string; category: string | null }
 
@@ -106,7 +106,18 @@ export function PairingsBoard({
   // Render one category's single pair (2 slots).
   function PairBlock({ categoryName }: { categoryName: string }) {
     const cat = catByName.get(categoryName)
-    const pair = cat?.pairs[0] ?? []
+    const existing = cat?.pairs[0] ?? []
+    // Always present exactly 2 slots so the Invite/Assign controls render for
+    // every category — even ones the backend hasn't created rows for yet
+    // (e.g. Ladies Open / Mens Open). Fall back to empty slots when missing.
+    const pair: PairingSlot[] = [1, 2].map(
+      (slotIndex) =>
+        existing.find((s) => s.slotIndex === slotIndex) ?? {
+          pairIndex: 1,
+          slotIndex,
+          player: null,
+        },
+    )
     const avail = availableFor(cat)
     const catInvites = invites.filter((i) => i.category === categoryName)
     const filled = pair.filter((s) => s.player).length

@@ -2,10 +2,11 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, players } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { user, userMeta, players, teams, teamMembers, organisations } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { getCurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
+import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
 const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "league_admin", "super_admin"]
 
@@ -159,25 +160,44 @@ async function ensurePlayerProfile(
   userId: string,
   firstName: string,
   lastName: string,
-  extra?: { gender?: string; currentLi?: number },
+  extra?: {
+    gender?: string
+    playtomicUrl?: string | null
+    bio?: string | null
+  },
 ) {
+  // League Index, province, city and preferred category are intentionally not
+  // set here — they default and are filled in later by the player or a league
+  // admin under Player Management.
+  const profileValues = {
+    gender: extra?.gender === "female" ? "female" : "male",
+    playtomicUrl: extra?.playtomicUrl?.trim() || null,
+    bio: extra?.bio?.trim() || null,
+  }
+
   const [existing] = await db.select({ id: players.id }).from(players).where(eq(players.userId, userId)).limit(1)
-  if (existing) return existing.id
-  const li = Number(extra?.currentLi ?? 0)
+  if (existing) {
+    // Reuse an existing profile but apply the details supplied here.
+    await db
+      .update(players)
+      .set({ firstName: firstName || "New", lastName: lastName || "Player", ...profileValues, updatedAt: new Date() })
+      .where(eq(players.id, existing.id))
+    return existing.id
+  }
   const [created] = await db
     .insert(players)
     .values({
       userId,
       firstName: firstName || "New",
       lastName: lastName || "Player",
-      gender: extra?.gender === "female" ? "female" : "male",
-      currentLi: Number.isFinite(li) ? li : 0,
-      highestLi: Number.isFinite(li) ? li : 0,
+      currentLi: 0,
+      highestLi: 0,
       liDate: new Date(),
       currentTpr: 1000,
       highestTpr: 1000,
       lookingForTeam: true,
       availability: "available",
+      ...profileValues,
     })
     .returning({ id: players.id })
   return created.id
@@ -218,37 +238,55 @@ export async function createMember(input: {
   return { ok: true, password: res.password }
 }
 
-/** Club managers (org admin / league admin / main admin) who may add players. */
-async function requireClubManager() {
+/** Roles allowed to add players: captains, org admins, league/main admins. */
+async function requirePlayerManager() {
   const me = await getCurrentUser()
   if (!me) throw new Error("Not authenticated")
   const role = me.realRole
-  if (role !== "org_admin" && role !== "league_admin" && role !== "super_admin") {
-    throw new Error("Club admin access required")
+  if (role !== "captain" && role !== "org_admin" && role !== "league_admin" && role !== "super_admin") {
+    throw new Error("Captain or club admin access required")
   }
   return me
 }
 
 /**
- * Club admins (and higher) can create a player account directly. The new player
- * is a free agent (looking for a team) so they immediately appear in squad and
- * captain assignment lists.
+ * Captains and club admins can create a player account directly. The player can
+ * optionally be assigned straight onto one of the teams the creator controls
+ * (their captained teams, or their organisation's teams); otherwise they become
+ * a free agent (looking for a team) so they immediately appear in squad and
+ * captain assignment lists. League Index / location are set later.
  */
 export async function createPlayerAccount(input: {
   firstName: string
   lastName: string
   email: string
+  phone?: string | null
   gender?: string
-  currentLi?: number
+  playtomicUrl?: string | null
+  bio?: string | null
+  assignTeamId?: number | null
   password?: string
 }) {
-  await requireClubManager()
+  const me = await requirePlayerManager()
 
   const firstName = input.firstName.trim()
   const lastName = input.lastName.trim()
   if (!firstName || !lastName) return { ok: false, error: "First and last name are required." }
-  const li = Number(input.currentLi ?? 0)
-  if (Number.isNaN(li) || li < 0 || li > 7) return { ok: false, error: "League Index must be between 0 and 7." }
+
+  // If a team is selected, verify the creator controls it before creating
+  // anything, so we never half-provision an account.
+  let targetTeam: typeof teams.$inferSelect | null = null
+  if (input.assignTeamId) {
+    const [t] = await db.select().from(teams).where(eq(teams.id, input.assignTeamId)).limit(1)
+    if (!t) return { ok: false, error: "Selected team not found." }
+    if (me.realRole === "captain") {
+      if (t.captainUserId !== me.id) return { ok: false, error: "You can only add players to your own teams." }
+    } else if (me.realRole === "org_admin") {
+      const [org] = await db.select().from(organisations).where(eq(organisations.id, t.organisationId ?? 0)).limit(1)
+      if (!org || org.ownerUserId !== me.id) return { ok: false, error: "You cannot add players to that team." }
+    }
+    targetTeam = t
+  }
 
   const res = await provisionUser({
     name: `${firstName} ${lastName}`,
@@ -258,9 +296,45 @@ export async function createPlayerAccount(input: {
   })
   if (!res.ok) return res
 
-  await ensurePlayerProfile(res.userId, firstName, lastName, { gender: input.gender, currentLi: li })
+  // Persist optional contact number on the user's meta record.
+  const phone = input.phone?.trim() || null
+  if (phone) {
+    const [existingMeta] = await db
+      .select({ id: userMeta.id })
+      .from(userMeta)
+      .where(eq(userMeta.userId, res.userId))
+      .limit(1)
+    if (existingMeta) {
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, res.userId))
+    } else {
+      await db.insert(userMeta).values({ userId: res.userId, role: "player", phone })
+    }
+  }
+
+  const playerId = await ensurePlayerProfile(res.userId, firstName, lastName, {
+    gender: input.gender,
+    playtomicUrl: input.playtomicUrl,
+    bio: input.bio,
+  })
+
+  // Optionally drop the new player straight onto a team roster.
+  if (targetTeam) {
+    const [existing] = await db
+      .select({ id: teamMembers.id })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, targetTeam.id), eq(teamMembers.playerId, playerId)))
+      .limit(1)
+    if (existing) {
+      await db.update(teamMembers).set({ status: "active", updatedAt: new Date() }).where(eq(teamMembers.id, existing.id))
+    } else {
+      await db.insert(teamMembers).values({ teamId: targetTeam.id, playerId, role: "member", status: "active" })
+    }
+    await db.update(players).set({ availability: "on_team", lookingForTeam: false }).where(eq(players.id, playerId))
+    await recomputeTeamStats(targetTeam.id)
+  }
 
   revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/captain")
   revalidatePath("/marketplace")
-  return { ok: true, password: res.password }
+  return { ok: true, password: res.password, playerId, userId: res.userId, assignedTeamName: targetTeam?.name ?? null }
 }

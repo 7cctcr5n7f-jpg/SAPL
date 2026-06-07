@@ -1,16 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header"
-import { Stat } from "@/components/brand/bits"
 import { ClubsManager } from "@/components/admin/clubs-manager"
-import { getClubsWithUsage } from "@/lib/queries-clubs"
+import { getClubsWithUsage, getPlayerOptions } from "@/lib/queries-clubs"
+import { isSeasonLocked } from "@/lib/season-lock"
 
 export const metadata = { title: "Venue Management | SAPL" }
 
 export default async function AdminClubsPage() {
-  const clubs = await getClubsWithUsage()
-
-  const totalCapacity = clubs.reduce((s, c) => s + c.hostingCapacity, 0)
-  const totalUsed = clubs.reduce((s, c) => s + c.used, 0)
-  const thursdayHosts = clubs.filter((c) => c.hostsThursday).length
+  const [clubs, players, locked] = await Promise.all([getClubsWithUsage(), getPlayerOptions(), isSeasonLocked()])
 
   return (
     <div className="space-y-6">
@@ -19,14 +15,7 @@ export default async function AdminClubsPage() {
         subtitle="Venues, hosting capacity and contacts across the league"
       />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Venues" value={clubs.length} />
-        <Stat label="Hosting Capacity" value={totalCapacity} sub={`${totalUsed} in use`} />
-        <Stat label="Remaining Slots" value={Math.max(0, totalCapacity - totalUsed)} />
-        <Stat label="Thursday Hosts" value={thursdayHosts} />
-      </div>
-
-      <ClubsManager clubs={clubs} />
+      <ClubsManager clubs={clubs} players={players} locked={locked} />
     </div>
   )
 }

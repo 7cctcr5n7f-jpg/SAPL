@@ -35,9 +35,16 @@ export async function syncDivisionFixtures(divisionId: number) {
   const homeClubByTeam = new Map(teamRows.map((t) => [t.id, t.homeClubId]))
   const clubIds = teamRows.map((t) => t.homeClubId).filter((x): x is number => x != null)
   const clubRows = clubIds.length
-    ? await db.select({ id: clubs.id, name: clubs.name }).from(clubs).where(inArray(clubs.id, clubIds))
+    ? await db
+        .select({ id: clubs.id, name: clubs.name, hostTimeslots: clubs.hostTimeslots })
+        .from(clubs)
+        .where(inArray(clubs.id, clubIds))
     : []
   const clubNameById = new Map(clubRows.map((c) => [c.id, c.name]))
+  // venue -> league-night slots it will host (subset of ["17:00","18:30"]).
+  const hostTimesById = new Map(
+    clubRows.map((c) => [c.id, Array.isArray(c.hostTimeslots) ? c.hostTimeslots : []]),
+  )
 
   const divFixtures = await db
     .select()
@@ -49,9 +56,15 @@ export async function syncDivisionFixtures(divisionId: number) {
     const awayTeamId = f.awaySlot ? (slotToTeam.get(f.awaySlot) ?? null) : f.awayTeamId
     const homeClubId = homeTeamId ? (homeClubByTeam.get(homeTeamId) ?? null) : null
     const venue = homeClubId ? (clubNameById.get(homeClubId) ?? null) : null
+    // Keep the venue's hosting time preference in mind: if the host venue only
+    // runs one league-night slot, force this fixture onto that slot. When it
+    // hosts both (or has no preference recorded) the balanced timeslot stands.
+    let timeslot = f.timeslot
+    const offered = homeClubId ? (hostTimesById.get(homeClubId) ?? []) : []
+    if (offered.length === 1 && timeslot !== offered[0]) timeslot = offered[0]
     await db
       .update(fixtures)
-      .set({ homeTeamId, awayTeamId, venueClubId: homeClubId, venue, updatedAt: new Date() })
+      .set({ homeTeamId, awayTeamId, venueClubId: homeClubId, venue, timeslot, updatedAt: new Date() })
       .where(eq(fixtures.id, f.id))
   }
 }

@@ -17,8 +17,8 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
-import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
-import { createPlayerAccount } from "@/lib/actions/members"
+import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam, updateCaptainContact } from "@/lib/actions/org"
+import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { toast } from "sonner"
 import {
   Users,
@@ -28,18 +28,26 @@ import {
   Activity,
   MapPin,
   Pencil,
-  UserPlus,
-  Copy,
-  Check,
   Trash2,
-  Wallet,
   Building2,
+  Lock,
+  Mail,
+  Phone,
+  CircleCheck,
+  CircleAlert,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+
+type Captain = {
+  playerId: number
+  name: string
+  email: string | null
+  phone: string | null
+}
 
 type Team = {
   id: number
@@ -55,7 +63,7 @@ type Team = {
   divisionName: string
   divisionId: number | null
   tpr: number
-  captainName: string | null
+  captain: Captain | null
   played: number
   won: number
   points: number
@@ -63,6 +71,9 @@ type Team = {
   clubPaysFees: boolean
   rosterCount: number
   paidCount: number
+  teamTotal: number
+  amountPaid: number
+  outstanding: number
   pairingCategories: PairingCategory[]
   pairingRoster: PairingPlayer[]
   pairingInvites: { id: number; email: string; category: string | null }[]
@@ -89,6 +100,19 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
 function typeStyle(t: string) {
   return TYPE_STYLES[t] ?? { dot: "bg-muted-foreground", badge: "", bar: "bg-muted-foreground" }
 }
+
+// Traffic-light dot for a team's payment health.
+function PayDot({ state }: { state: "paid" | "partial" | "unpaid" }) {
+  const color =
+    state === "paid" ? "bg-emerald-500" : state === "partial" ? "bg-amber-500" : "bg-red-500"
+  const ring =
+    state === "paid"
+      ? "ring-emerald-500/20"
+      : state === "partial"
+        ? "ring-amber-500/20"
+        : "ring-red-500/20"
+  return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2", color, ring)} aria-hidden />
+}
 type FreeAgent = { playerId: number; name: string; li: number }
 type Venue = { id: number; name: string; remaining: number; hosts: boolean; available: boolean }
 
@@ -107,17 +131,21 @@ export function OrgHub({
   freeAgents,
   venues,
   playerFee,
+  locked = false,
 }: {
   orgId: number
   teams: Team[]
   freeAgents: FreeAgent[]
   venues: Venue[]
   playerFee: number
+  // When the season is active, team name and home venue editing is frozen.
+  locked?: boolean
 }) {
   const [pending, start] = useTransition()
   const [assignFor, setAssignFor] = useState<Team | null>(null)
   const [squadFor, setSquadFor] = useState<Team | null>(null)
   const [editFor, setEditFor] = useState<Team | null>(null)
+  const [captainFor, setCaptainFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
   const [search, setSearch] = useState("")
 
@@ -167,10 +195,26 @@ export function OrgHub({
     })
   }
 
-  const filteredAgents = freeAgents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+  // Captain candidates = the selected team's current squad PLUS free agents,
+  // deduped, so admins can promote an existing roster member or recruit a free
+  // agent. Roster members are flagged so the UI can show "On squad".
+  const captainCandidates = (() => {
+    const onRoster = new Map<number, { playerId: number; name: string; li: number; onRoster: boolean }>()
+    if (assignFor) {
+      for (const p of assignFor.pairingRoster) {
+        onRoster.set(p.playerId, { playerId: p.playerId, name: p.name, li: p.li, onRoster: true })
+      }
+    }
+    const combined = [...onRoster.values()]
+    for (const a of freeAgents) {
+      if (!onRoster.has(a.playerId)) combined.push({ playerId: a.playerId, name: a.name, li: a.li, onRoster: false })
+    }
+    const q = search.toLowerCase()
+    return combined.filter((c) => c.name.toLowerCase().includes(q))
+  })()
 
   const totalPlayers = teams.reduce((s, t) => s + t.playerCount, 0)
-  const withCaptain = teams.filter((t) => t.captainName).length
+  const withCaptain = teams.filter((t) => t.captain).length
   const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
 
   return (
@@ -179,7 +223,7 @@ export function OrgHub({
         <p className="text-sm text-muted-foreground">
           Add players to the league, then build squads and assign captains.
         </p>
-        <AddPlayerDialog />
+        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -257,71 +301,137 @@ export function OrgHub({
             <p className="text-sm text-muted-foreground">No teams match the current filters.</p>
           )}
 
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          <div className="space-y-2">
             {visibleTeams.map((t) => {
               const ts = typeStyle(t.teamType)
-              // Only the 8 dedicated squad players carry a league fee — any extra
-              // subs play free. So a team-funded total is always 8 × the fee
-              // (R4000 at R500), regardless of how many players are on the roster.
-              const billablePlayers = TEAM_SQUAD_SIZE
-              const teamTotal = billablePlayers * playerFee
+              // Squads need at least the 8 dedicated players; subs beyond that are
+              // optional. Flag teams that are still short of the minimum.
+              const minPlayers = TEAM_SQUAD_SIZE
+              const squadComplete = t.playerCount >= minPlayers
+              // Payment health drives the indicator colour. Fully settled = green,
+              // part-paid = amber, nothing in yet = red.
+              const payState =
+                t.outstanding <= 0 ? "paid" : t.amountPaid > 0 ? "partial" : "unpaid"
+              const assigned = t.divisionId != null
               return (
-                <div key={t.id} className="flex items-stretch gap-0 bg-card hover:bg-secondary/30">
-                  <span className={cn("w-1 shrink-0", ts.bar)} aria-hidden />
-                  <div className="flex flex-1 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {t.homeClubLogoUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={t.homeClubLogoUrl || "/placeholder.svg"}
-                            alt={`${t.homeClubName ?? "Club"} logo`}
-                            className="h-5 w-5 shrink-0 rounded-sm object-contain"
-                          />
-                        ) : (
-                          // Fallback crest so every team shows a club marker even
-                          // when its venue has no uploaded logo.
+                <div
+                  key={t.id}
+                  className="flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/40 hover:shadow"
+                >
+                  <span className={cn("w-1.5 shrink-0", ts.bar)} aria-hidden />
+                  <div className="flex flex-1 flex-col gap-3 p-3.5 lg:flex-row lg:items-center lg:gap-4">
+                    {/* Identity */}
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {t.homeClubLogoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.homeClubLogoUrl || "/placeholder.svg"}
+                          alt={`${t.homeClubName ?? "Club"} logo`}
+                          className="mt-0.5 h-9 w-9 shrink-0 rounded-md border border-border object-contain"
+                        />
+                      ) : (
+                        <span
+                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground"
+                          aria-hidden
+                        >
+                          <Building2 className="h-4 w-4" />
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-semibold">{t.name}</span>
+                          {/* Assignment indicator light */}
                           <span
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground"
-                            aria-hidden
+                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            title={assigned ? `Assigned to ${t.divisionName}` : "Not yet assigned to a division"}
                           >
-                            <Building2 className="h-3.5 w-3.5" />
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full ring-2",
+                                assigned
+                                  ? "bg-emerald-500 ring-emerald-500/20"
+                                  : "bg-muted-foreground/40 ring-muted-foreground/10",
+                              )}
+                              aria-hidden
+                            />
+                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>
+                              {assigned ? t.divisionName : "Unassigned"}
+                            </span>
                           </span>
-                        )}
-                        <span className="font-semibold">{t.name}</span>
-                        <Badge variant="outline" className={cn("gap-1", ts.badge)}>
-                          <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
-                          {t.teamType}
-                        </Badge>
-                        <Badge variant={t.divisionId != null ? "outline" : "secondary"}>
-                          {t.divisionId != null ? t.divisionName : "Unassigned"}
-                        </Badge>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <Badge variant="outline" className={cn("gap-1 font-normal", ts.badge)}>
+                            <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
+                            {t.teamType}
+                          </Badge>
+                          <span className="inline-flex items-center gap-1" title="Average League Index">
+                            <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {t.homeClubName ? t.homeClubName : "No home club"}
+                            {t.saplRegion ? ` · ${t.saplRegion}` : ""}
+                          </span>
+                        </div>
                       </div>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
-                        </span>
-                        <span>
-                          {t.playerCount}/{t.maxPlayers} players
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {t.homeClubName ? `${t.homeClubName}` : "No home club"}
-                          {t.saplRegion ? ` · ${t.saplRegion}` : ""}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Wallet className="h-3 w-3" />
-                          {t.clubPaysFees
-                            ? `Team pays · ${billablePlayers} × ${fmtZAR(playerFee)} = ${fmtZAR(teamTotal)}`
-                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
-                        </span>
-                      </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      {t.captainName ? (
-                        <Badge className="gap-1">
-                          <Crown className="h-3 w-3" /> {t.captainName}
-                        </Badge>
+
+                    {/* Squad size + payments */}
+                    <div className="flex shrink-0 flex-wrap items-center gap-4 lg:gap-5">
+                      {/* Players: min 8 required */}
+                      <div className="min-w-[88px]">
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className={cn(!squadComplete && "text-amber-600 dark:text-amber-400")}>
+                            {t.playerCount}/{minPlayers}
+                          </span>
+                          {squadComplete ? (
+                            <CircleCheck className="h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          ) : (
+                            <CircleAlert className="h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {squadComplete ? "min squad met" : `${minPlayers - t.playerCount} more needed`}
+                        </p>
+                      </div>
+
+                      {/* Payment indicator + outstanding amount */}
+                      <button
+                        type="button"
+                        onClick={() => setSquadFor(t)}
+                        className="min-w-[150px] rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left transition hover:border-primary/40"
+                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
+                      >
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <PayDot state={payState} />
+                          {t.outstanding <= 0 ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">Paid up</span>
+                          ) : (
+                            <span>
+                              {fmtZAR(t.outstanding)} <span className="font-normal text-muted-foreground">due</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {t.clubPaysFees
+                            ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
+                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
+                        </p>
+                      </button>
+                    </div>
+
+                    {/* Captain + actions */}
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
+                      {t.captain ? (
+                        <button
+                          type="button"
+                          onClick={() => setCaptainFor(t)}
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
+                          title="View / edit captain"
+                        >
+                          <Crown className="h-3 w-3" /> {t.captain.name}
+                        </button>
                       ) : (
                         <Badge variant="destructive">No captain</Badge>
                       )}
@@ -332,7 +442,7 @@ export function OrgHub({
                         <Users2 className="mr-1 h-4 w-4" /> Squad
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setAssignFor(t)}>
-                        {t.captainName ? "Captain" : "Add captain"}
+                        {t.captain ? "Reassign" : "Add captain"}
                       </Button>
                       <Button
                         size="sm"
@@ -355,7 +465,7 @@ export function OrgHub({
       <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadFor(null)}>
         <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
           <DialogHeader>
-            <DialogTitle>{squadFor?.name} �� Squad &amp; Pairings</DialogTitle>
+            <DialogTitle>{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
           </DialogHeader>
           {squadFor && (
             <PairingsBoard
@@ -376,7 +486,24 @@ export function OrgHub({
           venues={venues}
           pending={pending}
           start={start}
+          locked={locked}
           onClose={() => setEditFor(null)}
+        />
+      )}
+
+      {captainFor?.captain && (
+        <CaptainDialog
+          key={captainFor.id}
+          team={captainFor}
+          captain={captainFor.captain}
+          pending={pending}
+          start={start}
+          onReassign={() => {
+            const t = captainFor
+            setCaptainFor(null)
+            setAssignFor(t)
+          }}
+          onClose={() => setCaptainFor(null)}
         />
       )}
 
@@ -385,19 +512,30 @@ export function OrgHub({
           <DialogHeader>
             <DialogTitle>Assign captain — {assignFor?.name}</DialogTitle>
           </DialogHeader>
-          <Input placeholder="Search free agents..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            placeholder="Search squad members or free agents..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">
-            {filteredAgents.length === 0 && (
+            {captainCandidates.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">No available players found.</p>
             )}
-            {filteredAgents.map((a) => (
+            {captainCandidates.map((a) => (
               <button
                 key={a.playerId}
                 disabled={pending}
                 onClick={() => doAssign(a.playerId)}
-                className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-left transition hover:border-primary hover:bg-secondary/50 disabled:opacity-50"
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border p-3 text-left transition hover:border-primary hover:bg-secondary/50 disabled:opacity-50"
               >
-                <span className="text-sm font-medium">{a.name}</span>
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  {a.name}
+                  {a.onRoster && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      On squad
+                    </Badge>
+                  )}
+                </span>
                 <Badge variant="outline">LI {a.li.toFixed(1)}</Badge>
               </button>
             ))}
@@ -558,12 +696,14 @@ function EditTeamDialog({
   venues,
   pending,
   start,
+  locked = false,
   onClose,
 }: {
   team: Team
   venues: Venue[]
   pending: boolean
   start: (cb: () => Promise<void>) => void
+  locked?: boolean
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
@@ -596,17 +736,24 @@ function EditTeamDialog({
           <DialogTitle>Edit team</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {locked && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              The season has started — team name and home venue are locked.
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="editName">Team name</Label>
-            <Input id="editName" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input id="editName" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="editHomeClub">Home club / venue</Label>
             <select
               id="editHomeClub"
               value={homeClubId}
+              disabled={locked}
               onChange={(e) => setHomeClubId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="">No home club</option>
               {venueOptions(venues, team.homeClubId).map((v) => (
@@ -645,166 +792,141 @@ function EditTeamDialog({
   )
 }
 
-// Club admins (and higher) can create a player account from here. The new
-// player is added as a free agent so they immediately show up in squad and
-// captain assignment lists.
-function AddPlayerDialog() {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [pending, start] = useTransition()
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [email, setEmail] = useState("")
-  const [gender, setGender] = useState("male")
-  const [currentLi, setCurrentLi] = useState("")
-  const [created, setCreated] = useState<{ name: string; email: string; password: string } | null>(null)
-  const [copied, setCopied] = useState(false)
+// View and edit a team captain's contact details. Email is the captain's login
+// identity so it's shown read-only; name and phone can be edited inline.
+function CaptainDialog({
+  team,
+  captain,
+  pending,
+  start,
+  onReassign,
+  onClose,
+}: {
+  team: Team
+  captain: Captain
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+  onReassign: () => void
+  onClose: () => void
+}) {
+  const [first, ...rest] = captain.name.split(" ")
+  const [firstName, setFirstName] = useState(first ?? "")
+  const [lastName, setLastName] = useState(rest.join(" "))
+  const [phone, setPhone] = useState(captain.phone ?? "")
+  const [editing, setEditing] = useState(false)
 
-  function reset() {
-    setFirstName("")
-    setLastName("")
-    setEmail("")
-    setGender("male")
-    setCurrentLi("")
-  }
-
-  function submit() {
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      toast.error("First name, last name and email are required.")
+  function save() {
+    if (!firstName.trim() || !lastName.trim()) {
+      toast.error("First and last name are required.")
       return
     }
     start(async () => {
-      const res = await createPlayerAccount({
+      const res = await updateCaptainContact({
+        teamId: team.id,
+        playerId: captain.playerId,
         firstName,
         lastName,
-        email,
-        gender,
-        currentLi: currentLi ? Number(currentLi) : 0,
+        phone: phone.trim() || null,
       })
-      if (res.ok && res.password) {
-        toast.success(`${firstName} ${lastName} added`)
-        setCreated({ name: `${firstName} ${lastName}`, email: email.trim().toLowerCase(), password: res.password })
-        setOpen(false)
-        reset()
-        router.refresh()
-      } else {
-        toast.error(res.error ?? "Could not add player")
-      }
+      if (res.ok) {
+        toast.success("Captain updated")
+        onClose()
+      } else toast.error(res.error ?? "Failed to update captain")
     })
   }
 
-  async function copy() {
-    if (!created) return
-    await navigator.clipboard.writeText(created.password)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
-  }
-
   return (
-    <>
-      <Dialog
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o)
-          if (!o) reset()
-        }}
-      >
-        <DialogTrigger
-          render={
-            <Button size="sm">
-              <UserPlus className="mr-1.5 h-4 w-4" /> Add player
-            </Button>
-          }
-        />
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add a player</DialogTitle>
-          </DialogHeader>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Crown className="h-4 w-4 text-primary" /> Team captain
+          </DialogTitle>
+        </DialogHeader>
+
+        {editing ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="pFirst">First name</Label>
-                <Input id="pFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" />
+                <Label htmlFor="capFirst">First name</Label>
+                <Input id="capFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="pLast">Last name</Label>
-                <Input id="pLast" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />
+                <Label htmlFor="capLast">Last name</Label>
+                <Input id="capLast" value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pEmail">Email</Label>
+              <Label htmlFor="capPhone">Contact number</Label>
               <Input
-                id="pEmail"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                autoComplete="off"
+                id="capPhone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 082 123 4567"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="pGender">Gender</Label>
-                <select
-                  id="pGender"
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pLi">League Index (0–7)</Label>
-                <Input
-                  id="pLi"
-                  type="number"
-                  min={0}
-                  max={7}
-                  step="0.1"
-                  value={currentLi}
-                  onChange={(e) => setCurrentLi(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            </div>
             <p className="text-xs text-muted-foreground">
-              A temporary password is generated automatically — you can share it after creating the player.
+              Email ({captain.email ?? "unknown"}) is the captain&apos;s login and can&apos;t be changed here.
             </p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={submit} disabled={pending}>
-              {pending ? "Adding…" : "Add player"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Player account created</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground text-pretty">
-            Share these sign-in details with <span className="text-foreground">{created?.name}</span> (
-            {created?.email}). They should change the password after signing in.
-          </p>
-          <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-background p-3">
-            <code className="flex-1 break-all font-mono text-base text-foreground">{created?.password}</code>
-            <Button type="button" size="sm" variant="secondary" onClick={copy}>
-              {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-              <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
-            </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Crown className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">{captain.name}</p>
+                <p className="text-xs text-muted-foreground">Captain · {team.name}</p>
+              </div>
+            </div>
+            <a
+              href={captain.email ? `mailto:${captain.email}` : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
+                captain.email ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
+              )}
+            >
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span className="truncate">{captain.email ?? "No email on file"}</span>
+            </a>
+            <a
+              href={captain.phone ? `tel:${captain.phone}` : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
+                captain.phone ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
+              )}
+            >
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              <span className="truncate">{captain.phone ?? "No contact number on file"}</span>
+            </a>
           </div>
-          <DialogFooter>
-            <Button onClick={() => setCreated(null)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+          {editing ? (
+            <>
+              <Button variant="ghost" onClick={() => setEditing(false)} disabled={pending}>
+                Back
+              </Button>
+              <Button onClick={save} disabled={pending}>
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" className="text-muted-foreground" onClick={onReassign}>
+                Reassign captain
+              </Button>
+              <Button onClick={() => setEditing(true)}>
+                <Pencil className="mr-1.5 h-4 w-4" /> Edit details
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
+

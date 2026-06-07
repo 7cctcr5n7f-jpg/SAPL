@@ -1,12 +1,13 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, userMeta } from "@/lib/db/schema"
+import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
-import { clampHostingCapacity } from "@/lib/constants"
+import { normaliseCourtSlots, deriveSlotCounts, normaliseSlotTimeslots, deriveHostTimeslots, type CourtSlotMode } from "@/lib/constants"
 import { reconcileClubTeams } from "@/lib/club-teams"
+import { isSeasonLocked } from "@/lib/season-lock"
 
 function slugify(input: string) {
   return input
@@ -58,14 +59,21 @@ async function ensureUniqueSlug(base: string, ignoreId?: number) {
 
 type ClubInput = {
   id?: number
+  // For a NEW venue created from a club-owner dashboard, the organisation it
+  // belongs to. Ignored for existing venues and falls back to the default org.
+  organisationId?: number
   name: string
   description?: string
   address?: string
   saplRegion?: string
   courts: number
-  hostingCapacity?: number
-  hostsThursday: boolean
-  teamsEntering: number
+  // Ordered per-court mode list. Length should match `courts`; it is normalised
+  // server-side so capacity/teams/public counts can never disagree with it.
+  courtSlots: (CourtSlotMode | string)[]
+  // Per-court hosting time choice aligned to courtSlots ("17:00"|"18:30"|"both"
+  // for hosting courts). Normalised server-side; venues with <4 courts are
+  // forced to "both".
+  slotTimeslots?: (string | null)[]
   logoUrl?: string
   playtomicUrl?: string
   contactName?: string
@@ -74,11 +82,14 @@ type ClubInput = {
 }
 
 export async function saveClub(input: ClubInput) {
-  // For an existing venue, scope the permission check to its current org owner.
+  // Scope the permission check to the venue's org: its current owner for an
+  // existing venue, or the requested owner org for a new one.
   let existingOrgId: number | undefined
   if (input.id) {
     const [existing] = await db.select({ organisationId: clubs.organisationId }).from(clubs).where(eq(clubs.id, input.id)).limit(1)
     existingOrgId = existing?.organisationId
+  } else if (input.organisationId) {
+    existingOrgId = input.organisationId
   }
   try {
     await requireClubManager(existingOrgId)
@@ -89,14 +100,18 @@ export async function saveClub(input: ClubInput) {
   if (!name) return { ok: false, error: "Venue name is required" }
 
   const courts = Math.max(0, Math.floor(input.courts || 0))
-  // SAPL: capacity is auto-derived from courts (one fixture = 4 courts, two
-  // slots a night). Venue managers may LOWER it below the court count but never
-  // raise it above — `clampHostingCapacity` enforces [0, courts].
-  const hostingCapacity = clampHostingCapacity(courts, input.hostingCapacity)
+  // SAPL: each court is a slot set to team / public / no-host. Capacity, the
+  // teams-entering count and the public-slot count are all DERIVED from the
+  // slot list so they can never disagree. One team/public slot per court means
+  // capacity is naturally bounded by the court count.
+  const slots = normaliseCourtSlots(courts, input.courtSlots)
+  const { teamsEntering, publicSlots, hostingCapacity, hostsThursday } = deriveSlotCounts(slots)
+  // Hosting times per slot (forced to "both" under 4 courts), plus the venue's
+  // derived union of league-night slots it will host.
+  const slotTimeslots = normaliseSlotTimeslots(courts, slots, input.slotTimeslots)
+  const hostTimeslots = deriveHostTimeslots(slotTimeslots)
 
   const saplRegion = input.saplRegion || null
-  const teamsEntering = Math.max(0, Math.floor(input.teamsEntering || 0))
-  const hostsThursday = !!input.hostsThursday
 
   const values = {
     name,
@@ -104,9 +119,13 @@ export async function saveClub(input: ClubInput) {
     address: input.address?.trim() || null,
     saplRegion,
     courts,
+    courtSlots: slots,
+    slotTimeslots,
+    hostTimeslots,
     hostingCapacity,
     hostsThursday,
     teamsEntering,
+    publicSlots,
     logoUrl: input.logoUrl?.trim() || null,
     playtomicUrl: input.playtomicUrl?.trim() || null,
     contactName: input.contactName?.trim() || null,
@@ -117,6 +136,27 @@ export async function saveClub(input: ClubInput) {
 
   let clubId: number
   if (input.id) {
+    // When a season is active, a venue's hosting configuration (court count,
+    // per-court slot modes / own-team / public-slot, and slot times) is frozen.
+    // Other details (name, contacts, logo) may still change.
+    if (await isSeasonLocked()) {
+      const [current] = await db
+        .select({ courts: clubs.courts, courtSlots: clubs.courtSlots, slotTimeslots: clubs.slotTimeslots })
+        .from(clubs)
+        .where(eq(clubs.id, input.id))
+        .limit(1)
+      const changedSlots =
+        current &&
+        (current.courts !== courts ||
+          JSON.stringify(current.courtSlots ?? []) !== JSON.stringify(slots) ||
+          JSON.stringify(current.slotTimeslots ?? []) !== JSON.stringify(slotTimeslots))
+      if (changedSlots) {
+        return {
+          ok: false,
+          error: "The season has started — court slots, own teams and public slots are locked.",
+        }
+      }
+    }
     const slug = await ensureUniqueSlug(slugify(name), input.id)
     await db.update(clubs).set({ ...values, slug }).where(eq(clubs.id, input.id))
     clubId = input.id
@@ -156,5 +196,69 @@ export async function deleteClub(id: number) {
   await db.delete(clubs).where(eq(clubs.id, id))
   revalidatePath("/admin/clubs")
   revalidatePath("/clubs")
+  return { ok: true }
+}
+
+/**
+ * Assign (or clear) the captain of one of a venue's entered "Club Team" blocks.
+ * `teamId` must be a Club Team homed at `clubId`. Passing `playerId = null`
+ * removes the current captain. The chosen player can be ANY existing player —
+ * they're added to the team roster as captain and promoted to the captain role.
+ */
+export async function setClubTeamCaptain(input: {
+  clubId: number
+  teamId: number
+  playerId: number | null
+}) {
+  const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
+  if (!club) return { ok: false, error: "Venue not found" }
+  try {
+    await requireClubManager(club.organisationId)
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  if (!team || team.homeClubId !== input.clubId || team.teamType !== "Club Team") {
+    return { ok: false, error: "Team does not belong to this venue" }
+  }
+
+  // Clear the captain: demote the previous roster captain to a normal member.
+  if (input.playerId == null) {
+    if (team.captainUserId) {
+      const [prev] = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.role, "captain")))
+        .limit(1)
+      if (prev) await db.update(teamMembers).set({ role: "player" }).where(eq(teamMembers.id, prev.id))
+    }
+    await db.update(teams).set({ captainUserId: null, updatedAt: new Date() }).where(eq(teams.id, team.id))
+    revalidatePath("/admin/clubs")
+    revalidatePath("/dashboard/org")
+    return { ok: true }
+  }
+
+  const [player] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  if (!player?.userId) return { ok: false, error: "Player has no linked account" }
+
+  await db.update(teams).set({ captainUserId: player.userId, updatedAt: new Date() }).where(eq(teams.id, team.id))
+  await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+
+  // Ensure the captain is on the roster.
+  const [m] = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, input.playerId)))
+    .limit(1)
+  if (!m) {
+    await db.insert(teamMembers).values({ teamId: team.id, playerId: input.playerId, role: "captain", status: "active" })
+  } else {
+    await db.update(teamMembers).set({ role: "captain", status: "active" }).where(eq(teamMembers.id, m.id))
+  }
+
+  revalidatePath("/admin/clubs")
+  revalidatePath("/dashboard/org")
+  revalidatePath("/admin/placement")
   return { ok: true }
 }

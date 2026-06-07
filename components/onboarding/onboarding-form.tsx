@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { SA_PROVINCES, PLAYER_FORMATS } from "@/lib/constants"
 import { Loader2 } from "lucide-react"
 import { useFormStatus } from "react-dom"
 
@@ -78,70 +77,13 @@ export function OnboardingForm({ defaultName, clubs }: { defaultName?: string; c
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="province">Province</Label>
-          <Select name="province" defaultValue="Gauteng">
-            <SelectTrigger id="province">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SA_PROVINCES.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="city">City</Label>
-          <Input id="city" name="city" placeholder="Pretoria" />
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="currentLi">League Index (LI)</Label>
-          <Input
-            id="currentLi"
-            name="currentLi"
-            type="number"
-            step="0.1"
-            min="0"
-            max="7"
-            placeholder="3.0"
-          />
-          <span className="text-xs text-muted-foreground">Your highest Playtomic rating in the last 6 months.</span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="playtomicUrl">Playtomic profile URL</Label>
-          <Input id="playtomicUrl" name="playtomicUrl" placeholder="https://playtomic.io/..." />
-        </div>
-      </div>
-
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">Formats I want to play</legend>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="playtomicUrl">Playtomic profile URL</Label>
+        <Input id="playtomicUrl" name="playtomicUrl" placeholder="https://playtomic.io/..." />
         <span className="text-xs text-muted-foreground">
-          Pick one or both. Your level decides which category you land in.
+          Your League Index is set by a league admin — no need to enter it here.
         </span>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {PLAYER_FORMATS.map((f) => (
-            <label key={f.value} className="flex items-start gap-3 border border-border bg-card p-3">
-              <input
-                type="checkbox"
-                name="preferredFormats"
-                value={f.value}
-                className="mt-0.5 size-4 accent-[var(--color-primary)]"
-              />
-              <span className="text-sm">
-                <span className="font-semibold">{f.label}</span>
-                <span className="block text-xs text-muted-foreground">{f.description}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      </div>
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">Preferred home club</legend>

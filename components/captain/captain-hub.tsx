@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { ResultEntry } from "@/components/captain/result-entry"
 import { PairingsBoard } from "@/components/team/pairings-board"
+import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { invitePlayer, removeMember, setPlayerAvailability } from "@/lib/actions/captain"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
@@ -119,6 +120,15 @@ export function CaptainHub({
 
   return (
     <div className="space-y-6">
+      {/* Captains can create a new player account and optionally drop them
+          straight onto one of their own teams. */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Add a new player to your squad — they&apos;ll get a login and can be assigned to one of your teams.
+        </p>
+        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+      </div>
+
       {teams.length > 1 && (
         <div className="flex flex-wrap gap-2">
           {teams.map((t) => (

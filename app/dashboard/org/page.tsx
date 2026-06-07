@@ -9,10 +9,12 @@ import {
   getCategories,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, players } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { organisations, players, user as authUser, userMeta, payments } from "@/lib/db/schema"
+import { eq, and, desc } from "drizzle-orm"
+import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage } from "@/lib/queries-clubs"
 import { getPlayerFee } from "@/lib/queries"
+import { isSeasonLocked } from "@/lib/season-lock"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { OrgHub } from "@/components/org/org-hub"
 
@@ -49,12 +51,27 @@ export default async function OrgPage() {
 
   const orgTeamRows = isAdminWide ? await getAllTeamsForAdmin() : await getOrgTeams(org.id)
 
-  // Captain names
+  // Captain profiles (name + contact details so the row can show and edit them).
+  type CaptainInfo = {
+    playerId: number
+    name: string
+    email: string | null
+    phone: string | null
+  }
   const captainIds = orgTeamRows.map((r) => r.team.captainUserId).filter(Boolean) as string[]
-  const captainMap = new Map<string, string>()
+  const captainMap = new Map<string, CaptainInfo>()
   for (const cid of captainIds) {
+    if (captainMap.has(cid)) continue
     const [p] = await db.select().from(players).where(eq(players.userId, cid)).limit(1)
-    if (p) captainMap.set(cid, `${p.firstName} ${p.lastName}`)
+    if (!p) continue
+    const [u] = await db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, cid)).limit(1)
+    const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
+    captainMap.set(cid, {
+      playerId: p.id,
+      name: `${p.firstName} ${p.lastName}`,
+      email: u?.email ?? null,
+      phone: m?.phone ?? null,
+    })
   }
 
   const cats = await getCategories()
@@ -65,6 +82,9 @@ export default async function OrgPage() {
   const clubInfo = await getClubsWithUsage()
   const clubById = new Map(clubInfo.map((c) => [c.id, c]))
 
+  // Per-player league fee (R500); a full team's total is 8 × this.
+  const playerFee = await getPlayerFee()
+
   const teamData = []
   for (const row of orgTeamRows) {
     const standing = await getStandingForTeam(row.team.id)
@@ -72,6 +92,28 @@ export default async function OrgPage() {
     const club = row.team.homeClubId ? clubById.get(row.team.homeClubId) : undefined
     const roster = pairingData?.roster ?? []
     const paidCount = roster.filter((p) => p.paid).length
+    const clubPaysFees = pairingData?.team.clubPaysFees ?? row.team.clubPaysFees
+
+    // Fee maths: the 8 dedicated squad players each carry the league fee, so a
+    // full team total is always 8 × fee (R4000 at R500). Work out how much of
+    // that has been collected so the row can show an outstanding balance.
+    const teamTotal = TEAM_SQUAD_SIZE * playerFee
+    let amountPaid = 0
+    if (clubPaysFees) {
+      // Team-funded squads settle with a single "team" payment.
+      const [teamPay] = await db
+        .select({ status: payments.status })
+        .from(payments)
+        .where(and(eq(payments.teamId, row.team.id), eq(payments.type, "team")))
+        .orderBy(desc(payments.createdAt))
+        .limit(1)
+      amountPaid = teamPay?.status === "paid" ? teamTotal : 0
+    } else {
+      // Player-funded: each paid squad player covers one fee (capped at 8).
+      amountPaid = Math.min(paidCount, TEAM_SQUAD_SIZE) * playerFee
+    }
+    const outstanding = Math.max(teamTotal - amountPaid, 0)
+
     teamData.push({
       id: row.team.id,
       name: row.team.name,
@@ -87,14 +129,17 @@ export default async function OrgPage() {
       divisionName: row.division?.name ?? "Unassigned",
       divisionId: row.team.divisionId ?? null,
       tpr: Math.round(row.team.tpr),
-      captainName: row.team.captainUserId ? (captainMap.get(row.team.captainUserId) ?? null) : null,
+      captain: row.team.captainUserId ? (captainMap.get(row.team.captainUserId) ?? null) : null,
       played: standing?.played ?? 0,
       won: standing?.wins ?? 0,
       points: standing?.points ?? 0,
       rank: standing?.rank ?? null,
-      clubPaysFees: pairingData?.team.clubPaysFees ?? row.team.clubPaysFees,
+      clubPaysFees,
       rosterCount: roster.length,
       paidCount,
+      teamTotal,
+      amountPaid,
+      outstanding,
       pairingCategories: pairingData?.categories ?? [],
       pairingRoster: roster,
       pairingInvites: pairingData?.invites ?? [],
@@ -122,7 +167,9 @@ export default async function OrgPage() {
     available: c.hosts && c.remaining > 0,
   }))
 
-  const playerFee = await getPlayerFee()
+  // Venue capacity is managed under Venue Management; here we only need the
+  // season lock state for the team-entry controls.
+  const locked = await isSeasonLocked()
 
   return (
     <div className="space-y-6">
@@ -134,7 +181,7 @@ export default async function OrgPage() {
             : "Create and manage your teams, captains, squads and fees"
         }
       />
-      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} />
+      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} />
     </div>
   )
 }

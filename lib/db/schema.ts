@@ -133,11 +133,28 @@ export const clubs = pgTable(
     regionId: integer("regionId"),
     saplRegion: text("saplRegion"), // Tshwane Central | East | South | West
     courts: integer("courts").notNull().default(0),
-    // Total teams this venue can host on a league night. Suggested from courts
-    // (3-4 -> 2, 6-8 -> 4) but editable in Club/Venue Management.
+    // SAPL court-slot model: each court is configured as one of three modes —
+    // the venue enters its own team, the slot is open to a public team as its
+    // home venue, or it does not host. `teamsEntering` counts the "team" slots
+    // and `publicSlots` the "public" ones; the remaining courts are no-host.
+    // `hostingCapacity` (teams a venue can home in total) is derived as
+    // teamsEntering + publicSlots, clamped to the court count, and
+    // `hostsThursday` is true whenever that capacity is positive.
     hostingCapacity: integer("hostingCapacity").notNull().default(0),
     hostsThursday: boolean("hostsThursday").notNull().default(false),
     teamsEntering: integer("teamsEntering").notNull().default(0),
+    publicSlots: integer("publicSlots").notNull().default(0),
+    // Ordered per-court mode list, one entry per court: "team" | "public" |
+    // "none". Source of truth that the counts above are derived from.
+    courtSlots: jsonb("courtSlots").$type<string[]>().notNull().default([]),
+    // Per-court hosting time choice, aligned to `courtSlots`. Hosting courts
+    // hold "17:00" | "18:30" | "both"; no-host courts hold "". Venues with fewer
+    // than 4 courts are forced to "both" (a fixture cannot fit in one slot).
+    slotTimeslots: jsonb("slotTimeslots").$type<string[]>().notNull().default([]),
+    // Denormalised union of the league-night slots this venue will host
+    // (subset of ["17:00","18:30"]). Derived from slotTimeslots; read by the
+    // fixture generator so it never schedules a venue at a time it won't host.
+    hostTimeslots: jsonb("hostTimeslots").$type<string[]>().notNull().default([]),
     logoUrl: text("logoUrl"),
     playtomicUrl: text("playtomicUrl"),
     contactName: text("contactName"),
@@ -203,7 +220,7 @@ export const seasons = pgTable("ppl_seasons", {
   startDate: timestamp("startDate"),
   endDate: timestamp("endDate"),
   weeks: integer("weeks").notNull().default(7),
-  status: text("status").notNull().default("draft"), // draft | validated | published
+  status: text("status").notNull().default("draft"), // setup | draft | validated | active (legacy: published)
   isCurrent: boolean("isCurrent").notNull().default(false),
   // League join fee per player for this season (VAT inclusive, in Rand).
   playerFee: integer("playerFee").notNull().default(500),

@@ -1,6 +1,44 @@
 import { db } from "@/lib/db"
-import { clubs, organisations, teams } from "@/lib/db/schema"
-import { asc, eq, inArray } from "drizzle-orm"
+import { clubs, organisations, teams, players } from "@/lib/db/schema"
+import { asc, eq, inArray, sql } from "drizzle-orm"
+
+export type PlayerOption = {
+  id: number
+  name: string
+  currentLi: number
+  lookingForTeam: boolean
+}
+
+/** Lightweight player list for captain pickers (only players with an account). */
+export async function getPlayerOptions(): Promise<PlayerOption[]> {
+  const rows = await db
+    .select({
+      id: players.id,
+      firstName: players.firstName,
+      lastName: players.lastName,
+      currentLi: players.currentLi,
+      lookingForTeam: players.lookingForTeam,
+      userId: players.userId,
+    })
+    .from(players)
+    .where(sql`${players.userId} is not null`)
+    .orderBy(asc(players.firstName), asc(players.lastName))
+    .limit(2000)
+  return rows.map((p) => ({
+    id: p.id,
+    name: `${p.firstName} ${p.lastName}`.trim(),
+    currentLi: p.currentLi ?? 0,
+    lookingForTeam: !!p.lookingForTeam,
+  }))
+}
+
+export type ClubTeamBlock = {
+  teamId: number
+  name: string
+  captainUserId: string | null
+  captainName: string | null
+  divisionId: number | null
+}
 
 export type ClubRow = {
   id: number
@@ -12,20 +50,55 @@ export type ClubRow = {
   address: string | null
   saplRegion: string | null
   courts: number
+  courtSlots: string[]
+  slotTimeslots: string[]
+  hostTimeslots: string[]
   hostingCapacity: number
   hostsThursday: boolean
   teamsEntering: number
+  publicSlots: number
   logoUrl: string | null
   playtomicUrl: string | null
   contactName: string | null
   contactEmail: string | null
   contactPhone: string | null
   ownerUserId: string | null
+  // The venue's own entered teams (Club Team blocks homed here), in creation
+  // order, each with its assigned captain (if any).
+  clubTeams: ClubTeamBlock[]
   // Derived hosting usage. When the venue does not host on Thursdays it cannot
   // host fixtures, so `hosts` is false and used/remaining are not meaningful.
   hosts: boolean
   used: number
   remaining: number
+  // How many of this venue's PUBLIC slots are still open for an external team
+  // to claim as its home venue (publicSlots - public teams already homed here).
+  publicRemaining: number
+}
+
+const clubColumns = {
+  id: clubs.id,
+  organisationId: clubs.organisationId,
+  orgName: organisations.name,
+  name: clubs.name,
+  slug: clubs.slug,
+  description: clubs.description,
+  address: clubs.address,
+  saplRegion: clubs.saplRegion,
+  courts: clubs.courts,
+  courtSlots: clubs.courtSlots,
+  slotTimeslots: clubs.slotTimeslots,
+  hostTimeslots: clubs.hostTimeslots,
+  hostingCapacity: clubs.hostingCapacity,
+  hostsThursday: clubs.hostsThursday,
+  teamsEntering: clubs.teamsEntering,
+  publicSlots: clubs.publicSlots,
+  logoUrl: clubs.logoUrl,
+  playtomicUrl: clubs.playtomicUrl,
+  contactName: clubs.contactName,
+  contactEmail: clubs.contactEmail,
+  contactPhone: clubs.contactPhone,
+  ownerUserId: clubs.ownerUserId,
 }
 
 /**
@@ -36,65 +109,62 @@ export type ClubRow = {
 export async function getClubsWithUsage(organisationId?: number): Promise<ClubRow[]> {
   const baseRows = organisationId
     ? await db
-        .select({
-          id: clubs.id,
-          organisationId: clubs.organisationId,
-          orgName: organisations.name,
-          name: clubs.name,
-          slug: clubs.slug,
-          description: clubs.description,
-          address: clubs.address,
-          saplRegion: clubs.saplRegion,
-          courts: clubs.courts,
-          hostingCapacity: clubs.hostingCapacity,
-          hostsThursday: clubs.hostsThursday,
-          teamsEntering: clubs.teamsEntering,
-          logoUrl: clubs.logoUrl,
-          playtomicUrl: clubs.playtomicUrl,
-          contactName: clubs.contactName,
-          contactEmail: clubs.contactEmail,
-          contactPhone: clubs.contactPhone,
-          ownerUserId: clubs.ownerUserId,
-        })
+        .select(clubColumns)
         .from(clubs)
         .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
         .where(eq(clubs.organisationId, organisationId))
         .orderBy(asc(clubs.name))
     : await db
-        .select({
-          id: clubs.id,
-          organisationId: clubs.organisationId,
-          orgName: organisations.name,
-          name: clubs.name,
-          slug: clubs.slug,
-          description: clubs.description,
-          address: clubs.address,
-          saplRegion: clubs.saplRegion,
-          courts: clubs.courts,
-          hostingCapacity: clubs.hostingCapacity,
-          hostsThursday: clubs.hostsThursday,
-          teamsEntering: clubs.teamsEntering,
-          logoUrl: clubs.logoUrl,
-          playtomicUrl: clubs.playtomicUrl,
-          contactName: clubs.contactName,
-          contactEmail: clubs.contactEmail,
-          contactPhone: clubs.contactPhone,
-          ownerUserId: clubs.ownerUserId,
-        })
+        .select(clubColumns)
         .from(clubs)
         .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
         .orderBy(asc(clubs.name))
 
   const ids = baseRows.map((c) => c.id)
   const usageMap = new Map<number, number>()
+  // venueId -> ordered list of its own Club Team blocks
+  const clubTeamsMap = new Map<number, ClubTeamBlock[]>()
   if (ids.length) {
     const teamRows = await db
-      .select({ homeClubId: teams.homeClubId })
+      .select({
+        id: teams.id,
+        name: teams.name,
+        homeClubId: teams.homeClubId,
+        teamType: teams.teamType,
+        captainUserId: teams.captainUserId,
+        divisionId: teams.divisionId,
+      })
       .from(teams)
       .where(inArray(teams.homeClubId, ids))
+      .orderBy(asc(teams.id))
+
+    // Resolve captain display names in one pass.
+    const captainIds = Array.from(
+      new Set(teamRows.map((t) => t.captainUserId).filter((v): v is string => !!v)),
+    )
+    const captainName = new Map<string, string>()
+    if (captainIds.length) {
+      const pRows = await db
+        .select({ userId: players.userId, firstName: players.firstName, lastName: players.lastName })
+        .from(players)
+        .where(inArray(players.userId, captainIds))
+      for (const p of pRows) captainName.set(p.userId, `${p.firstName} ${p.lastName}`.trim())
+    }
+
     for (const t of teamRows) {
       if (t.homeClubId == null) continue
       usageMap.set(t.homeClubId, (usageMap.get(t.homeClubId) ?? 0) + 1)
+      if (t.teamType === "Club Team") {
+        const list = clubTeamsMap.get(t.homeClubId) ?? []
+        list.push({
+          teamId: t.id,
+          name: t.name,
+          captainUserId: t.captainUserId ?? null,
+          captainName: t.captainUserId ? (captainName.get(t.captainUserId) ?? null) : null,
+          divisionId: t.divisionId ?? null,
+        })
+        clubTeamsMap.set(t.homeClubId, list)
+      }
     }
   }
 
@@ -104,12 +174,19 @@ export async function getClubsWithUsage(organisationId?: number): Promise<ClubRo
     // its own hosting slots — guarantee that by taking the larger of the two.
     const homed = usageMap.get(c.id) ?? 0
     const used = Math.max(homed, c.teamsEntering ?? 0)
+    // Public teams homed here = total homed minus the venue's own entered teams.
+    const publicUsed = Math.max(0, homed - (c.teamsEntering ?? 0))
     return {
       ...c,
       orgName: c.orgName ?? "—",
+      courtSlots: Array.isArray(c.courtSlots) ? c.courtSlots : [],
+      slotTimeslots: Array.isArray(c.slotTimeslots) ? c.slotTimeslots : [],
+      hostTimeslots: Array.isArray(c.hostTimeslots) ? c.hostTimeslots : [],
+      clubTeams: clubTeamsMap.get(c.id) ?? [],
       hosts: c.hostsThursday,
       used,
       remaining: Math.max(0, c.hostingCapacity - used),
+      publicRemaining: Math.max(0, (c.publicSlots ?? 0) - publicUsed),
     }
   })
 }
