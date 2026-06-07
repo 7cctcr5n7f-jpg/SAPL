@@ -711,13 +711,17 @@ function ClubRowItem({
         <div className="hidden shrink-0 items-center gap-4 sm:flex">
           <CapacityStat label="Courts" value={club.courts} />
           <CapacityStat label="Teams" value={club.teamsEntering} />
-          {club.teamsEntering > 0 ? (
-            <CapacityStat
-              label="Captains"
-              value={`${captainsAssigned}/${club.teamsEntering}`}
-              className={captainsAssigned < club.teamsEntering ? "text-amber-600" : "text-emerald-600"}
-            />
-          ) : null}
+          <CapacityStat
+            label="Captains"
+            value={club.teamsEntering > 0 ? `${captainsAssigned}/${club.teamsEntering}` : "—"}
+            className={
+              club.teamsEntering === 0
+                ? "text-muted-foreground"
+                : captainsAssigned < club.teamsEntering
+                  ? "text-amber-600"
+                  : "text-emerald-600"
+            }
+          />
           <CapacityStat
             label="Remaining"
             value={club.publicRemaining}
