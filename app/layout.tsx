@@ -25,14 +25,6 @@ export const metadata: Metadata = {
     "The premier padel competition platform. Live rankings, standings, fixtures, Team Power Ratings, Club Performance Index, and the road to the Tshwane Masters.",
   generator: "v0.app",
   keywords: ["padel", "league", "Tshwane", "rankings", "TPR", "CPI", "South Africa"],
-  icons: {
-    icon: [
-      { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
-      { url: "/icon-dark-32x32.png", media: "(prefers-color-scheme: dark)" },
-      { url: "/icon.svg", type: "image/svg+xml" },
-    ],
-    apple: "/apple-icon.png",
-  },
 }
 
 export const viewport = {
