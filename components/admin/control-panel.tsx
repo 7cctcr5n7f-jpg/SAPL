@@ -23,6 +23,7 @@ import {
   validateSeasonAction,
   publishSeasonAction,
   revertSeasonToDraftAction,
+  unlockSeasonAction,
 } from "@/lib/actions/admin"
 import type { SeasonValidation } from "@/lib/engine/validation"
 import { DIVISIONS } from "@/lib/constants"
@@ -40,6 +41,8 @@ import {
   AlertTriangle,
   Undo2,
   CircleCheck,
+  Lock,
+  LockOpen,
 } from "lucide-react"
 
 type Division = { id: number; name: string; level: number; maxTeams: number; regionId: number | null }
@@ -161,27 +164,36 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    draft: "bg-muted text-muted-foreground",
+    setup: "bg-muted text-muted-foreground",
+    draft: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
     validated: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    // legacy
     published: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
   }
   return (
-    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium capitalize", map[status] ?? map.draft)}>
+    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium capitalize", map[status] ?? map.setup)}>
       {status}
     </span>
   )
 }
 
 /**
- * The Draft -> Validated -> Published workflow for one season. Generate builds
- * a draft schedule; Validate checks venue/timeslot collisions and division
- * completeness; Publish makes the schedule live (and is gated on a clean
- * validation). The latest validation report is shown inline.
+ * The Setup -> Draft -> Validated -> Active workflow for one season.
+ *  - Generate fixtures: prunes empty regions/divisions and builds the schedule
+ *    (Setup -> Draft).
+ *  - Validate: checks venue/timeslot collisions, division completeness and that
+ *    every assigned team has a captain (Draft -> Validated).
+ *  - Start season: makes fixtures live and locks team/venue editing; gated on a
+ *    clean validation AND all captains assigned (Validated -> Active).
+ *  - Unlock season: re-opens editing (Active -> Validated).
  */
 function SeasonLifecycle({ season }: { season: Season }) {
   const [pending, start] = useTransition()
   const [report, setReport] = useState<SeasonValidation | null>(null)
   const status = season.status
+  const isActive = status === "active"
+  const hasFixtures = status === "draft" || status === "validated" || isActive || status === "published"
 
   function run<T extends { report?: SeasonValidation }>(
     action: (fd: FormData) => Promise<T & { ok: boolean; error?: string }>,
@@ -199,41 +211,56 @@ function SeasonLifecycle({ season }: { season: Season }) {
 
   return (
     <div className="mt-4 space-y-3 border-t border-border pt-4">
+      {isActive && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <Lock className="h-4 w-4 shrink-0" />
+          Season is active — team names, home venues and club slot settings are locked. Unlock to make changes.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant="outline"
-          disabled={pending}
+          disabled={pending || isActive}
           onClick={() =>
             run(async (fd) => {
               const res = await generateSeason(fd)
-              return res.ok
-                ? { ...res }
-                : { ok: false, error: res.error ?? "Failed to generate season" }
-            }, "Draft schedule generated")
+              return res.ok ? { ...res } : { ok: false, error: res.error ?? "Failed to generate fixtures" }
+            }, "Fixtures generated")
           }
         >
-          <Wand2 className="mr-1 h-4 w-4" /> {status === "draft" ? "Generate season" : "Regenerate"}
+          <Wand2 className="mr-1 h-4 w-4" /> {hasFixtures ? "Regenerate fixtures" : "Generate fixtures"}
         </Button>
 
         <Button
           size="sm"
           variant="outline"
-          disabled={pending}
+          disabled={pending || isActive}
           onClick={() => run(validateSeasonAction, "Season validated")}
         >
           <ShieldCheck className="mr-1 h-4 w-4" /> Validate
         </Button>
 
-        <Button
-          size="sm"
-          disabled={pending || status === "draft"}
-          onClick={() => run(publishSeasonAction, "Season published")}
-        >
-          <Rocket className="mr-1 h-4 w-4" /> Publish
-        </Button>
+        {isActive ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => run(unlockSeasonAction, "Season unlocked")}
+          >
+            <LockOpen className="mr-1 h-4 w-4" /> Unlock season
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            disabled={pending || status !== "validated"}
+            onClick={() => run(publishSeasonAction, "Season started")}
+          >
+            <Rocket className="mr-1 h-4 w-4" /> Start season
+          </Button>
+        )}
 
-        {status !== "draft" && (
+        {!isActive && hasFixtures && status !== "draft" && (
           <Button
             size="sm"
             variant="ghost"
@@ -256,7 +283,7 @@ function ValidationReport({ report }: { report: SeasonValidation }) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
         <CircleCheck className="h-4 w-4 shrink-0" />
-        No issues found — schedule is ready to publish.
+        No issues found — schedule is ready to start.
       </div>
     )
   }
@@ -388,6 +415,14 @@ function NewSeasonDialog({
               <Label htmlFor="startDate">Start date</Label>
               <Input id="startDate" name="startDate" type="date" />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="maxTeams">Max teams per division</Label>
+            <Input id="maxTeams" name="maxTeams" type="number" defaultValue={8} min={2} max={16} />
+            <p className="text-xs text-muted-foreground">
+              All four regions and all four divisions are created automatically so you can drag teams straight in.
+              Empty divisions are removed when you generate fixtures.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="playerFee">Player join fee (R, incl. VAT)</Label>

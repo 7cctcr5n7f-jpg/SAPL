@@ -17,6 +17,7 @@ import {
   fixtures,
 } from "@/lib/db/schema"
 import { eq, and, ne, sql } from "drizzle-orm"
+import { isSeasonLocked } from "@/lib/season-lock"
 
 /**
  * Guard a home-venue assignment against the club's hosting capacity. Returns an
@@ -112,6 +113,10 @@ export async function updateTeamRegistration(input: {
   await requireOrgOwner(team.organisationId)
 
   const patch: Record<string, unknown> = { updatedAt: new Date() }
+  // Team name and home venue are frozen once a season is active.
+  if ((input.name !== undefined || input.homeClubId !== undefined) && (await isSeasonLocked())) {
+    return { ok: false, error: "The season has started — team name and home venue are locked." }
+  }
   if (input.name !== undefined) {
     const name = input.name.trim()
     if (!name) return { ok: false, error: "Team name is required" }

@@ -34,6 +34,7 @@ import {
   Trash2,
   Wallet,
   Building2,
+  Lock,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
@@ -107,12 +108,15 @@ export function OrgHub({
   freeAgents,
   venues,
   playerFee,
+  locked = false,
 }: {
   orgId: number
   teams: Team[]
   freeAgents: FreeAgent[]
   venues: Venue[]
   playerFee: number
+  // When the season is active, team name and home venue editing is frozen.
+  locked?: boolean
 }) {
   const [pending, start] = useTransition()
   const [assignFor, setAssignFor] = useState<Team | null>(null)
@@ -376,6 +380,7 @@ export function OrgHub({
           venues={venues}
           pending={pending}
           start={start}
+          locked={locked}
           onClose={() => setEditFor(null)}
         />
       )}
@@ -558,12 +563,14 @@ function EditTeamDialog({
   venues,
   pending,
   start,
+  locked = false,
   onClose,
 }: {
   team: Team
   venues: Venue[]
   pending: boolean
   start: (cb: () => Promise<void>) => void
+  locked?: boolean
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
@@ -596,17 +603,24 @@ function EditTeamDialog({
           <DialogTitle>Edit team</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {locked && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              The season has started — team name and home venue are locked.
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="editName">Team name</Label>
-            <Input id="editName" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input id="editName" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="editHomeClub">Home club / venue</Label>
             <select
               id="editHomeClub"
               value={homeClubId}
+              disabled={locked}
               onChange={(e) => setHomeClubId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="">No home club</option>
               {venueOptions(venues, team.homeClubId).map((v) => (

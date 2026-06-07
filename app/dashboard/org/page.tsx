@@ -13,6 +13,7 @@ import { organisations, players } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { getClubsWithUsage, getPlayerOptions } from "@/lib/queries-clubs"
 import { getPlayerFee } from "@/lib/queries"
+import { isSeasonLocked } from "@/lib/season-lock"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { OrgHub } from "@/components/org/org-hub"
 import { ClubsManager } from "@/components/admin/clubs-manager"
@@ -130,6 +131,7 @@ export default async function OrgPage() {
   // captain picker on each entered team.
   const myVenues = isAdminWide ? clubUsage : clubUsage.filter((c) => c.organisationId === org.id)
   const playerOptions = await getPlayerOptions()
+  const locked = await isSeasonLocked()
 
   return (
     <div className="space-y-6">
@@ -141,7 +143,7 @@ export default async function OrgPage() {
             : "Create and manage your teams, captains, squads and fees"
         }
       />
-      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} />
+      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} />
 
       <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="mb-4">
@@ -151,7 +153,7 @@ export default async function OrgPage() {
             captains.
           </p>
         </div>
-        <ClubsManager clubs={myVenues} players={playerOptions} organisationId={org.id} />
+        <ClubsManager clubs={myVenues} players={playerOptions} organisationId={org.id} locked={locked} />
       </div>
     </div>
   )

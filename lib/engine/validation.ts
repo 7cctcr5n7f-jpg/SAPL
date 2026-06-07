@@ -42,6 +42,24 @@ export async function validateSeason(seasonId: number): Promise<SeasonValidation
 
   const divName = new Map(divs.map((d) => [d.id, d.name]))
 
+  // ---- Captains on every assigned team -----------------------------------
+  // A season cannot start until every team placed into a division has a
+  // captain. Surface each missing one as an error.
+  const assignedTeams = await db
+    .select({ name: teams.name, captainUserId: teams.captainUserId, divisionId: teamEntries.divisionId })
+    .from(teamEntries)
+    .innerJoin(teams, eq(teams.id, teamEntries.teamId))
+    .where(and(eq(teamEntries.seasonId, seasonId), eq(teamEntries.status, "assigned")))
+  for (const t of assignedTeams) {
+    if (!t.captainUserId) {
+      issues.push({
+        level: "error",
+        code: "team_missing_captain",
+        message: `${t.name} has no captain assigned — every team needs a captain before the season starts.`,
+      })
+    }
+  }
+
   // ---- Per-division team counts ------------------------------------------
   for (const d of divs) {
     const entries = await db

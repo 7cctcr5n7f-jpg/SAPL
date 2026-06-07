@@ -27,7 +27,7 @@ import {
 import { nextThursday, balanceTimeslots } from "@/lib/engine/season"
 import { syncDivisionFixtures } from "@/lib/fixtures-sync"
 import { validateSeason } from "@/lib/engine/validation"
-import { REGIONAL_FINALS_GAP_DAYS, TSHWANE_MASTERS_GAP_DAYS } from "@/lib/constants"
+import { REGIONAL_FINALS_GAP_DAYS, TSHWANE_MASTERS_GAP_DAYS, DIVISIONS, TEAMS_PER_DIVISION } from "@/lib/constants"
 import { notify } from "@/lib/notify"
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -94,12 +94,49 @@ export async function generateSeason(formData: FormData) {
   const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1)
   if (!season) return { ok: false, error: "Season not found" }
 
-  const divs = await db
+  const allDivs = await db
     .select()
     .from(divisions)
     .where(eq(divisions.seasonId, seasonId))
     .orderBy(asc(divisions.level), asc(divisions.id))
-  if (divs.length === 0) return { ok: false, error: "No divisions configured for this season" }
+  if (allDivs.length === 0) return { ok: false, error: "No divisions configured for this season" }
+
+  // Prune divisions (and therefore regions) with no assigned teams so unused
+  // ones aren't part of the season. A division is kept if it has at least one
+  // assigned team entry, or already-played (completed/disputed) fixtures.
+  const assignedRows = await db
+    .select({ divisionId: teamEntries.divisionId })
+    .from(teamEntries)
+    .where(and(eq(teamEntries.seasonId, seasonId), eq(teamEntries.status, "assigned")))
+  const divisionsWithTeams = new Set(
+    assignedRows.map((r) => r.divisionId).filter((x): x is number => x != null),
+  )
+
+  const emptyDivIds: number[] = []
+  for (const d of allDivs) {
+    if (divisionsWithTeams.has(d.id)) continue
+    const [played] = await db
+      .select({ id: fixtures.id })
+      .from(fixtures)
+      .where(and(eq(fixtures.divisionId, d.id), inArray(fixtures.status, ["completed", "disputed"])))
+      .limit(1)
+    if (!played) emptyDivIds.push(d.id)
+  }
+  if (emptyDivIds.length > 0) {
+    // Remove the empty divisions' scheduled fixtures, placement entries and the
+    // divisions themselves. Regions become inactive automatically once they
+    // have no remaining divisions in this season.
+    await db
+      .delete(fixtures)
+      .where(and(inArray(fixtures.divisionId, emptyDivIds), eq(fixtures.status, "scheduled")))
+    await db.delete(teamEntries).where(inArray(teamEntries.divisionId, emptyDivIds))
+    await db.delete(divisions).where(inArray(divisions.id, emptyDivIds))
+  }
+
+  const divs = allDivs.filter((d) => !emptyDivIds.includes(d.id))
+  if (divs.length === 0) {
+    return { ok: false, error: "Assign teams to at least one division before generating fixtures." }
+  }
 
   const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
 
@@ -483,6 +520,11 @@ export async function createSeason(formData: FormData) {
   const makeCurrent = formData.get("makeCurrent") === "on" || formData.get("makeCurrent") === "true"
   const feeRaw = Number(formData.get("playerFee") ?? 500)
   const playerFee = Number.isFinite(feeRaw) && feeRaw >= 0 ? Math.round(feeRaw) : 500
+  // Max teams per division — the only division setting chosen up front. The
+  // full region x division grid is seeded automatically so teams can be dragged
+  // straight in; unused divisions are pruned later at fixture generation.
+  const maxRaw = Number(formData.get("maxTeams") ?? TEAMS_PER_DIVISION)
+  const maxTeams = Number.isFinite(maxRaw) && maxRaw >= 2 ? Math.min(16, Math.round(maxRaw)) : TEAMS_PER_DIVISION
   if (!name) return { ok: false, error: "Season name required" }
 
   const startDate = startStr ? new Date(startStr) : null
@@ -508,7 +550,7 @@ export async function createSeason(formData: FormData) {
       weeks,
       startDate,
       endDate,
-      status: "draft",
+      status: "setup",
       isCurrent: makeCurrent,
       playerFee,
       regionalFinalsVenueClubId: num("regionalFinalsVenueClubId"),
@@ -517,6 +559,23 @@ export async function createSeason(formData: FormData) {
       mastersDate: date("mastersDate"),
     })
     .returning({ id: seasons.id })
+
+  // Seed the standard grid: every region x every division level, at the chosen
+  // max-teams. This gives the Placement Board all 4 regions x 4 divisions to
+  // drag teams into immediately. Empty ones are removed when fixtures generate.
+  const allRegions = await db.select({ id: regions.id }).from(regions)
+  const divisionRows = allRegions.flatMap((r) =>
+    DIVISIONS.map((d) => ({
+      seasonId: created.id,
+      name: d.name,
+      level: d.level,
+      maxTeams,
+      regionId: r.id,
+    })),
+  )
+  if (divisionRows.length > 0) {
+    await db.insert(divisions).values(divisionRows)
+  }
 
   // Any venue that declared it will enter team(s) should automatically have
   // those teams ready as unassigned entries for the new season. Reconcile every
@@ -556,8 +615,11 @@ export async function validateSeasonAction(formData: FormData) {
 }
 
 /**
- * Publish a validated season (makes fixtures live to players). Re-runs
- * validation defensively so a season can't be published with errors.
+ * Start a validated season (status -> "active"). Makes fixtures live to players
+ * and LOCKS editing of team names, home venues and club court-slot settings.
+ * Gated on:
+ *  - a clean validation (no errors), re-run defensively, and
+ *  - every assigned team having a captain.
  */
 export async function publishSeasonAction(formData: FormData) {
   await requireAdmin()
@@ -567,11 +629,49 @@ export async function publishSeasonAction(formData: FormData) {
   if (!report.ok) {
     return { ok: false, report, error: "Season still has validation errors." }
   }
-  await db.update(seasons).set({ status: "published" }).where(eq(seasons.id, seasonId))
+
+  // Every assigned team must have a captain before the season can start.
+  const missing = await assignedTeamsMissingCaptain(seasonId)
+  if (missing.length > 0) {
+    const names = missing.slice(0, 5).join(", ")
+    const more = missing.length > 5 ? ` and ${missing.length - 5} more` : ""
+    return {
+      ok: false,
+      report,
+      error: `Assign a captain to every team first. Missing: ${names}${more}.`,
+    }
+  }
+
+  await db.update(seasons).set({ status: "active" }).where(eq(seasons.id, seasonId))
   revalidatePath("/admin")
+  revalidatePath("/admin/clubs")
   revalidatePath("/fixtures")
   revalidatePath("/dashboard/fixtures")
   return { ok: true, report }
+}
+
+/** Teams assigned to a division in this season that have no captain yet. */
+async function assignedTeamsMissingCaptain(seasonId: number): Promise<string[]> {
+  const rows = await db
+    .select({ name: teams.name, captainUserId: teams.captainUserId })
+    .from(teamEntries)
+    .innerJoin(teams, eq(teams.id, teamEntries.teamId))
+    .where(and(eq(teamEntries.seasonId, seasonId), eq(teamEntries.status, "assigned")))
+  return rows.filter((r) => !r.captainUserId).map((r) => r.name)
+}
+
+/**
+ * Unlock an active season back to "validated" so admins can edit team names,
+ * home venues and club slot allocation again. Fixtures are preserved.
+ */
+export async function unlockSeasonAction(formData: FormData) {
+  await requireAdmin()
+  const seasonId = Number(formData.get("seasonId"))
+  if (!seasonId) return { ok: false, error: "Season id required" }
+  await db.update(seasons).set({ status: "validated" }).where(eq(seasons.id, seasonId))
+  revalidatePath("/admin")
+  revalidatePath("/admin/clubs")
+  return { ok: true }
 }
 
 /** Move a season back to draft for further editing. */

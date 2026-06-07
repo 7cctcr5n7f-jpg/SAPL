@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Check,
   Clock,
+  Lock,
   UserPlus,
   Crown,
 } from "lucide-react"
@@ -74,11 +75,15 @@ export function ClubsManager({
   clubs,
   players,
   organisationId,
+  locked = false,
 }: {
   clubs: ClubRow[]
   players: PlayerOption[]
   // When provided (club-owner dashboard), new venues are created under this org.
   organisationId?: number
+  // When the season is active, court slot / own-team / public-slot settings are
+  // frozen. The editor renders read-only and the server rejects slot changes.
+  locked?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -292,13 +297,22 @@ export function ClubsManager({
                 min={0}
                 max={20}
                 value={form.courts}
+                disabled={locked}
                 onChange={(e) => setCourts(Number(e.target.value))}
               />
             </Field>
 
+            {locked && (
+              <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                The season has started — court slots, own teams and public slots are locked. Unlock the season under
+                League Management to edit.
+              </div>
+            )}
+
             {/* Per-slot configuration */}
             {form.courts > 0 ? (
-              <div className="space-y-2 rounded-md border border-border p-3">
+              <div className={cn("space-y-2 rounded-md border border-border p-3", locked && "opacity-60")}>
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Slot usage</p>
                   <span className="text-xs text-muted-foreground">
@@ -316,9 +330,10 @@ export function ClubsManager({
                             <button
                               key={m}
                               type="button"
+                              disabled={locked}
                               onClick={() => setSlot(i, m)}
                               className={cn(
-                                "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
+                                "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed",
                                 mode === m
                                   ? SLOT_META[m].className
                                   : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -335,6 +350,7 @@ export function ClubsManager({
                               <Select
                                 value={form.slotTimeslots[i] || "both"}
                                 onValueChange={(v) => setSlotTime(i, v as SlotTimeslot)}
+                                disabled={locked}
                               >
                                 <SelectTrigger className="h-8 w-full" aria-label={`Hosting time for slot ${i + 1}`}>
                                   <Clock className="h-3.5 w-3.5 text-muted-foreground" />

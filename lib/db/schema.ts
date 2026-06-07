@@ -220,7 +220,7 @@ export const seasons = pgTable("ppl_seasons", {
   startDate: timestamp("startDate"),
   endDate: timestamp("endDate"),
   weeks: integer("weeks").notNull().default(7),
-  status: text("status").notNull().default("draft"), // draft | validated | published
+  status: text("status").notNull().default("draft"), // setup | draft | validated | active (legacy: published)
   isCurrent: boolean("isCurrent").notNull().default(false),
   // League join fee per player for this season (VAT inclusive, in Rand).
   playerFee: integer("playerFee").notNull().default(500),

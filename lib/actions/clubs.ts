@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { normaliseCourtSlots, deriveSlotCounts, normaliseSlotTimeslots, deriveHostTimeslots, type CourtSlotMode } from "@/lib/constants"
 import { reconcileClubTeams } from "@/lib/club-teams"
+import { isSeasonLocked } from "@/lib/season-lock"
 
 function slugify(input: string) {
   return input
@@ -135,6 +136,27 @@ export async function saveClub(input: ClubInput) {
 
   let clubId: number
   if (input.id) {
+    // When a season is active, a venue's hosting configuration (court count,
+    // per-court slot modes / own-team / public-slot, and slot times) is frozen.
+    // Other details (name, contacts, logo) may still change.
+    if (await isSeasonLocked()) {
+      const [current] = await db
+        .select({ courts: clubs.courts, courtSlots: clubs.courtSlots, slotTimeslots: clubs.slotTimeslots })
+        .from(clubs)
+        .where(eq(clubs.id, input.id))
+        .limit(1)
+      const changedSlots =
+        current &&
+        (current.courts !== courts ||
+          JSON.stringify(current.courtSlots ?? []) !== JSON.stringify(slots) ||
+          JSON.stringify(current.slotTimeslots ?? []) !== JSON.stringify(slotTimeslots))
+      if (changedSlots) {
+        return {
+          ok: false,
+          error: "The season has started — court slots, own teams and public slots are locked.",
+        }
+      }
+    }
     const slug = await ensureUniqueSlug(slugify(name), input.id)
     await db.update(clubs).set({ ...values, slug }).where(eq(clubs.id, input.id))
     clubId = input.id
