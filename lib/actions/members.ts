@@ -258,9 +258,9 @@ export async function createPlayerAccount(input: {
   })
   if (!res.ok) return res
 
-  await ensurePlayerProfile(res.userId, firstName, lastName, { gender: input.gender, currentLi: li })
+  const playerId = await ensurePlayerProfile(res.userId, firstName, lastName, { gender: input.gender, currentLi: li })
 
   revalidatePath("/dashboard/org")
   revalidatePath("/marketplace")
-  return { ok: true, password: res.password }
+  return { ok: true, password: res.password, playerId, userId: res.userId }
 }

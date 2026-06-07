@@ -1,11 +1,11 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, userMeta } from "@/lib/db/schema"
+import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
-import { clampHostingCapacity } from "@/lib/constants"
+import { normaliseCourtSlots, deriveSlotCounts, type CourtSlotMode } from "@/lib/constants"
 import { reconcileClubTeams } from "@/lib/club-teams"
 
 function slugify(input: string) {
@@ -63,9 +63,9 @@ type ClubInput = {
   address?: string
   saplRegion?: string
   courts: number
-  hostingCapacity?: number
-  hostsThursday: boolean
-  teamsEntering: number
+  // Ordered per-court mode list. Length should match `courts`; it is normalised
+  // server-side so capacity/teams/public counts can never disagree with it.
+  courtSlots: (CourtSlotMode | string)[]
   logoUrl?: string
   playtomicUrl?: string
   contactName?: string
@@ -89,14 +89,14 @@ export async function saveClub(input: ClubInput) {
   if (!name) return { ok: false, error: "Venue name is required" }
 
   const courts = Math.max(0, Math.floor(input.courts || 0))
-  // SAPL: capacity is auto-derived from courts (one fixture = 4 courts, two
-  // slots a night). Venue managers may LOWER it below the court count but never
-  // raise it above — `clampHostingCapacity` enforces [0, courts].
-  const hostingCapacity = clampHostingCapacity(courts, input.hostingCapacity)
+  // SAPL: each court is a slot set to team / public / no-host. Capacity, the
+  // teams-entering count and the public-slot count are all DERIVED from the
+  // slot list so they can never disagree. One team/public slot per court means
+  // capacity is naturally bounded by the court count.
+  const slots = normaliseCourtSlots(courts, input.courtSlots)
+  const { teamsEntering, publicSlots, hostingCapacity, hostsThursday } = deriveSlotCounts(slots)
 
   const saplRegion = input.saplRegion || null
-  const teamsEntering = Math.max(0, Math.floor(input.teamsEntering || 0))
-  const hostsThursday = !!input.hostsThursday
 
   const values = {
     name,
@@ -104,9 +104,11 @@ export async function saveClub(input: ClubInput) {
     address: input.address?.trim() || null,
     saplRegion,
     courts,
+    courtSlots: slots,
     hostingCapacity,
     hostsThursday,
     teamsEntering,
+    publicSlots,
     logoUrl: input.logoUrl?.trim() || null,
     playtomicUrl: input.playtomicUrl?.trim() || null,
     contactName: input.contactName?.trim() || null,
@@ -156,5 +158,69 @@ export async function deleteClub(id: number) {
   await db.delete(clubs).where(eq(clubs.id, id))
   revalidatePath("/admin/clubs")
   revalidatePath("/clubs")
+  return { ok: true }
+}
+
+/**
+ * Assign (or clear) the captain of one of a venue's entered "Club Team" blocks.
+ * `teamId` must be a Club Team homed at `clubId`. Passing `playerId = null`
+ * removes the current captain. The chosen player can be ANY existing player —
+ * they're added to the team roster as captain and promoted to the captain role.
+ */
+export async function setClubTeamCaptain(input: {
+  clubId: number
+  teamId: number
+  playerId: number | null
+}) {
+  const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
+  if (!club) return { ok: false, error: "Venue not found" }
+  try {
+    await requireClubManager(club.organisationId)
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  if (!team || team.homeClubId !== input.clubId || team.teamType !== "Club Team") {
+    return { ok: false, error: "Team does not belong to this venue" }
+  }
+
+  // Clear the captain: demote the previous roster captain to a normal member.
+  if (input.playerId == null) {
+    if (team.captainUserId) {
+      const [prev] = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.role, "captain")))
+        .limit(1)
+      if (prev) await db.update(teamMembers).set({ role: "player" }).where(eq(teamMembers.id, prev.id))
+    }
+    await db.update(teams).set({ captainUserId: null, updatedAt: new Date() }).where(eq(teams.id, team.id))
+    revalidatePath("/admin/clubs")
+    revalidatePath("/dashboard/org")
+    return { ok: true }
+  }
+
+  const [player] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  if (!player?.userId) return { ok: false, error: "Player has no linked account" }
+
+  await db.update(teams).set({ captainUserId: player.userId, updatedAt: new Date() }).where(eq(teams.id, team.id))
+  await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+
+  // Ensure the captain is on the roster.
+  const [m] = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, input.playerId)))
+    .limit(1)
+  if (!m) {
+    await db.insert(teamMembers).values({ teamId: team.id, playerId: input.playerId, role: "captain", status: "active" })
+  } else {
+    await db.update(teamMembers).set({ role: "captain", status: "active" }).where(eq(teamMembers.id, m.id))
+  }
+
+  revalidatePath("/admin/clubs")
+  revalidatePath("/dashboard/org")
+  revalidatePath("/admin/placement")
   return { ok: true }
 }

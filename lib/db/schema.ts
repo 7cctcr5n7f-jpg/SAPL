@@ -133,11 +133,20 @@ export const clubs = pgTable(
     regionId: integer("regionId"),
     saplRegion: text("saplRegion"), // Tshwane Central | East | South | West
     courts: integer("courts").notNull().default(0),
-    // Total teams this venue can host on a league night. Suggested from courts
-    // (3-4 -> 2, 6-8 -> 4) but editable in Club/Venue Management.
+    // SAPL court-slot model: each court is configured as one of three modes —
+    // the venue enters its own team, the slot is open to a public team as its
+    // home venue, or it does not host. `teamsEntering` counts the "team" slots
+    // and `publicSlots` the "public" ones; the remaining courts are no-host.
+    // `hostingCapacity` (teams a venue can home in total) is derived as
+    // teamsEntering + publicSlots, clamped to the court count, and
+    // `hostsThursday` is true whenever that capacity is positive.
     hostingCapacity: integer("hostingCapacity").notNull().default(0),
     hostsThursday: boolean("hostsThursday").notNull().default(false),
     teamsEntering: integer("teamsEntering").notNull().default(0),
+    publicSlots: integer("publicSlots").notNull().default(0),
+    // Ordered per-court mode list, one entry per court: "team" | "public" |
+    // "none". Source of truth that the counts above are derived from.
+    courtSlots: jsonb("courtSlots").$type<string[]>().notNull().default([]),
     logoUrl: text("logoUrl"),
     playtomicUrl: text("playtomicUrl"),
     contactName: text("contactName"),

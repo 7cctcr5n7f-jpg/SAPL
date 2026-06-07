@@ -50,6 +50,49 @@ export function clampHostingCapacity(courts: number, desired?: number | null): n
   return Math.min(max, Math.max(0, Math.floor(desired)))
 }
 
+// ---------------------------------------------------------------------------
+// Court slots
+// ---------------------------------------------------------------------------
+// A venue configures each of its courts as one of three modes. "team" courts
+// host one of the venue's own entered teams; "public" courts are offered to a
+// public team as its home venue; "none" courts do not host league fixtures.
+export type CourtSlotMode = "team" | "public" | "none"
+
+export const COURT_SLOT_MODES: { value: CourtSlotMode; label: string; description: string }[] = [
+  { value: "team", label: "Enter a team", description: "Your club fields a team that plays out of this court" },
+  { value: "public", label: "Public host", description: "Open this court as a home venue for a public team" },
+  { value: "none", label: "No host", description: "This court is not used for league fixtures" },
+]
+
+// Build a slot array of the given length, padding/truncating an existing list
+// of modes to match the court count. New slots default to "none".
+export function normaliseCourtSlots(courts: number, modes?: (CourtSlotMode | string)[] | null): CourtSlotMode[] {
+  const n = Math.max(0, Math.floor(courts || 0))
+  const valid = new Set<CourtSlotMode>(["team", "public", "none"])
+  const src = Array.isArray(modes) ? modes : []
+  const out: CourtSlotMode[] = []
+  for (let i = 0; i < n; i++) {
+    const m = src[i]
+    out.push(m && valid.has(m as CourtSlotMode) ? (m as CourtSlotMode) : "none")
+  }
+  return out
+}
+
+// Derive the headline counts a venue stores from its court-slot configuration.
+// teamsEntering = "team" slots, publicSlots = "public" slots, and hosting
+// capacity is the sum of the two (a no-host court contributes nothing).
+export function deriveSlotCounts(modes: CourtSlotMode[]): {
+  teamsEntering: number
+  publicSlots: number
+  hostingCapacity: number
+  hostsThursday: boolean
+} {
+  const teamsEntering = modes.filter((m) => m === "team").length
+  const publicSlots = modes.filter((m) => m === "public").length
+  const hostingCapacity = teamsEntering + publicSlots
+  return { teamsEntering, publicSlots, hostingCapacity, hostsThursday: hostingCapacity > 0 }
+}
+
 // League night fixture slots. A venue can host one fixture per slot.
 export const FIXTURE_TIMESLOTS = ["17:00", "18:30"] as const
 export type FixtureTimeslot = (typeof FIXTURE_TIMESLOTS)[number]
