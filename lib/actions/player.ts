@@ -169,3 +169,40 @@ export async function leaveTeam(membershipId: number) {
   revalidatePath("/dashboard")
   return { success: "You left the team." }
 }
+
+/**
+ * Admin-only inline update of a player's Playtomic rating and League Index from
+ * the Player Management dashboard. Players cannot change these themselves.
+ */
+export async function adminUpdatePlayerRatings(input: {
+  playerId: number
+  playtomicRating: number | null
+  currentLi: number
+}) {
+  const me = await getCurrentUser()
+  if (me?.role !== "league_admin" && me?.role !== "super_admin") return { ok: false, error: "Not authorised" }
+
+  if (input.currentLi < 0 || input.currentLi > 7) return { ok: false, error: "League Index must be between 0 and 7." }
+  if (input.playtomicRating != null && (input.playtomicRating < 0 || input.playtomicRating > 7)) {
+    return { ok: false, error: "Playtomic rating must be between 0 and 7." }
+  }
+
+  const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  if (!existing) return { ok: false, error: "Player not found." }
+
+  await db
+    .update(players)
+    .set({
+      currentLi: input.currentLi,
+      highestLi: Math.max(existing.highestLi ?? 0, input.currentLi),
+      liDate: new Date(),
+      playtomicRating: input.playtomicRating,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, input.playerId))
+
+  revalidatePath("/admin/players")
+  revalidatePath("/dashboard")
+  revalidatePath("/marketplace")
+  return { ok: true }
+}

@@ -69,10 +69,17 @@ export function DashboardNav({
 
   const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
 
-  items.push({ href: "/dashboard/fixtures", label: "Fixtures", icon: ICONS.fixtures })
-
   if (isCaptainView) {
     items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
+  }
+
+  // Fixture Management sits just below Captain Hub.
+  items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
+
+  if (isAdminView) {
+    // League-admin only billing + player dashboards, placed just above Team Management.
+    items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
+    items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
   }
   if (isOrgView) {
     items.push({ href: "/dashboard/org", label: "Team Management", icon: ICONS.org })

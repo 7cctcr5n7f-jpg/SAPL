@@ -17,6 +17,8 @@ import {
   fixtureUnavailable,
   user,
   userMeta,
+  feeNotes,
+  regions,
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 
@@ -221,6 +223,10 @@ export type OutstandingFee = {
   teamName: string
   amount: number
   vatAmount: number
+  // Billing-management metadata (from ppl_fee_notes), merged in for admins.
+  note: string | null
+  lastReminderAt: string | null
+  reminderCount: number
 }
 
 /**
@@ -284,6 +290,9 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
       teamName: r.teamName,
       amount,
       vatAmount,
+      note: null,
+      lastReminderAt: null,
+      reminderCount: 0,
     })
   }
 
@@ -350,7 +359,23 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
       teamName: t.teamName,
       amount,
       vatAmount,
+      note: null,
+      lastReminderAt: null,
+      reminderCount: 0,
     })
+  }
+
+  // Merge billing-management metadata (admin notes + reminder tracking).
+  const noteRows = await db.select().from(feeNotes)
+  const noteMap = new Map<string, (typeof noteRows)[number]>()
+  for (const n of noteRows) noteMap.set(`${n.kind}-${n.teamId}-${n.playerId}`, n)
+  for (const f of result) {
+    const n = noteMap.get(`${f.kind}-${f.teamId}-${f.playerId}`)
+    if (n) {
+      f.note = n.note
+      f.lastReminderAt = n.lastReminderAt ? n.lastReminderAt.toISOString() : null
+      f.reminderCount = n.reminderCount
+    }
   }
 
   // Sort by team then payer for a readable chase-up list.
@@ -373,6 +398,63 @@ export async function getUnreadCount(userId: string) {
 }
 
 // Team / captain helpers ----------------------------------------------------
+
+export type ManagedPlayer = {
+  playerId: number
+  name: string
+  gender: "male" | "female"
+  currentLi: number
+  playtomicRating: number | null
+  playtomicUrl: string | null
+  teams: { teamId: number; teamName: string; divisionName: string | null }[]
+}
+
+/**
+ * Admin-only: every registered player with the team(s) they play for, their
+ * Playtomic rating, League Index and Playtomic profile link. Used by the
+ * Player Management dashboard for inline rating edits + filtering.
+ */
+export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
+  const rows = await db
+    .select({
+      playerId: players.id,
+      firstName: players.firstName,
+      lastName: players.lastName,
+      gender: players.gender,
+      currentLi: players.currentLi,
+      playtomicRating: players.playtomicRating,
+      playtomicUrl: players.playtomicUrl,
+      teamId: teams.id,
+      teamName: teams.name,
+      divisionName: divisions.name,
+    })
+    .from(players)
+    .leftJoin(teamMembers, and(eq(teamMembers.playerId, players.id), eq(teamMembers.status, "active")))
+    .leftJoin(teams, eq(teamMembers.teamId, teams.id))
+    .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .orderBy(players.firstName, players.lastName)
+
+  const byPlayer = new Map<number, ManagedPlayer>()
+  for (const r of rows) {
+    let p = byPlayer.get(r.playerId)
+    if (!p) {
+      p = {
+        playerId: r.playerId,
+        name: `${r.firstName} ${r.lastName}`.trim(),
+        gender: r.gender as "male" | "female",
+        currentLi: r.currentLi,
+        playtomicRating: r.playtomicRating,
+        playtomicUrl: r.playtomicUrl,
+        teams: [],
+      }
+      byPlayer.set(r.playerId, p)
+    }
+    if (r.teamId && !p.teams.some((t) => t.teamId === r.teamId)) {
+      p.teams.push({ teamId: r.teamId, teamName: r.teamName ?? "—", divisionName: r.divisionName ?? null })
+    }
+  }
+  return [...byPlayer.values()]
+}
 
 export async function getTeamsForCaptain(userId: string) {
   return db.select().from(teams).where(eq(teams.captainUserId, userId)).orderBy(teams.name)

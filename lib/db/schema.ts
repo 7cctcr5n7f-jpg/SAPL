@@ -673,3 +673,25 @@ export const auditLog = pgTable("ppl_audit_log", {
   detail: jsonb("detail"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
+
+// Billing management: admin notes + reminder tracking per outstanding-fee line
+// item. Outstanding fees are computed on the fly, so each row is keyed by the
+// line item's stable identity (kind + teamId + playerId).
+export const feeNotes = pgTable(
+  "ppl_fee_notes",
+  {
+    id: serial("id").primaryKey(),
+    kind: text("kind").notNull(), // player | team
+    teamId: integer("teamId").notNull(),
+    playerId: integer("playerId").notNull(), // negative for team-funded rows
+    note: text("note"),
+    lastReminderAt: timestamp("lastReminderAt"),
+    reminderCount: integer("reminderCount").notNull().default(0),
+    updatedByUserId: text("updatedByUserId"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex("ppl_fee_notes_key_idx").on(t.kind, t.teamId, t.playerId),
+  }),
+)
