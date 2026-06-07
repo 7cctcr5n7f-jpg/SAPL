@@ -1,5 +1,8 @@
 import { getCurrentUser } from "@/lib/session"
 import { getPlayerByUserId } from "@/lib/queries-dashboard"
+import { db } from "@/lib/db"
+import { userMeta } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { ProfileForm } from "@/components/dashboard/profile-form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,7 +24,7 @@ export default async function ProfilePage() {
   }
 
   const clubs = await getClubOptions()
-  const canEditRatings = me.role === "league_admin" || me.role === "super_admin"
+  const [meta] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
 
   return (
     <div>
@@ -33,7 +36,7 @@ export default async function ProfilePage() {
             <CardTitle className="text-base">Player Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProfileForm player={player} clubs={clubs} canEditRatings={canEditRatings} />
+            <ProfileForm player={player} clubs={clubs} email={me.email} phone={meta?.phone ?? null} />
           </CardContent>
         </Card>
       </div>

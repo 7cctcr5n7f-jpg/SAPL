@@ -19,6 +19,7 @@ import {
   userMeta,
   feeNotes,
   regions,
+  clubs,
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 
@@ -406,15 +407,68 @@ export type ManagedPlayer = {
   currentLi: number
   playtomicRating: number | null
   playtomicUrl: string | null
+  email: string | null
+  phone: string | null
   teams: { teamId: number; teamName: string; divisionName: string | null }[]
 }
 
+type ScopeUser = { id: string; role: string }
+
 /**
- * Admin-only: every registered player with the team(s) they play for, their
- * Playtomic rating, League Index and Playtomic profile link. Used by the
- * Player Management dashboard for inline rating edits + filtering.
+ * Returns the set of team ids a user is allowed to manage players for.
+ *  - league_admin / super_admin: null (no restriction — every team)
+ *  - captain: teams they captain
+ *  - org_admin (club admin): teams whose home venue is a club they own (directly
+ *    via clubs.ownerUserId or via an organisation they own)
  */
-export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
+async function getScopedTeamIds(me: ScopeUser): Promise<number[] | null> {
+  if (me.role === "league_admin" || me.role === "super_admin") return null
+
+  if (me.role === "captain") {
+    const rows = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, me.id))
+    return rows.map((r) => r.id)
+  }
+
+  if (me.role === "org_admin") {
+    // Clubs owned directly by this user, plus clubs under organisations they own.
+    const ownedOrgs = await db
+      .select({ id: organisations.id })
+      .from(organisations)
+      .where(eq(organisations.ownerUserId, me.id))
+    const orgIds = ownedOrgs.map((o) => o.id)
+
+    const clubRows = await db
+      .select({ id: clubs.id })
+      .from(clubs)
+      .where(orgIds.length ? or(eq(clubs.ownerUserId, me.id), inArray(clubs.organisationId, orgIds)) : eq(clubs.ownerUserId, me.id))
+    const clubIds = clubRows.map((c) => c.id)
+    if (clubIds.length === 0) return []
+
+    const teamRows = await db.select({ id: teams.id }).from(teams).where(inArray(teams.homeClubId, clubIds))
+    return teamRows.map((t) => t.id)
+  }
+
+  // Players and any other role can't manage anyone.
+  return []
+}
+
+/** Player ids a user may manage (used to authorise inline edits). */
+export async function getManageablePlayerIds(me: ScopeUser): Promise<Set<number>> {
+  const players = await getManagedPlayers(me)
+  return new Set(players.map((p) => p.playerId))
+}
+
+/**
+ * Players a user may manage, scoped by role. League/super admins see everyone;
+ * captains see members of their own teams; club admins see players whose team's
+ * home venue is one of their clubs. Includes contact details (email + phone),
+ * Playtomic rating, League Index and Playtomic profile link.
+ */
+export async function getManagedPlayers(me: ScopeUser): Promise<ManagedPlayer[]> {
+  const scopedTeamIds = await getScopedTeamIds(me)
+  // A non-admin with no teams in scope manages nobody.
+  if (scopedTeamIds && scopedTeamIds.length === 0) return []
+
   const rows = await db
     .select({
       playerId: players.id,
@@ -424,6 +478,7 @@ export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
       currentLi: players.currentLi,
       playtomicRating: players.playtomicRating,
       playtomicUrl: players.playtomicUrl,
+      userId: players.userId,
       teamId: teams.id,
       teamName: teams.name,
       divisionName: divisions.name,
@@ -434,7 +489,7 @@ export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .orderBy(players.firstName, players.lastName)
 
-  const byPlayer = new Map<number, ManagedPlayer>()
+  const byPlayer = new Map<number, ManagedPlayer & { userId: string }>()
   for (const r of rows) {
     let p = byPlayer.get(r.playerId)
     if (!p) {
@@ -445,6 +500,9 @@ export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
         currentLi: r.currentLi,
         playtomicRating: r.playtomicRating,
         playtomicUrl: r.playtomicUrl,
+        email: null,
+        phone: null,
+        userId: r.userId,
         teams: [],
       }
       byPlayer.set(r.playerId, p)
@@ -453,7 +511,34 @@ export async function getManagedPlayers(): Promise<ManagedPlayer[]> {
       p.teams.push({ teamId: r.teamId, teamName: r.teamName ?? "—", divisionName: r.divisionName ?? null })
     }
   }
-  return [...byPlayer.values()]
+
+  let list = [...byPlayer.values()]
+
+  // Restrict to the scoped teams for non-league admins. Such roles only ever see
+  // players who actually belong to a team within their scope.
+  if (scopedTeamIds) {
+    const allowed = new Set(scopedTeamIds)
+    list = list.filter((p) => p.teams.some((t) => allowed.has(t.teamId)))
+  }
+
+  // Attach contact details (email from auth user, phone from userMeta).
+  const userIds = [...new Set(list.map((p) => p.userId))]
+  if (userIds.length) {
+    const emailRows = await db.select({ id: user.id, email: user.email }).from(user).where(inArray(user.id, userIds))
+    const phoneRows = await db
+      .select({ userId: userMeta.userId, phone: userMeta.phone })
+      .from(userMeta)
+      .where(inArray(userMeta.userId, userIds))
+    const emailMap = new Map(emailRows.map((r) => [r.id, r.email]))
+    const phoneMap = new Map(phoneRows.map((r) => [r.userId, r.phone]))
+    for (const p of list) {
+      p.email = emailMap.get(p.userId) ?? null
+      p.phone = phoneMap.get(p.userId) ?? null
+    }
+  }
+
+  // Strip the internal userId before returning.
+  return list.map(({ userId: _userId, ...rest }) => rest)
 }
 
 export async function getTeamsForCaptain(userId: string) {

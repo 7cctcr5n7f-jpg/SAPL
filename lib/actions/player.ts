@@ -1,23 +1,27 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { players, teamMembers, teams, notifications, payments } from "@/lib/db/schema"
+import { players, teamMembers, teams, notifications, payments, user, userMeta } from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { splitVatInclusive } from "@/lib/constants"
 import { getPlayerFee } from "@/lib/queries"
+import { getManageablePlayerIds } from "@/lib/queries-dashboard"
 
 export async function updateProfile(_prev: unknown, formData: FormData) {
   const me = await getCurrentUser()
   if (!me?.playerId) return { error: "Not authorised" }
 
-  const canEditRatings = me.role === "league_admin" || me.role === "super_admin"
-
+  const firstName = String(formData.get("firstName") ?? "").trim()
+  const lastName = String(formData.get("lastName") ?? "").trim()
+  const phone = String(formData.get("phone") ?? "").trim()
   const bio = String(formData.get("bio") ?? "").slice(0, 500)
   const city = String(formData.get("city") ?? "")
   const playtomicUrl = String(formData.get("playtomicUrl") ?? "")
   const lookingForTeam = formData.get("lookingForTeam") === "on"
+
+  if (!firstName || !lastName) return { error: "First and last name are required." }
 
   // Preferred clubs: "anyClub" checkbox + repeated club id fields.
   const anyClub = formData.get("anyClub") === "on"
@@ -25,27 +29,11 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
     ? []
     : (formData.getAll("preferredClubIds") as string[]).map((v) => Number(v)).filter((n) => Number.isFinite(n))
 
-  const [existing] = await db.select().from(players).where(eq(players.id, me.playerId)).limit(1)
-
-  // Ratings (LI + Playtomic rating) are league-managed: only admins may change them.
-  const ratingUpdate: { currentLi?: number; highestLi?: number; liDate?: Date; playtomicRating?: number | null } = {}
-  if (canEditRatings) {
-    const currentLi = Number(formData.get("currentLi") ?? existing?.currentLi ?? 0)
-    if (currentLi < 0 || currentLi > 7) return { error: "League Index must be between 0 and 7." }
-    const rawRating = formData.get("playtomicRating")
-    const playtomicRating = rawRating === null || String(rawRating).trim() === "" ? null : Number(rawRating)
-    if (playtomicRating != null && (playtomicRating < 0 || playtomicRating > 7)) {
-      return { error: "Playtomic rating must be between 0 and 7." }
-    }
-    ratingUpdate.currentLi = currentLi
-    ratingUpdate.highestLi = Math.max(existing?.highestLi ?? 0, currentLi)
-    ratingUpdate.liDate = new Date()
-    ratingUpdate.playtomicRating = playtomicRating
-  }
-
   await db
     .update(players)
     .set({
+      firstName,
+      lastName,
       bio,
       city,
       playtomicUrl: playtomicUrl || null,
@@ -54,9 +42,19 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
-      ...ratingUpdate,
     })
     .where(eq(players.id, me.playerId))
+
+  // Keep the auth display name in sync with the player's name.
+  await db.update(user).set({ name: `${firstName} ${lastName}`, updatedAt: new Date() }).where(eq(user.id, me.id))
+
+  // Contact number lives on userMeta; upsert it.
+  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
+  if (meta) {
+    await db.update(userMeta).set({ phone: phone || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
+  } else {
+    await db.insert(userMeta).values({ userId: me.id, phone: phone || null })
+  }
 
   revalidatePath("/dashboard/profile")
   revalidatePath("/dashboard")
@@ -178,9 +176,11 @@ export async function adminUpdatePlayerRatings(input: {
   playerId: number
   playtomicRating: number | null
   currentLi: number
+  playtomicUrl?: string | null
 }) {
   const me = await getCurrentUser()
-  if (me?.role !== "league_admin" && me?.role !== "super_admin") return { ok: false, error: "Not authorised" }
+  const allowed = ["league_admin", "super_admin", "org_admin", "captain"]
+  if (!me || !allowed.includes(me.role)) return { ok: false, error: "Not authorised" }
 
   if (input.currentLi < 0 || input.currentLi > 7) return { ok: false, error: "League Index must be between 0 and 7." }
   if (input.playtomicRating != null && (input.playtomicRating < 0 || input.playtomicRating > 7)) {
@@ -190,6 +190,15 @@ export async function adminUpdatePlayerRatings(input: {
   const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
+  // Non-league admins (club admins, captains) may only edit players within their
+  // own scope. Verify the actor is allowed to manage this player.
+  if (me.role === "org_admin" || me.role === "captain") {
+    const scopedIds = await getManageablePlayerIds(me)
+    if (!scopedIds.has(input.playerId)) return { ok: false, error: "This player is not in your scope." }
+  }
+
+  const url = input.playtomicUrl === undefined ? undefined : input.playtomicUrl?.trim() || null
+
   await db
     .update(players)
     .set({
@@ -197,6 +206,7 @@ export async function adminUpdatePlayerRatings(input: {
       highestLi: Math.max(existing.highestLi ?? 0, input.currentLi),
       liDate: new Date(),
       playtomicRating: input.playtomicRating,
+      ...(url !== undefined ? { playtomicUrl: url } : {}),
       updatedAt: new Date(),
     })
     .where(eq(players.id, input.playerId))

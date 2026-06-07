@@ -52,56 +52,51 @@ export default async function DashboardOverview() {
     <div>
       <PageHeader title={`Welcome, ${me.name.split(" ")[0]}`} subtitle="Your league command centre." />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <Stat label="Playtomic Rating" value={player?.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <Stat label="LI" value={player ? player.currentLi.toFixed(2) : "—"} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <Stat label="Active Teams" value={activeTeams.length} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <Stat label="Fees Due" value={fmtZAR(outstanding)} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Ratings — league-managed values players can view here. */}
-      {player && (
-        <section className="mt-8 grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-1">
+      {player ? (
+        <section className="grid gap-6 lg:grid-cols-3">
+          {/* Player snapshot — single source of truth for ratings + status. */}
+          <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle className="text-base">My Ratings</CardTitle>
+              <CardTitle className="text-base">Player Snapshot</CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              <Stat
-                label="Playtomic Rating"
-                value={player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
-              />
-              <Stat label="LI" value={player.currentLi.toFixed(2)} />
-              <Stat label="Team TPR" value={player.currentTpr ? Math.round(player.currentTpr) : "—"} />
-              <Stat label="Status" value={player.lookingForTeam ? "Open" : "Closed"} />
+            <CardContent>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
+                <Stat
+                  label="Playtomic Rating"
+                  value={player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
+                />
+                <Stat label="League Index" value={player.currentLi.toFixed(2)} />
+                {activeTeams.length > 0 && (
+                  <Stat label="Team TPR" value={player.currentTpr ? Math.round(player.currentTpr) : "—"} />
+                )}
+                <Stat label="Active Teams" value={activeTeams.length} />
+                <Stat label="Fees Due" value={fmtZAR(outstanding)} />
+                <Stat
+                  label="Marketplace"
+                  value={player.lookingForTeam ? "Open" : "Closed"}
+                  sub={player.lookingForTeam ? "Listed for captains" : "Hidden from search"}
+                />
+              </div>
+              <p className="mt-6 text-xs text-muted-foreground">
+                Your Playtomic Rating and League Index are managed by the league. Update your Playtomic profile link from
+                {" "}
+                <Link href="/dashboard/profile" className="text-primary hover:underline">
+                  Update Profile
+                </Link>
+                .
+              </p>
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
+          {/* Eligible categories driven by gender + LI. */}
+          <Card className="lg:col-span-1">
             <CardHeader>
               <CardTitle className="text-base">Eligible Categories</CardTitle>
             </CardHeader>
             <CardContent>
               {eligible.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No eligible categories at LI {player.currentLi.toFixed(2)}. Your League Index is set by the league
-                  admin.
+                  No eligible categories at LI {player.currentLi.toFixed(2)}.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -113,12 +108,23 @@ export default async function DashboardOverview() {
                   ))}
                 </div>
               )}
-              <p className="mt-3 text-xs text-muted-foreground">
-                Ratings are managed by the league. ★ marks Feature Court categories.
-              </p>
+              <p className="mt-3 text-xs text-muted-foreground">★ marks Feature Court categories.</p>
             </CardContent>
           </Card>
         </section>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <Card>
+            <CardContent className="pt-6">
+              <Stat label="Active Teams" value={activeTeams.length} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <Stat label="Fees Due" value={fmtZAR(outstanding)} />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Fees — pay status per team. PayFast link will be wired in later. */}

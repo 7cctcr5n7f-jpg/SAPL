@@ -8,11 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
 type PlayerLike = {
+  firstName: string
+  lastName: string
   bio: string | null
   city: string | null
   playtomicUrl: string | null
-  currentLi: number
-  playtomicRating: number | null
   preferredClubIds: number[] | null
   anyClub: boolean
   lookingForTeam: boolean
@@ -23,12 +23,13 @@ type Club = { id: number; name: string }
 export function ProfileForm({
   player,
   clubs,
-  canEditRatings = false,
+  email,
+  phone,
 }: {
   player: PlayerLike
   clubs: Club[]
-  /** League admins may set ratings; players can only view them. */
-  canEditRatings?: boolean
+  email: string
+  phone: string | null
 }) {
   const [state, action, pending] = useActionState(updateProfile, null)
   const [anyClub, setAnyClub] = useState(player.anyClub)
@@ -40,51 +41,40 @@ export function ProfileForm({
 
   return (
     <form action={action} className="space-y-5">
-      {/* Ratings — only league admins can change these. For everyone else they
-          are read-only (the player just supplies their Playtomic link below). */}
+      {/* Personal details */}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="playtomicRating">Playtomic Rating</Label>
-          {canEditRatings ? (
-            <Input
-              id="playtomicRating"
-              name="playtomicRating"
-              type="number"
-              step="0.01"
-              min="0"
-              max="7"
-              defaultValue={player.playtomicRating ?? ""}
-              placeholder="e.g. 3.50"
-            />
-          ) : (
-            <>
-              <p className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm">
-                {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "Not set yet"}
-              </p>
-              <p className="text-xs text-muted-foreground">Set by the league from your Playtomic profile.</p>
-            </>
-          )}
+          <Label htmlFor="firstName">First name</Label>
+          <Input id="firstName" name="firstName" defaultValue={player.firstName} placeholder="First name" required />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="currentLi">League Index (LI)</Label>
-          {canEditRatings ? (
-            <Input
-              id="currentLi"
-              name="currentLi"
-              type="number"
-              step="0.01"
-              min="0"
-              max="7"
-              defaultValue={player.currentLi}
-            />
-          ) : (
-            <>
-              <p className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm">
-                {player.currentLi.toFixed(2)}
-              </p>
-              <p className="text-xs text-muted-foreground">Your league level, managed by the league.</p>
-            </>
-          )}
+          <Label htmlFor="lastName">Surname</Label>
+          <Input id="lastName" name="lastName" defaultValue={player.lastName} placeholder="Surname" required />
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            defaultValue={email}
+            disabled
+            className="bg-muted/40"
+          />
+          <p className="text-xs text-muted-foreground">Your sign-in email. Contact the league to change it.</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone">Contact number</Label>
+          <Input
+            id="phone"
+            name="phone"
+            type="tel"
+            defaultValue={phone ?? ""}
+            placeholder="e.g. 082 123 4567"
+          />
         </div>
       </div>
 

@@ -77,8 +77,12 @@ export function DashboardNav({
   items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
 
   if (isAdminView) {
-    // League-admin only billing + player dashboards, placed just above Team Management.
+    // League-admin only billing dashboard, placed just above Player Management.
     items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
+  }
+  // Player Management is visible to captains, club admins and league admins —
+  // each only sees the players within their own scope.
+  if (isCaptainView) {
     items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
   }
   if (isOrgView) {
