@@ -5,27 +5,31 @@ import {
   getPlayerMemberships,
   getPlayerPayments,
   getPlayerTeamFees,
-  getOutstandingFees,
   getUserNotifications,
 } from "@/lib/queries-dashboard"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TeamsPanel } from "@/components/dashboard/teams-panel"
 import { TeamFees } from "@/components/dashboard/team-fees"
-import { AdminOutstandingFees } from "@/components/dashboard/admin-outstanding-fees"
 import { Stat } from "@/components/brand/bits"
+import { Badge } from "@/components/ui/badge"
+import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
+import { CATEGORY_RULES } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
-  const isAdmin = me.role === "league_admin" || me.role === "super_admin"
   const player = me.playerId ? await getPlayerByUserId(me.id) : null
   const memberships = player ? await getPlayerMemberships(player.id) : []
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
-  const outstandingFees = isAdmin ? await getOutstandingFees() : []
   const notifications = await getUserNotifications(me.id, 5)
+
+  const eligibleNames = player
+    ? eligibleCategoriesForPlayer(player.gender as "male" | "female", player.currentLi)
+    : []
+  const eligible = CATEGORY_RULES.filter((c) => eligibleNames.includes(c.name))
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
@@ -71,6 +75,52 @@ export default async function DashboardOverview() {
         </Card>
       </div>
 
+      {/* Ratings — league-managed values players can view here. */}
+      {player && (
+        <section className="mt-8 grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle className="text-base">My Ratings</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4">
+              <Stat
+                label="Playtomic Rating"
+                value={player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
+              />
+              <Stat label="LI" value={player.currentLi.toFixed(2)} />
+              <Stat label="Team TPR" value={player.currentTpr ? Math.round(player.currentTpr) : "—"} />
+              <Stat label="Status" value={player.lookingForTeam ? "Open" : "Closed"} />
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">Eligible Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {eligible.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No eligible categories at LI {player.currentLi.toFixed(2)}. Your League Index is set by the league
+                  admin.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {eligible.map((c) => (
+                    <Badge key={c.name} variant="secondary" className="font-medium">
+                      {c.name}
+                      {c.isFeatureCourt ? " ★" : ""}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                Ratings are managed by the league. ★ marks Feature Court categories.
+              </p>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {/* Fees — pay status per team. PayFast link will be wired in later. */}
       {player && (
         <section className="mt-8">
@@ -92,14 +142,6 @@ export default async function DashboardOverview() {
         <section className="mt-8">
           <h2 className="heading mb-3 text-lg">My Teams</h2>
           <TeamsPanel entries={teamEntries} />
-        </section>
-      )}
-
-      {/* Admins: chase up outstanding player payments across the league. */}
-      {isAdmin && (
-        <section className="mt-8">
-          <h2 className="heading mb-3 text-lg">Outstanding Fees</h2>
-          <AdminOutstandingFees fees={outstandingFees} />
         </section>
       )}
 

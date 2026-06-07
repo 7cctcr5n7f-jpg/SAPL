@@ -246,10 +246,17 @@ function PlayerRow({ player, onSaved }: { player: ManagedPlayer; onSaved: () => 
         <div className="flex items-center justify-end gap-2">
           {ed.editing ? (
             <>
-              <Button type="button" size="sm" disabled={ed.pending} onClick={ed.save}>
+              <Button type="button" size="sm" aria-label="Save ratings" disabled={ed.pending} onClick={ed.save}>
                 {ed.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               </Button>
-              <Button type="button" size="sm" variant="outline" disabled={ed.pending} onClick={ed.cancel}>
+              <Button
+                type="button"
+                size="sm"
+                aria-label="Cancel editing"
+                variant="outline"
+                disabled={ed.pending}
+                onClick={ed.cancel}
+              >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </>
@@ -320,7 +327,14 @@ function PlayerCard({ player, onSaved }: { player: ManagedPlayer; onSaved: () =>
               {ed.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               <span className="ml-1.5">Save</span>
             </Button>
-            <Button type="button" size="sm" variant="outline" disabled={ed.pending} onClick={ed.cancel}>
+            <Button
+              type="button"
+              size="sm"
+              aria-label="Cancel editing"
+              variant="outline"
+              disabled={ed.pending}
+              onClick={ed.cancel}
+            >
               <X className="h-3.5 w-3.5" />
             </Button>
           </>
