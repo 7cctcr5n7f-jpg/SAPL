@@ -11,10 +11,11 @@ import {
 import { db } from "@/lib/db"
 import { organisations, players } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
-import { getClubsWithUsage } from "@/lib/queries-clubs"
+import { getClubsWithUsage, getPlayerOptions } from "@/lib/queries-clubs"
 import { getPlayerFee } from "@/lib/queries"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { OrgHub } from "@/components/org/org-hub"
+import { ClubsManager } from "@/components/admin/clubs-manager"
 
 export default async function OrgPage() {
   const user = await getCurrentUser()
@@ -124,6 +125,12 @@ export default async function OrgPage() {
 
   const playerFee = await getPlayerFee()
 
+  // Venue management for this club owner. Org admins manage only their own
+  // venues; league/super admins manage every venue. Players list powers the
+  // captain picker on each entered team.
+  const myVenues = isAdminWide ? clubUsage : clubUsage.filter((c) => c.organisationId === org.id)
+  const playerOptions = await getPlayerOptions()
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -135,6 +142,17 @@ export default async function OrgPage() {
         }
       />
       <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} />
+
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
+        <div className="mb-4">
+          <h2 className="heading text-lg">Venue &amp; Team Entry</h2>
+          <p className="text-sm text-muted-foreground">
+            Set your courts, choose which courts host your own teams or are open to public teams, and assign team
+            captains.
+          </p>
+        </div>
+        <ClubsManager clubs={myVenues} players={playerOptions} organisationId={org.id} />
+      </div>
     </div>
   )
 }

@@ -67,18 +67,18 @@ export async function reconcileClubTeams(clubId: number) {
     let toRemove = current - desired
     for (let i = existing.length - 1; i >= 0 && toRemove > 0; i--) {
       const t = existing[i]
-      const [member] = await db
-        .select({ id: teamMembers.id })
-        .from(teamMembers)
-        .where(and(eq(teamMembers.teamId, t.id), eq(teamMembers.status, "active")))
-        .limit(1)
       const [entry] = await db
         .select({ id: teamEntries.id })
         .from(teamEntries)
         .where(eq(teamEntries.teamId, t.id))
         .limit(1)
-      // Keep teams with real rosters or that have been placed.
-      if (member || entry || t.divisionId) continue
+      // Keep teams that have been placed into a division or have a season entry
+      // (real competition data). A captain/roster on an un-placed club team is
+      // part of club management, so deselecting "enter a team" removes the team
+      // and its captain assignment as the venue intends.
+      if (entry || t.divisionId) continue
+      // Clean up roster rows first so we never orphan team_members.
+      await db.delete(teamMembers).where(eq(teamMembers.teamId, t.id))
       await db.delete(teams).where(eq(teams.id, t.id))
       toRemove--
     }

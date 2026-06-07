@@ -1,6 +1,36 @@
 import { db } from "@/lib/db"
 import { clubs, organisations, teams, players } from "@/lib/db/schema"
-import { asc, eq, inArray } from "drizzle-orm"
+import { asc, eq, inArray, sql } from "drizzle-orm"
+
+export type PlayerOption = {
+  id: number
+  name: string
+  currentLi: number
+  lookingForTeam: boolean
+}
+
+/** Lightweight player list for captain pickers (only players with an account). */
+export async function getPlayerOptions(): Promise<PlayerOption[]> {
+  const rows = await db
+    .select({
+      id: players.id,
+      firstName: players.firstName,
+      lastName: players.lastName,
+      currentLi: players.currentLi,
+      lookingForTeam: players.lookingForTeam,
+      userId: players.userId,
+    })
+    .from(players)
+    .where(sql`${players.userId} is not null`)
+    .orderBy(asc(players.firstName), asc(players.lastName))
+    .limit(2000)
+  return rows.map((p) => ({
+    id: p.id,
+    name: `${p.firstName} ${p.lastName}`.trim(),
+    currentLi: p.currentLi ?? 0,
+    lookingForTeam: !!p.lookingForTeam,
+  }))
+}
 
 export type ClubTeamBlock = {
   teamId: number

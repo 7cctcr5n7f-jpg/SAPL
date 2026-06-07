@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Stat } from "@/components/brand/bits"
 import { ClubsManager } from "@/components/admin/clubs-manager"
-import { getClubsWithUsage } from "@/lib/queries-clubs"
+import { getClubsWithUsage, getPlayerOptions } from "@/lib/queries-clubs"
 
 export const metadata = { title: "Venue Management | SAPL" }
 
 export default async function AdminClubsPage() {
-  const clubs = await getClubsWithUsage()
+  const [clubs, players] = await Promise.all([getClubsWithUsage(), getPlayerOptions()])
 
   const totalCapacity = clubs.reduce((s, c) => s + c.hostingCapacity, 0)
   const totalUsed = clubs.reduce((s, c) => s + c.used, 0)
@@ -26,7 +26,7 @@ export default async function AdminClubsPage() {
         <Stat label="Thursday Hosts" value={thursdayHosts} />
       </div>
 
-      <ClubsManager clubs={clubs} />
+      <ClubsManager clubs={clubs} players={players} />
     </div>
   )
 }

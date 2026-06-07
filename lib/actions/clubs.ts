@@ -58,6 +58,9 @@ async function ensureUniqueSlug(base: string, ignoreId?: number) {
 
 type ClubInput = {
   id?: number
+  // For a NEW venue created from a club-owner dashboard, the organisation it
+  // belongs to. Ignored for existing venues and falls back to the default org.
+  organisationId?: number
   name: string
   description?: string
   address?: string
@@ -74,11 +77,14 @@ type ClubInput = {
 }
 
 export async function saveClub(input: ClubInput) {
-  // For an existing venue, scope the permission check to its current org owner.
+  // Scope the permission check to the venue's org: its current owner for an
+  // existing venue, or the requested owner org for a new one.
   let existingOrgId: number | undefined
   if (input.id) {
     const [existing] = await db.select({ organisationId: clubs.organisationId }).from(clubs).where(eq(clubs.id, input.id)).limit(1)
     existingOrgId = existing?.organisationId
+  } else if (input.organisationId) {
+    existingOrgId = input.organisationId
   }
   try {
     await requireClubManager(existingOrgId)
