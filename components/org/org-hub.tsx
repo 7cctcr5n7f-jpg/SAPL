@@ -17,7 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
-import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
+import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam, updateCaptainContact } from "@/lib/actions/org"
 import { createPlayerAccount } from "@/lib/actions/members"
 import { toast } from "sonner"
 import {
@@ -32,15 +32,25 @@ import {
   Copy,
   Check,
   Trash2,
-  Wallet,
   Building2,
   Lock,
+  Mail,
+  Phone,
+  CircleCheck,
+  CircleAlert,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+
+type Captain = {
+  playerId: number
+  name: string
+  email: string | null
+  phone: string | null
+}
 
 type Team = {
   id: number
@@ -56,7 +66,7 @@ type Team = {
   divisionName: string
   divisionId: number | null
   tpr: number
-  captainName: string | null
+  captain: Captain | null
   played: number
   won: number
   points: number
@@ -64,6 +74,9 @@ type Team = {
   clubPaysFees: boolean
   rosterCount: number
   paidCount: number
+  teamTotal: number
+  amountPaid: number
+  outstanding: number
   pairingCategories: PairingCategory[]
   pairingRoster: PairingPlayer[]
   pairingInvites: { id: number; email: string; category: string | null }[]
@@ -89,6 +102,19 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
 }
 function typeStyle(t: string) {
   return TYPE_STYLES[t] ?? { dot: "bg-muted-foreground", badge: "", bar: "bg-muted-foreground" }
+}
+
+// Traffic-light dot for a team's payment health.
+function PayDot({ state }: { state: "paid" | "partial" | "unpaid" }) {
+  const color =
+    state === "paid" ? "bg-emerald-500" : state === "partial" ? "bg-amber-500" : "bg-red-500"
+  const ring =
+    state === "paid"
+      ? "ring-emerald-500/20"
+      : state === "partial"
+        ? "ring-amber-500/20"
+        : "ring-red-500/20"
+  return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2", color, ring)} aria-hidden />
 }
 type FreeAgent = { playerId: number; name: string; li: number }
 type Venue = { id: number; name: string; remaining: number; hosts: boolean; available: boolean }
@@ -122,6 +148,7 @@ export function OrgHub({
   const [assignFor, setAssignFor] = useState<Team | null>(null)
   const [squadFor, setSquadFor] = useState<Team | null>(null)
   const [editFor, setEditFor] = useState<Team | null>(null)
+  const [captainFor, setCaptainFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
   const [search, setSearch] = useState("")
 
@@ -174,7 +201,7 @@ export function OrgHub({
   const filteredAgents = freeAgents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
 
   const totalPlayers = teams.reduce((s, t) => s + t.playerCount, 0)
-  const withCaptain = teams.filter((t) => t.captainName).length
+  const withCaptain = teams.filter((t) => t.captain).length
   const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
 
   return (
@@ -261,71 +288,137 @@ export function OrgHub({
             <p className="text-sm text-muted-foreground">No teams match the current filters.</p>
           )}
 
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          <div className="space-y-2">
             {visibleTeams.map((t) => {
               const ts = typeStyle(t.teamType)
-              // Only the 8 dedicated squad players carry a league fee — any extra
-              // subs play free. So a team-funded total is always 8 × the fee
-              // (R4000 at R500), regardless of how many players are on the roster.
-              const billablePlayers = TEAM_SQUAD_SIZE
-              const teamTotal = billablePlayers * playerFee
+              // Squads need at least the 8 dedicated players; subs beyond that are
+              // optional. Flag teams that are still short of the minimum.
+              const minPlayers = TEAM_SQUAD_SIZE
+              const squadComplete = t.playerCount >= minPlayers
+              // Payment health drives the indicator colour. Fully settled = green,
+              // part-paid = amber, nothing in yet = red.
+              const payState =
+                t.outstanding <= 0 ? "paid" : t.amountPaid > 0 ? "partial" : "unpaid"
+              const assigned = t.divisionId != null
               return (
-                <div key={t.id} className="flex items-stretch gap-0 bg-card hover:bg-secondary/30">
-                  <span className={cn("w-1 shrink-0", ts.bar)} aria-hidden />
-                  <div className="flex flex-1 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {t.homeClubLogoUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={t.homeClubLogoUrl || "/placeholder.svg"}
-                            alt={`${t.homeClubName ?? "Club"} logo`}
-                            className="h-5 w-5 shrink-0 rounded-sm object-contain"
-                          />
-                        ) : (
-                          // Fallback crest so every team shows a club marker even
-                          // when its venue has no uploaded logo.
+                <div
+                  key={t.id}
+                  className="flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/40 hover:shadow"
+                >
+                  <span className={cn("w-1.5 shrink-0", ts.bar)} aria-hidden />
+                  <div className="flex flex-1 flex-col gap-3 p-3.5 lg:flex-row lg:items-center lg:gap-4">
+                    {/* Identity */}
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {t.homeClubLogoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.homeClubLogoUrl || "/placeholder.svg"}
+                          alt={`${t.homeClubName ?? "Club"} logo`}
+                          className="mt-0.5 h-9 w-9 shrink-0 rounded-md border border-border object-contain"
+                        />
+                      ) : (
+                        <span
+                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground"
+                          aria-hidden
+                        >
+                          <Building2 className="h-4 w-4" />
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-semibold">{t.name}</span>
+                          {/* Assignment indicator light */}
                           <span
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground"
-                            aria-hidden
+                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            title={assigned ? `Assigned to ${t.divisionName}` : "Not yet assigned to a division"}
                           >
-                            <Building2 className="h-3.5 w-3.5" />
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full ring-2",
+                                assigned
+                                  ? "bg-emerald-500 ring-emerald-500/20"
+                                  : "bg-muted-foreground/40 ring-muted-foreground/10",
+                              )}
+                              aria-hidden
+                            />
+                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>
+                              {assigned ? t.divisionName : "Unassigned"}
+                            </span>
                           </span>
-                        )}
-                        <span className="font-semibold">{t.name}</span>
-                        <Badge variant="outline" className={cn("gap-1", ts.badge)}>
-                          <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
-                          {t.teamType}
-                        </Badge>
-                        <Badge variant={t.divisionId != null ? "outline" : "secondary"}>
-                          {t.divisionId != null ? t.divisionName : "Unassigned"}
-                        </Badge>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <Badge variant="outline" className={cn("gap-1 font-normal", ts.badge)}>
+                            <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
+                            {t.teamType}
+                          </Badge>
+                          <span className="inline-flex items-center gap-1" title="Average League Index">
+                            <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {t.homeClubName ? t.homeClubName : "No home club"}
+                            {t.saplRegion ? ` · ${t.saplRegion}` : ""}
+                          </span>
+                        </div>
                       </div>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
-                        </span>
-                        <span>
-                          {t.playerCount}/{t.maxPlayers} players
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {t.homeClubName ? `${t.homeClubName}` : "No home club"}
-                          {t.saplRegion ? ` · ${t.saplRegion}` : ""}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Wallet className="h-3 w-3" />
-                          {t.clubPaysFees
-                            ? `Team pays · ${billablePlayers} × ${fmtZAR(playerFee)} = ${fmtZAR(teamTotal)}`
-                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
-                        </span>
-                      </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      {t.captainName ? (
-                        <Badge className="gap-1">
-                          <Crown className="h-3 w-3" /> {t.captainName}
-                        </Badge>
+
+                    {/* Squad size + payments */}
+                    <div className="flex shrink-0 flex-wrap items-center gap-4 lg:gap-5">
+                      {/* Players: min 8 required */}
+                      <div className="min-w-[88px]">
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className={cn(!squadComplete && "text-amber-600 dark:text-amber-400")}>
+                            {t.playerCount}/{minPlayers}
+                          </span>
+                          {squadComplete ? (
+                            <CircleCheck className="h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          ) : (
+                            <CircleAlert className="h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {squadComplete ? "min squad met" : `${minPlayers - t.playerCount} more needed`}
+                        </p>
+                      </div>
+
+                      {/* Payment indicator + outstanding amount */}
+                      <button
+                        type="button"
+                        onClick={() => setSquadFor(t)}
+                        className="min-w-[150px] rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left transition hover:border-primary/40"
+                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
+                      >
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <PayDot state={payState} />
+                          {t.outstanding <= 0 ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">Paid up</span>
+                          ) : (
+                            <span>
+                              {fmtZAR(t.outstanding)} <span className="font-normal text-muted-foreground">due</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {t.clubPaysFees
+                            ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
+                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
+                        </p>
+                      </button>
+                    </div>
+
+                    {/* Captain + actions */}
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
+                      {t.captain ? (
+                        <button
+                          type="button"
+                          onClick={() => setCaptainFor(t)}
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
+                          title="View / edit captain"
+                        >
+                          <Crown className="h-3 w-3" /> {t.captain.name}
+                        </button>
                       ) : (
                         <Badge variant="destructive">No captain</Badge>
                       )}
@@ -336,7 +429,7 @@ export function OrgHub({
                         <Users2 className="mr-1 h-4 w-4" /> Squad
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setAssignFor(t)}>
-                        {t.captainName ? "Captain" : "Add captain"}
+                        {t.captain ? "Reassign" : "Add captain"}
                       </Button>
                       <Button
                         size="sm"

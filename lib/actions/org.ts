@@ -194,8 +194,50 @@ export async function assignCaptain(formData: FormData) {
   return { ok: true }
 }
 
-export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+/**
+ * Update a captain's display name and contact number from the team admin row.
+ * The captain's login email is their identity and stays read-only here. Scoped
+ * to the team's organisation owner (or league/super admins).
+ */
+export async function updateCaptainContact(input: {
+  teamId: number
+  playerId: number
+  firstName: string
+  lastName: string
+  phone: string | null
+}) {
+  const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  if (!team?.organisationId) return { ok: false, error: "Team not found" }
+  try {
+    await requireOrgOwner(team.organisationId)
+  } catch {
+    return { ok: false, error: "You cannot manage this team." }
+  }
+
+  const firstName = input.firstName.trim()
+  const lastName = input.lastName.trim()
+  if (!firstName || !lastName) return { ok: false, error: "First and last name are required." }
+
+  const [player] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  if (!player?.userId) return { ok: false, error: "Captain not found." }
+
+  await db
+    .update(players)
+    .set({ firstName, lastName, updatedAt: new Date() })
+    .where(eq(players.id, input.playerId))
+
+  const phone = input.phone?.trim() || null
+  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, player.userId)).limit(1)
+  if (meta) {
+    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, player.userId))
+  } else {
+    await db.insert(userMeta).values({ userId: player.userId, phone })
+  }
+
+  revalidatePath("/dashboard/org")
+  revalidatePath("/admin/placement")
+  return { ok: true }
+}  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { error: "Team not found" }
   try {
     await requireOrgOwner(team.organisationId)
