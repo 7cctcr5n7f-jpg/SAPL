@@ -10,6 +10,7 @@ import {
   Trash2,
   ExternalLink,
   Check,
+  Clock,
   UserPlus,
   Crown,
 } from "lucide-react"
@@ -33,7 +34,6 @@ import {
   normaliseCourtSlots,
   normaliseSlotTimeslots,
   deriveSlotCounts,
-  summariseHostTimeslots,
   canChooseTimeslot,
   SLOT_TIMESLOT_OPTIONS,
   type CourtSlotMode,
@@ -309,57 +309,55 @@ export function ClubsManager({
                   {form.courtSlots.map((mode, i) => {
                     const hosting = mode === "team" || mode === "public"
                     return (
-                      <div key={i} className="rounded-md border border-border bg-card/50 p-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">Slot {i + 1}</span>
-                          <div className="flex flex-1 gap-1">
-                            {(["team", "public", "none"] as CourtSlotMode[]).map((m) => (
-                              <button
-                                key={m}
-                                type="button"
-                                onClick={() => setSlot(i, m)}
-                                className={cn(
-                                  "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
-                                  mode === m
-                                    ? SLOT_META[m].className
-                                    : "border-border bg-card text-muted-foreground hover:text-foreground",
-                                )}
-                              >
-                                {SLOT_META[m].short}
-                              </button>
-                            ))}
-                          </div>
+                      <div key={i} className="flex items-center gap-2 rounded-md border border-border bg-card/50 p-2">
+                        <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">Slot {i + 1}</span>
+                        <div className="flex flex-1 gap-1">
+                          {(["team", "public", "none"] as CourtSlotMode[]).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSlot(i, m)}
+                              className={cn(
+                                "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
+                                mode === m
+                                  ? SLOT_META[m].className
+                                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {SLOT_META[m].short}
+                            </button>
+                          ))}
                         </div>
-                        {hosting ? (
-                          <div className="mt-2 flex items-center gap-2 pl-12">
-                            <span className="shrink-0 text-[11px] uppercase tracking-wider text-muted-foreground">
-                              Hosts at
-                            </span>
-                            {canChoose ? (
-                              <div className="flex flex-1 gap-1">
-                                {SLOT_TIMESLOT_OPTIONS.map((opt) => (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => setSlotTime(i, opt.value)}
-                                    className={cn(
-                                      "flex-1 rounded-md border px-2 py-1 text-xs font-medium transition",
-                                      (form.slotTimeslots[i] || "both") === opt.value
-                                        ? "border-primary bg-primary text-primary-foreground"
-                                        : "border-border bg-card text-muted-foreground hover:text-foreground",
-                                    )}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
-                              </div>
+                        {/* Hosting time: dropdown on the right of the slot row */}
+                        <div className="flex w-28 shrink-0 justify-end">
+                          {hosting ? (
+                            canChoose ? (
+                              <Select
+                                value={form.slotTimeslots[i] || "both"}
+                                onValueChange={(v) => setSlotTime(i, v as SlotTimeslot)}
+                              >
+                                <SelectTrigger className="h-8 w-full" aria-label={`Hosting time for slot ${i + 1}`}>
+                                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SLOT_TIMESLOT_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             ) : (
-                              <span className="rounded-md border border-border bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground">
-                                17:00 &amp; 18:30 (required)
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1.5 text-[11px] font-medium text-muted-foreground"
+                                title="With fewer than 4 courts a fixture must split across both times"
+                              >
+                                <Clock className="h-3 w-3" /> Both
                               </span>
-                            )}
-                          </div>
-                        ) : null}
+                            )
+                          ) : null}
+                        </div>
                       </div>
                     )
                   })}
@@ -634,19 +632,10 @@ function FilterChip({
   )
 }
 
-function CapacityStat({ label, value, className }: { label: string; value: number; className?: string }) {
+function CapacityStat({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
     <div className="text-right">
       <p className={cn("text-sm font-semibold tabular-nums", className)}>{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-    </div>
-  )
-}
-
-function TextStat({ label, value, className }: { label: string; value: string; className?: string }) {
-  return (
-    <div className="text-right">
-      <p className={cn("text-sm font-semibold", className)}>{value}</p>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
     </div>
   )
@@ -672,6 +661,8 @@ function ClubRowItem({
   onDelete: () => void
   deleting: boolean
 }) {
+  // Captains assigned across the venue's own entered teams.
+  const captainsAssigned = club.clubTeams.filter((t) => t.captainUserId).length
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-secondary/30">
       {/* Logo */}
@@ -715,11 +706,18 @@ function ClubRowItem({
         </div>
       </div>
 
-      {/* Hosting summary: Teams · Hosting time · Remaining (public slots open) */}
+      {/* Hosting summary: Courts · Teams · Captains · Remaining (public slots open) */}
       {club.hosts ? (
         <div className="hidden shrink-0 items-center gap-4 sm:flex">
+          <CapacityStat label="Courts" value={club.courts} />
           <CapacityStat label="Teams" value={club.teamsEntering} />
-          <TextStat label="Hosting time" value={summariseHostTimeslots(club.hostTimeslots)} />
+          {club.teamsEntering > 0 ? (
+            <CapacityStat
+              label="Captains"
+              value={`${captainsAssigned}/${club.teamsEntering}`}
+              className={captainsAssigned < club.teamsEntering ? "text-amber-600" : "text-emerald-600"}
+            />
+          ) : null}
           <CapacityStat
             label="Remaining"
             value={club.publicRemaining}
@@ -727,11 +725,14 @@ function ClubRowItem({
           />
         </div>
       ) : (
-        <div className="hidden shrink-0 text-right sm:block">
-          <p className="text-sm font-semibold text-muted-foreground" title="Does not host on Thursdays">
-            —
-          </p>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">hosting</p>
+        <div className="hidden shrink-0 items-center gap-4 sm:flex">
+          <CapacityStat label="Courts" value={club.courts} />
+          <div className="text-right">
+            <p className="text-sm font-semibold text-muted-foreground" title="Does not host on Thursdays">
+              —
+            </p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">hosting</p>
+          </div>
         </div>
       )}
 
