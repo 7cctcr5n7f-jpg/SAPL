@@ -37,7 +37,7 @@ export function SiteHeader({
           <div className="relative flex flex-col justify-center leading-none">
             <Logo />
             {mainSponsorLabel ? (
-              <span className="absolute inset-x-0 top-[3.6rem] pl-1 text-center text-[11px] font-semibold tracking-wide text-muted-foreground md:top-[4.1rem]">
+              <span className="absolute inset-x-0 top-[3.6rem] pl-6 text-center text-[11px] font-semibold tracking-wide text-muted-foreground md:top-[4.1rem]">
                 {mainSponsorLabel}
               </span>
             ) : null}
