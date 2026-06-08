@@ -96,12 +96,12 @@ export function MobileTabBar({
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             >
-              <Icon className="h-5 w-5" />
-              <span className="max-w-full truncate px-0.5">{item.label}</span>
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="w-full truncate px-0.5 text-center">{item.label}</span>
             </Link>
           )
         })}
@@ -110,13 +110,13 @@ export function MobileTabBar({
           <SheetTrigger asChild>
             <button
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
                 overflow.some((i) => isActive(i.href)) ? "text-primary" : "text-muted-foreground",
               )}
               aria-label="More navigation"
             >
-              <MoreHorizontal className="h-5 w-5" />
-              <span>More</span>
+              <MoreHorizontal className="h-5 w-5 shrink-0" />
+              <span className="w-full truncate px-0.5 text-center">More</span>
             </button>
           </SheetTrigger>
           <SheetContent side="bottom" className="max-h-[80dvh] overflow-y-auto rounded-t-xl">
