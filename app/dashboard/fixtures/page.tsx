@@ -1,14 +1,13 @@
-import { redirect } from "next/navigation"
-import { getCurrentUser } from "@/lib/session"
 import { getDashboardFixtures } from "@/lib/queries-fixtures"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { FixturesDashboard } from "@/components/fixtures/fixtures-dashboard"
+import { requirePermissionPage } from "@/lib/access"
 
 export const metadata = { title: "Fixtures | SAPL" }
 
 export default async function DashboardFixturesPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect("/sign-in")
+  const access = await requirePermissionPage("fixture_management")
+  const user = access.user
 
   const data = await getDashboardFixtures(user)
 

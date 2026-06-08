@@ -11,12 +11,13 @@ import {
   fixtureUnavailable,
   organisations,
 } from "@/lib/db/schema"
-import { getCurrentUser } from "@/lib/session"
+import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { applyFixtureResult } from "@/lib/engine/apply-result"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
+import { getAccessContext } from "@/lib/access"
 
 async function getFixtureForUser(userId: string, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
@@ -111,24 +112,17 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   return { success: wasCompleted ? "Result updated." : "Result recorded. Standings updated." }
 }
 
-/** Can this user manage the given team's lineup (captain, its org admin, or league admin)? */
+/** Can this user manage the given team's lineup (captain, owner, club/team manager, or league admin)? */
 async function canManageTeam(
-  user: { id: string; role: string; isSuperAdmin: boolean },
+  user: CurrentUser,
   teamId: number,
 ): Promise<boolean> {
-  if (user.isSuperAdmin || user.role === "league_admin") return true
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (!team) return false
-  if (team.captainUserId === user.id) return true
-  if (user.role === "org_admin" && team.organisationId) {
-    const [org] = await db
-      .select()
-      .from(organisations)
-      .where(and(eq(organisations.id, team.organisationId), eq(organisations.ownerUserId, user.id)))
-      .limit(1)
-    if (org) return true
-  }
-  return false
+  const access = await getAccessContext(user)
+  // captain_hub or team_management permission plus the team being in scope
+  // (owner email / captaincy / manual assignment / club-homed) grants access.
+  if (access.isLeagueAdmin) return true
+  if (!access.can("captain_hub") && !access.can("team_management")) return false
+  return access.canManageTeam(teamId)
 }
 
 /**

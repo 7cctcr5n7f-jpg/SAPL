@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 import { splitVatInclusive } from "@/lib/constants"
 import { getPlayerFee } from "@/lib/queries"
 import { getManageablePlayerIds } from "@/lib/queries-dashboard"
+import { getAccessContext } from "@/lib/access"
 
 export async function updateProfile(_prev: unknown, formData: FormData) {
   const me = await getCurrentUser()
@@ -190,10 +191,12 @@ export async function adminUpdatePlayerRatings(input: {
   const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
-  // Non-league admins (club admins, captains) may only edit players within their
-  // own scope. Verify the actor is allowed to manage this player.
-  if (me.role === "org_admin" || me.role === "captain") {
-    const scopedIds = await getManageablePlayerIds(me)
+  // Non-league admins may only edit players within their own scope (assigned
+  // teams + teams homed at assigned clubs). Verify the actor is allowed here.
+  const access = await getAccessContext(me)
+  if (!access.can("player_management")) return { ok: false, error: "Not authorised" }
+  if (!access.isLeagueAdmin) {
+    const scopedIds = await getManageablePlayerIds(access)
     if (!scopedIds.has(input.playerId)) return { ok: false, error: "This player is not in your scope." }
   }
 

@@ -1,8 +1,4 @@
-import { redirect } from "next/navigation"
-import { getCurrentUser } from "@/lib/session"
 import {
-  getPlayerByUserId,
-  getTeamsForCaptain,
   getTeamRoster,
   getTeamFixtures,
   getFreeAgents,
@@ -14,18 +10,24 @@ import {
 import { getPlayerFee } from "@/lib/queries"
 import { db } from "@/lib/db"
 import { divisions, teams } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { CaptainHub, type CaptainTeam } from "@/components/captain/captain-hub"
+import { requirePermissionPage } from "@/lib/access"
 
 export default async function CaptainPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect("/sign-in")
+  const access = await requirePermissionPage("captain_hub")
+  const user = access.user
 
-  let captainTeams = await getTeamsForCaptain(user.id)
+  // The captain hub shows every team the user captains OR owns (by owner email),
+  // resolved through the access context's team assignments.
+  let captainTeams =
+    access.teamIds.length > 0
+      ? await db.select().from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
+      : []
 
   // Super admins previewing the captain experience see sample teams.
-  const previewing = user.isSuperAdmin && captainTeams.length === 0
+  const previewing = access.isLeagueAdmin && captainTeams.length === 0
   if (previewing) {
     captainTeams = await db.select().from(teams).orderBy(teams.name).limit(2)
   }

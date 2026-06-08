@@ -1,9 +1,10 @@
 import { db } from "@/lib/db"
 import { fixtures, teams, divisions, clubs, teamMembers, organisations, regions } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
 import type { CurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 
 export type DashboardFixture = {
   id: number
@@ -100,9 +101,9 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
   if (!season) return { seasonName: null, scope: "none", canManageVenue: false, fixtures: [], clubs: [] }
 
   const rows = await baseFixtures(season.id)
-  const isAdmin = user.role === "league_admin" || user.role === "super_admin"
+  const access = await getAccessContext(user)
 
-  if (isAdmin) {
+  if (access.isLeagueAdmin) {
     const hostClubs = await db
       .select({ id: clubs.id, name: clubs.name })
       .from(clubs)
@@ -116,13 +117,17 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     }
   }
 
-  // Club admin: the user owns an organisation (with clubs + teams).
-  const [org] = await db.select().from(organisations).where(eq(organisations.ownerUserId, user.id)).limit(1)
-  if (org) {
-    const orgClubs = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.organisationId, org.id))
-    const orgTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.organisationId, org.id))
-    const clubIds = new Set(orgClubs.map((c) => c.id))
-    const teamIds = new Set(orgTeams.map((t) => t.id))
+  // Club manager: the user has assigned clubs. They see fixtures hosted at those
+  // clubs and fixtures involving teams homed at those clubs, and may edit booking
+  // links for fixtures hosted at their own clubs.
+  if (access.can("club_management") && access.clubIds.length > 0) {
+    const clubIds = new Set(access.clubIds)
+    // Teams homed at the assigned clubs (so "their" teams include club teams).
+    const homedTeams = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(inArray(teams.homeClubId, access.clubIds))
+    const teamIds = new Set<number>([...access.teamIds, ...homedTeams.map((t) => t.id)])
     const visible = rows.filter(
       (f) =>
         (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
@@ -144,10 +149,10 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     }
   }
 
-  // Captain / player: only fixtures for teams they belong to.
-  const myTeamIds = new Set<number>()
-  const captainTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, user.id))
-  captainTeams.forEach((t) => myTeamIds.add(t.id))
+  // Team owner / captain / player: only fixtures for teams they own, captain or
+  // belong to. Owner/captain/manual assignments come from the access context;
+  // roster memberships are added on top for players.
+  const myTeamIds = new Set<number>(access.teamIds)
   if (user.playerId) {
     const memberships = await db
       .select({ teamId: teamMembers.teamId })

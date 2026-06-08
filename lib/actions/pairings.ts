@@ -28,17 +28,11 @@ import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
 async function canManageTeam(me: CurrentUser, teamId: number) {
   const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return null
-  if (me.isSuperAdmin || me.role === "league_admin") return team
-  if (team.captainUserId === me.id) return team
-  if (me.role === "org_admin") {
-    const [org] = await db
-      .select()
-      .from(organisations)
-      .where(eq(organisations.id, team.organisationId))
-      .limit(1)
-    if (org?.ownerUserId === me.id) return team
-  }
-  return null
+  const access = await getAccessContext(me)
+  if (access.isLeagueAdmin) return team
+  if (!access.can("captain_hub") && !access.can("team_management")) return null
+  // Owner email / captaincy / manual assignment / club-homed teams are in scope.
+  return access.canManageTeam(teamId) ? team : null
 }
 
 // Assign a roster player to a specific pairing slot (or clear it with playerId=null).

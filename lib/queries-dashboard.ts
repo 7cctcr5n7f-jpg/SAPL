@@ -22,6 +22,7 @@ import {
   clubs,
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
+import type { AccessContext } from "@/lib/access"
 
 /**
  * Players a captain has marked unavailable, keyed by fixtureId.
@@ -438,60 +439,44 @@ export type ManagedPlayer = {
   teams: { teamId: number; teamName: string; divisionName: string | null }[]
 }
 
-type ScopeUser = { id: string; role: string }
-
 /**
- * Returns the set of team ids a user is allowed to manage players for.
- *  - league_admin / super_admin: null (no restriction — every team)
- *  - captain: teams they captain
- *  - org_admin (club admin): teams whose home venue is a club they own (directly
- *    via clubs.ownerUserId or via an organisation they own)
+ * Returns the set of team ids a user is allowed to manage players for, derived
+ * from their resolved access context.
+ *  - league admins (league_management): null (no restriction — every team)
+ *  - everyone else: their assigned teams (owner email / captaincy / manual)
+ *    UNION every team homed at one of their assigned clubs.
  */
-async function getScopedTeamIds(me: ScopeUser): Promise<number[] | null> {
-  if (me.role === "league_admin" || me.role === "super_admin") return null
+async function getScopedTeamIds(access: AccessContext): Promise<number[] | null> {
+  if (access.isLeagueAdmin) return null
 
-  if (me.role === "captain") {
-    const rows = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, me.id))
-    return rows.map((r) => r.id)
+  const ids = new Set<number>(access.teamIds)
+
+  // Teams homed at an assigned club are also in scope for club managers.
+  if (access.clubIds.length) {
+    const clubTeamRows = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(inArray(teams.homeClubId, access.clubIds))
+    for (const r of clubTeamRows) ids.add(r.id)
   }
 
-  if (me.role === "org_admin") {
-    // Clubs owned directly by this user, plus clubs under organisations they own.
-    const ownedOrgs = await db
-      .select({ id: organisations.id })
-      .from(organisations)
-      .where(eq(organisations.ownerUserId, me.id))
-    const orgIds = ownedOrgs.map((o) => o.id)
-
-    const clubRows = await db
-      .select({ id: clubs.id })
-      .from(clubs)
-      .where(orgIds.length ? or(eq(clubs.ownerUserId, me.id), inArray(clubs.organisationId, orgIds)) : eq(clubs.ownerUserId, me.id))
-    const clubIds = clubRows.map((c) => c.id)
-    if (clubIds.length === 0) return []
-
-    const teamRows = await db.select({ id: teams.id }).from(teams).where(inArray(teams.homeClubId, clubIds))
-    return teamRows.map((t) => t.id)
-  }
-
-  // Players and any other role can't manage anyone.
-  return []
+  return [...ids]
 }
 
 /** Player ids a user may manage (used to authorise inline edits). */
-export async function getManageablePlayerIds(me: ScopeUser): Promise<Set<number>> {
-  const players = await getManagedPlayers(me)
+export async function getManageablePlayerIds(access: AccessContext): Promise<Set<number>> {
+  const players = await getManagedPlayers(access)
   return new Set(players.map((p) => p.playerId))
 }
 
 /**
- * Players a user may manage, scoped by role. League/super admins see everyone;
- * captains see members of their own teams; club admins see players whose team's
- * home venue is one of their clubs. Includes contact details (email + phone),
- * Playtomic rating, League Index and Playtomic profile link.
+ * Players a user may manage, scoped by their access context. League admins see
+ * everyone; everyone else sees players who belong to a team within their scope
+ * (assigned teams + teams homed at assigned clubs). Includes contact details
+ * (email + phone), Playtomic rating, League Index and Playtomic profile link.
  */
-export async function getManagedPlayers(me: ScopeUser): Promise<ManagedPlayer[]> {
-  const scopedTeamIds = await getScopedTeamIds(me)
+export async function getManagedPlayers(access: AccessContext): Promise<ManagedPlayer[]> {
+  const scopedTeamIds = await getScopedTeamIds(access)
   // A non-admin with no teams in scope manages nobody.
   if (scopedTeamIds && scopedTeamIds.length === 0) return []
 
