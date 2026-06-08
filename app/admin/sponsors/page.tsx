@@ -4,18 +4,25 @@ import { asc } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { SponsorManager } from "@/components/admin/sponsor-manager"
 import { requirePermissionPage } from "@/lib/access"
+import { getPrizePool } from "@/lib/queries"
 
 export const dynamic = "force-dynamic"
 
 export default async function AdminSponsorsPage() {
   await requirePermissionPage("league_management")
-  const rows = await db.select().from(sponsors).orderBy(asc(sponsors.level))
+  const [rows, prizePool] = await Promise.all([
+    db.select().from(sponsors).orderBy(asc(sponsors.level)),
+    getPrizePool(),
+  ])
   const data = rows.map((s) => ({
     id: s.id,
     name: s.name,
     level: s.level,
     website: s.website,
     description: s.description,
+    tagline: s.tagline,
+    logoUrl: s.logoUrl,
+    mainSponsor: s.mainSponsor,
     active: s.active,
   }))
 
@@ -26,7 +33,7 @@ export default async function AdminSponsorsPage() {
         subtitle="Manage league sponsors shown on the public site. Sponsors are managed centrally by the league office."
       />
       <div className="max-w-3xl">
-        <SponsorManager sponsors={data} />
+        <SponsorManager sponsors={data} prizePool={{ amount: prizePool.amount, label: prizePool.label }} />
       </div>
     </div>
   )

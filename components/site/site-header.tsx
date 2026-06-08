@@ -20,7 +20,13 @@ const NAV = [
 
 type HeaderUser = { name: string; email: string; role: string }
 
-export function SiteHeader({ user }: { user?: HeaderUser | null }) {
+export function SiteHeader({
+  user,
+  mainSponsorLabel,
+}: {
+  user?: HeaderUser | null
+  mainSponsorLabel?: string | null
+}) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const authed = !!user
@@ -28,7 +34,14 @@ export function SiteHeader({ user }: { user?: HeaderUser | null }) {
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-8">
-          <Logo />
+          <div className="flex flex-col">
+            <Logo />
+            {mainSponsorLabel ? (
+              <span className="-mt-1 pl-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                {mainSponsorLabel}
+              </span>
+            ) : null}
+          </div>
           <nav className="hidden items-center gap-6 lg:flex">
             {NAV.map((item) => (
               <Link

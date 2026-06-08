@@ -9,6 +9,7 @@ import {
   fixtures,
   players,
   sponsors,
+  settings,
   tprHistory,
   teamMembers,
   categories,
@@ -285,6 +286,23 @@ export async function getTeamDetail(teamId: number) {
 
 export async function getSponsors() {
   return db.select().from(sponsors).where(eq(sponsors.active, true)).orderBy(asc(sponsors.tier))
+}
+
+export async function getMainSponsor() {
+  const rows = await db
+    .select()
+    .from(sponsors)
+    .where(and(eq(sponsors.active, true), eq(sponsors.mainSponsor, true)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+export async function getPrizePool() {
+  const rows = await db.select().from(settings).where(sql`${settings.key} in ('prize_pool','prize_pool_label')`)
+  const map = new Map(rows.map((r) => [r.key, r.value]))
+  const amount = (map.get("prize_pool") ?? "").trim()
+  const label = (map.get("prize_pool_label") ?? "Total Prize Pool").trim() || "Total Prize Pool"
+  return { amount, label, hasAmount: amount.length > 0 }
 }
 
 export async function getFreeAgents() {

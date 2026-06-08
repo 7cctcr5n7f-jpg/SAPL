@@ -564,6 +564,8 @@ export const sponsors = pgTable(
     website: text("website"),
     description: text("description"),
     level: text("level"), // Title | Platinum | Gold | Silver | Partner
+    tagline: text("tagline"), // short line shown under the SAPL logo, e.g. "Powered by ..."
+    mainSponsor: boolean("mainSponsor").notNull().default(false), // headline / title sponsor
     contractStart: timestamp("contractStart"),
     contractEnd: timestamp("contractEnd"),
     active: boolean("active").notNull().default(true),
@@ -573,6 +575,13 @@ export const sponsors = pgTable(
     tierIdx: index("ppl_sponsors_tier_idx").on(t.tier),
   }),
 )
+
+// Simple key/value store for league-wide settings (prize pool, etc.)
+export const settings = pgTable("ppl_settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
 
 // Payments / invoices
 export const payments = pgTable(
