@@ -44,6 +44,8 @@ export default async function DashboardOverview() {
     teamName: m.team.name,
     orgName: m.org?.name ?? "—",
     divisionName: m.division?.name ?? "Unassigned",
+    seasonName: m.season?.name ?? null,
+    seasonIsCurrent: m.season?.isCurrent ?? false,
     tpr: m.team.tpr,
     role: m.membership.role,
   }))

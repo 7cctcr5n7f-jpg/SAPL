@@ -15,6 +15,8 @@ type Entry = {
   teamName: string
   orgName: string
   divisionName: string
+  seasonName: string | null
+  seasonIsCurrent: boolean
   tpr: number
   role: string
 }
@@ -102,18 +104,35 @@ export function TeamsPanel({ entries }: { entries: Entry[] }) {
                       <p className="text-xs text-muted-foreground">
                         {e.orgName} · {e.divisionName} · TPR {Math.round(e.tpr)}
                       </p>
+                      {e.seasonName && (
+                        <p className="mt-1 text-xs">
+                          <span className="text-muted-foreground">Your team for </span>
+                          <span className="font-medium text-foreground">{e.seasonName}</span>
+                          {e.seasonIsCurrent && (
+                            <Badge variant="secondary" className="ml-2 text-[10px]">
+                              Current season
+                            </Badge>
+                          )}
+                        </p>
+                      )}
                     </div>
                     {e.role === "captain" && <Badge>Captain</Badge>}
                   </div>
                   {e.role !== "captain" && (
                     <Button size="sm" variant="ghost" disabled={pending} onClick={() => leave(e.membershipId)}>
-                      Leave
+                      Leave team
                     </Button>
                   )}
                 </CardContent>
               </Card>
             ))}
           </div>
+        )}
+        {active.some((e) => e.role !== "captain") && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            You can only play for one team per season. Leave your current team to free yourself up for another team to
+            add you.
+          </p>
         )}
       </section>
 

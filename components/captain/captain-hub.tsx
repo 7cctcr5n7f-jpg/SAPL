@@ -193,7 +193,7 @@ export function CaptainHub({
                         </div>
                       </div>
                       <Button size="sm" disabled={pending} onClick={() => invite(a.playerId)}>
-                        Invite
+                        Add
                       </Button>
                     </div>
                   ))}
@@ -204,7 +204,7 @@ export function CaptainHub({
           <CardContent className="space-y-2">
             <FeeSummary team={team} metaById={metaById} playerFee={playerFee} />
             {team.roster.length === 0 && (
-              <p className="text-sm text-muted-foreground">No players yet. Invite free agents to build your squad.</p>
+              <p className="text-sm text-muted-foreground">No players yet. Add free agents to build your squad.</p>
             )}
             {team.roster.map((m) => {
               const meta = metaById.get(m.playerId)
