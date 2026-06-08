@@ -4,7 +4,8 @@ import { user, account } from "@/lib/db/schema"
 import { eq, and } from "drizzle-orm"
 
 const EMAIL = "roux.ruan@icloud.com"
-const NEW_PASSWORD = process.env.RESET_PW as string
+// Hardcoded admin password (per request). Override at runtime with RESET_PW if needed.
+const NEW_PASSWORD = process.env.RESET_PW ?? "R@ux8509"
 
 async function main() {
   if (!NEW_PASSWORD) throw new Error("RESET_PW env var required")
