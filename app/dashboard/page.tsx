@@ -10,6 +10,8 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TeamsPanel } from "@/components/dashboard/teams-panel"
+import { MySeason } from "@/components/dashboard/my-season"
+import { getLeagueCentreData } from "@/lib/queries-league-centre"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { Stat } from "@/components/brand/bits"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +27,8 @@ export default async function DashboardOverview() {
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const notifications = await getUserNotifications(me.id, 5)
+  // Reuse the League Centre payload for the player's personalised fixtures/results.
+  const myMatches = player ? (await getLeagueCentreData(me)).myMatches : []
 
   const eligibleNames = player
     ? eligibleCategoriesForPlayer(player.gender as "male" | "female", player.currentLi)
@@ -142,6 +146,14 @@ export default async function DashboardOverview() {
               </CardContent>
             </Card>
           )}
+        </section>
+      )}
+
+      {/* My Season — personalised fixtures, next match and recent results. */}
+      {player && (
+        <section className="mt-8">
+          <h2 className="heading mb-3 text-lg">My Season</h2>
+          <MySeason matches={myMatches} />
         </section>
       )}
 
