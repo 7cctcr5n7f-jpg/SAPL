@@ -15,6 +15,7 @@ import {
   teamEntries,
   payments,
   fixtures,
+  user as authUser,
 } from "@/lib/db/schema"
 import { eq, and, ne, sql } from "drizzle-orm"
 import { isSeasonLocked } from "@/lib/season-lock"
@@ -301,9 +302,133 @@ export async function deleteTeam(teamId: number) {
   await db.update(fixtures).set({ awayTeamId: null }).where(eq(fixtures.awayTeamId, teamId))
   await db.delete(teams).where(eq(teams.id, teamId))
 
+  // If the team had a self-service owner, and they no longer own any team, drop
+  // the auto-granted Team Owner access so their role reverts to a plain player.
+  if (team.ownerEmail) {
+    const [owner] = await db
+      .select({ userId: userMeta.userId })
+      .from(userMeta)
+      .innerJoin(authUser, eq(authUser.id, userMeta.userId))
+      .where(sql`lower(${authUser.email}) = ${team.ownerEmail.trim().toLowerCase()}`)
+      .limit(1)
+    if (owner) await revokeTeamOwnerPermissionsIfOrphaned(owner.userId, team.ownerEmail)
+  }
+
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
   revalidatePath("/dashboard/fixtures")
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Self-service team ownership (from the dashboard Overview)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure the user holds at least the auto Team Owner permission set, without
+ * clobbering a stronger explicit grant (admins, club admins, etc.). Only writes
+ * when the user currently has the default (null => role defaults) or already a
+ * pure team-owner grant — never downgrades a custom/elevated permission list.
+ */
+async function grantTeamOwnerPermissions(userId: string) {
+  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, userId)).limit(1)
+  // League/super admins and users with a bespoke permission list are left as-is.
+  if (meta && (meta.role === "league_admin" || meta.role === "super_admin")) return
+  const current = meta?.permissions ?? null
+  if (current != null && !isTeamOwnerGrant(current)) return // custom list — don't touch
+
+  if (!meta) {
+    await db.insert(userMeta).values({ userId, role: "player", permissions: TEAM_OWNER_PERMISSIONS })
+  } else {
+    await db
+      .update(userMeta)
+      .set({ permissions: TEAM_OWNER_PERMISSIONS, updatedAt: new Date() })
+      .where(eq(userMeta.userId, userId))
+  }
+}
+
+/**
+ * If the user no longer owns any team (by ownerEmail) and their permissions are
+ * exactly the auto Team Owner grant, revoke it (back to role defaults). This is
+ * what makes deleting your last team automatically drop the team-owner access.
+ */
+async function revokeTeamOwnerPermissionsIfOrphaned(userId: string, email: string) {
+  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, userId)).limit(1)
+  if (!meta || !isTeamOwnerGrant(meta.permissions)) return
+  const normalised = email.trim().toLowerCase()
+  const owned = normalised
+    ? await db.select({ id: teams.id }).from(teams).where(sql`lower(${teams.ownerEmail}) = ${normalised}`).limit(1)
+    : []
+  if (owned.length === 0) {
+    await db.update(userMeta).set({ permissions: null, updatedAt: new Date() }).where(eq(userMeta.userId, userId))
+  }
+}
+
+/**
+ * Create a team for the currently signed-in user as a self-service Team Owner.
+ * Creates a personal organisation on first use, stamps the team's ownerEmail to
+ * the user's email (auto-granting access via the access layer), and grants the
+ * Team Owner permission set. Teams start unassigned for the league to place.
+ */
+export async function createOwnTeam(input: { name: string; teamType?: string }) {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: "Not authenticated" }
+  const name = input.name.trim()
+  if (!name) return { ok: false, error: "Team name is required" }
+  const teamType = (input.teamType ?? "Social Group").trim() || "Social Group"
+
+  // Find or create a personal organisation to hold the user's own teams.
+  let [org] = await db.select().from(organisations).where(eq(organisations.ownerUserId, user.id)).limit(1)
+  if (!org) {
+    const base = (user.name || "my-team").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+    const slug = `${base || "owner"}-${Date.now().toString(36)}`
+    ;[org] = await db
+      .insert(organisations)
+      .values({
+        name: `${user.name}'s Teams`,
+        slug,
+        type: "Social Group",
+        province: "Gauteng",
+        ownerUserId: user.id,
+      })
+      .returning()
+  }
+
+  await db.insert(teams).values({
+    name,
+    organisationId: org.id,
+    teamType,
+    ownerEmail: user.email.trim().toLowerCase(),
+    tpr: 1000,
+    status: "active",
+  })
+
+  await grantTeamOwnerPermissions(user.id)
+
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/org")
+  revalidatePath("/admin/placement")
+  return { ok: true }
+}
+
+/**
+ * Toggle the signed-in player's marketplace listing (looking for a team). Used
+ * by the Overview "List yourself on the Marketplace" control.
+ */
+export async function setMarketplaceListing(listed: boolean) {
+  const user = await getCurrentUser()
+  if (!user?.playerId) return { ok: false, error: "Complete your player profile first." }
+  await db
+    .update(players)
+    .set({
+      lookingForTeam: listed,
+      availability: listed ? "available" : "unavailable",
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, user.playerId))
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/profile")
   return { ok: true }
 }
 
