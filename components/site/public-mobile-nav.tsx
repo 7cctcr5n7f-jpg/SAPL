@@ -49,8 +49,11 @@ export function PublicMobileNav({ authed = false }: { authed?: boolean }) {
     : PRIMARY
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur lg:hidden">
-      <div className="flex items-stretch">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <div
+        className="grid items-stretch"
+        style={{ gridTemplateColumns: `repeat(${primary.length + 1}, minmax(0, 1fr))` }}
+      >
         {primary.map((item) => {
           const Icon = item.icon
           const active = isActive(item.href)
@@ -59,12 +62,12 @@ export function PublicMobileNav({ authed = false }: { authed?: boolean }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             >
-              <Icon className="h-5 w-5" />
-              <span className="max-w-full truncate px-0.5">{item.label}</span>
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="w-full truncate px-0.5 text-center">{item.label}</span>
             </Link>
           )
         })}
@@ -72,13 +75,13 @@ export function PublicMobileNav({ authed = false }: { authed?: boolean }) {
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+              "flex min-w-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
               MORE.some((i) => isActive(i.href)) ? "text-primary" : "text-muted-foreground",
             )}
             aria-label="More navigation"
           >
-            <MoreHorizontal className="h-5 w-5" />
-            <span>More</span>
+            <MoreHorizontal className="h-5 w-5 shrink-0" />
+            <span className="w-full truncate px-0.5 text-center">More</span>
           </SheetTrigger>
           <SheetContent side="bottom" className="max-h-[80dvh] overflow-y-auto rounded-t-xl">
             <SheetHeader className="text-left">

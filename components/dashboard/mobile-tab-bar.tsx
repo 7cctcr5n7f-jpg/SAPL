@@ -86,8 +86,11 @@ export function MobileTabBar({
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur lg:hidden">
-      <div className="flex items-stretch">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <div
+        className="grid items-stretch"
+        style={{ gridTemplateColumns: `repeat(${primary.length + 1}, minmax(0, 1fr))` }}
+      >
         {primary.map((item) => {
           const Icon = item.icon
           const active = isActive(item.href)
@@ -96,7 +99,7 @@ export function MobileTabBar({
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             >
@@ -110,7 +113,7 @@ export function MobileTabBar({
           <SheetTrigger asChild>
             <button
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
                 overflow.some((i) => isActive(i.href)) ? "text-primary" : "text-muted-foreground",
               )}
               aria-label="More navigation"
