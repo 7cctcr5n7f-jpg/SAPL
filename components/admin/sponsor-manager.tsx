@@ -49,10 +49,10 @@ const LEVELS = ["Title", "Platinum", "Gold", "Silver", "Partner"]
 
 export function SponsorManager({
   sponsors,
-  prizePool,
+  prizePool = { amount: "", label: "Total Prize Pool" },
 }: {
   sponsors: LeagueSponsor[]
-  prizePool: { amount: string; label: string }
+  prizePool?: { amount: string; label: string }
 }) {
   const [pending, start] = useTransition()
   const [editing, setEditing] = useState<LeagueSponsor | null>(null)
@@ -88,9 +88,8 @@ export function SponsorManager({
 
   function savePrize(formData: FormData) {
     start(async () => {
-      const res = await updatePrizePool(formData)
-      if (res?.error) toast.error(res.error)
-      else toast.success("Prize pool saved")
+      await updatePrizePool(formData)
+      toast.success("Prize pool saved")
     })
   }
 

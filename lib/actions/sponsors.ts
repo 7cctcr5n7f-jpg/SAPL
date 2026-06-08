@@ -28,7 +28,7 @@ export async function upsertLeagueSponsor(formData: FormData) {
   const tagline = String(formData.get("tagline") ?? "").trim() || null
   const logoUrl = String(formData.get("logoUrl") ?? "").trim() || null
   const mainSponsor = formData.get("mainSponsor") === "on" || formData.get("mainSponsor") === "true"
-  if (!name) return { error: "Sponsor name is required" }
+  if (!name) return { error: "Sponsor name is required" as string | undefined }
 
   // Only one main sponsor at a time — clear the flag elsewhere when this one is set.
   if (mainSponsor) {
