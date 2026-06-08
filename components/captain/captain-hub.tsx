@@ -119,14 +119,16 @@ export function CaptainHub({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Captains can create a new player account and optionally drop them
           straight onto one of their own teams. */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           Add a new player to your squad — they&apos;ll get a login and can be assigned to one of your teams.
         </p>
-        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        <div className="shrink-0">
+          <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        </div>
       </div>
 
       {teams.length > 1 && (
@@ -148,7 +150,7 @@ export function CaptainHub({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         {/* Roster */}
         <Card>
           <CardHeader className="flex-row items-center justify-between">

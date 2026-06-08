@@ -19,7 +19,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   }))
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 md:px-6">
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-12">
       <Link
         href={team.orgSlug ? `/clubs/${team.orgSlug}` : "/clubs"}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
@@ -27,28 +27,28 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
         <ArrowLeft className="h-4 w-4" /> {team.orgName ?? "Clubs"}
       </Link>
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-8">
-        <div>
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6 md:mt-6 md:pb-8">
+        <div className="min-w-0">
           {team.divisionName ? <DivisionTag name={team.divisionName} /> : null}
-          <h1 className="heading mt-2 text-4xl md:text-6xl">{team.name}</h1>
-          <p className="mt-2 text-muted-foreground">{team.orgName}</p>
+          <h1 className="heading mt-2 text-3xl md:text-6xl">{team.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground md:mt-2 md:text-base">{team.orgName}</p>
         </div>
         <div className="text-right">
-          <div className="heading text-5xl text-primary tabular-nums">{Math.round(team.tpr)}</div>
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Team Power Rating</div>
+          <div className="heading text-4xl text-primary tabular-nums md:text-5xl">{Math.round(team.tpr)}</div>
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground md:text-xs">Team Power Rating</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 border-b border-border py-8 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 border-b border-border py-6 md:grid-cols-4 md:gap-6 md:py-8">
         <Stat label="Current TPR" value={Math.round(team.tpr)} />
         <Stat label="Peak TPR" value={Math.round(team.highestTpr ?? team.tpr)} />
         <Stat label="Roster" value={roster.length} />
         <Stat label="Status" value={team.status === "active" ? "Active" : team.status} />
       </div>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-2">
+      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">
         <div>
-          <h2 className="heading text-2xl">TPR Trajectory</h2>
+          <h2 className="heading text-xl md:text-2xl">TPR Trajectory</h2>
           <p className="mt-1 text-sm text-muted-foreground">ELO-based rating across the season.</p>
           <div className="mt-4">
             <TprLine data={chartData} />
@@ -56,7 +56,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         <div>
-          <h2 className="heading text-2xl">Roster</h2>
+          <h2 className="heading text-xl md:text-2xl">Roster</h2>
           <ul className="mt-4 divide-y divide-border border-y border-border">
             {roster.map((p) => (
               <li key={p.memberId} className="flex items-center justify-between py-3">
