@@ -16,10 +16,9 @@ export function SiteFooter() {
           <div>
             <h3 className="heading text-sm tracking-widest">Compete</h3>
             <ul className="mt-3 flex flex-col gap-2 text-sm text-muted-foreground">
+              <li><Link href="/league-centre" className="hover:text-primary">League Centre</Link></li>
               <li><Link href="/rankings" className="hover:text-primary">Rankings</Link></li>
-              <li><Link href="/standings" className="hover:text-primary">Standings</Link></li>
-              <li><Link href="/fixtures" className="hover:text-primary">Fixtures</Link></li>
-              <li><Link href="/marketplace" className="hover:text-primary">Player Marketplace</Link></li>
+              <li><Link href="/marketplace" className="hover:text-primary">Marketplace</Link></li>
             </ul>
           </div>
           <div>

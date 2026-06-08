@@ -56,6 +56,7 @@ type Team = {
   homeClubId: number | null
   homeClubName: string | null
   homeClubLogoUrl: string | null
+  ownerEmail: string | null
   avgLi: number
   playerCount: number
   maxPlayers: number
@@ -223,7 +224,10 @@ export function OrgHub({
         <p className="text-sm text-muted-foreground">
           Add players to the league, then build squads and assign captains.
         </p>
-        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        <div className="flex items-center gap-2">
+          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
+          <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -238,7 +242,6 @@ export function OrgHub({
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" /> Teams
           </CardTitle>
-          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Filters */}
@@ -613,7 +616,7 @@ function CreateTeamDialog({
       <DialogTrigger
         render={
           <Button size="sm" variant="outline">
-            <Plus className="mr-1 h-4 w-4" /> New team
+            <Plus className="mr-1 h-4 w-4" /> Create team
           </Button>
         }
       />
@@ -670,6 +673,13 @@ function CreateTeamDialog({
               </select>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="ownerEmail">Team owner email (optional)</Label>
+            <Input id="ownerEmail" name="ownerEmail" type="email" placeholder="owner@example.com" />
+            <p className="text-xs text-muted-foreground">
+              Whoever signs in with this email automatically gets team-owner access to manage this team.
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground">
             New teams start unassigned. The league office places them into a division.
           </p>
@@ -709,6 +719,7 @@ function EditTeamDialog({
   const [name, setName] = useState(team.name)
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
+  const [ownerEmail, setOwnerEmail] = useState(team.ownerEmail ?? "")
 
   function save() {
     if (!name.trim()) {
@@ -721,6 +732,7 @@ function EditTeamDialog({
         name,
         homeClubId: homeClubId ? Number(homeClubId) : null,
         clubPaysFees,
+        ownerEmail: ownerEmail.trim() || null,
       })
       if (res.ok) {
         toast.success("Team updated")
@@ -777,6 +789,20 @@ function EditTeamDialog({
               </p>
             </div>
             <Switch checked={clubPaysFees} onCheckedChange={setClubPaysFees} aria-label="Toggle team pays fees" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editOwnerEmail">Team owner email</Label>
+            <Input
+              id="editOwnerEmail"
+              type="email"
+              value={ownerEmail}
+              placeholder="owner@example.com"
+              onChange={(e) => setOwnerEmail(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Whoever signs in with this email automatically gets team-owner access to manage this team. Leave blank to
+              remove.
+            </p>
           </div>
         </div>
         <DialogFooter>

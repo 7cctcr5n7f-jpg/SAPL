@@ -2,7 +2,15 @@ import Link from "next/link"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
 
-export function Logo({ className, href = "/" }: { className?: string; href?: string }) {
+export function Logo({
+  className,
+  imgClassName = "h-24 w-auto md:h-28",
+  href = "/",
+}: {
+  className?: string
+  imgClassName?: string
+  href?: string
+}) {
   return (
     <Link href={href} className={cn("group inline-flex items-center", className)}>
       <Image
@@ -10,7 +18,7 @@ export function Logo({ className, href = "/" }: { className?: string; href?: str
         alt="SAPL — South African Padel League"
         width={440}
         height={156}
-        className="h-24 w-auto md:h-28"
+        className={imgClassName}
         priority
       />
     </Link>

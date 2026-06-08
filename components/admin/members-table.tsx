@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { Fragment, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -22,7 +22,8 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Mail, KeyRound, Loader2, Copy, Check, X, UserPlus } from "lucide-react"
+import { Mail, KeyRound, Loader2, Copy, Check, X, UserPlus, ChevronDown, SlidersHorizontal } from "lucide-react"
+import { MemberDetailPanel } from "@/components/admin/member-detail-panel"
 
 type Role = MemberRow["role"]
 
@@ -52,6 +53,7 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [, startTransition] = useTransition()
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
 
@@ -168,6 +170,23 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
                   <span className="ml-1.5">Temp password</span>
                 </Button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setExpandedId(expandedId === m.id ? null : m.id)}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background py-2 text-xs font-medium text-foreground"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Permissions &amp; assignments
+                <ChevronDown
+                  className={cn("h-3.5 w-3.5 transition-transform", expandedId === m.id && "rotate-180")}
+                />
+              </button>
+              {expandedId === m.id ? (
+                <div className="mt-3 -mx-4 -mb-4 overflow-hidden rounded-b-lg">
+                  <MemberDetailPanel userId={m.id} isSelf={isSelf} />
+                </div>
+              ) : null}
             </div>
           )
         })}
@@ -193,8 +212,10 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
             {filtered.map((m) => {
               const isSelf = m.id === currentUserId
               const busy = pendingId === m.id
+              const expanded = expandedId === m.id
               return (
-                <tr key={m.id} className="border-b border-border last:border-0">
+                <Fragment key={m.id}>
+                <tr className="border-b border-border last:border-0 data-[expanded=true]:border-0" data-expanded={expanded}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">
                       {m.name}
@@ -241,9 +262,27 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
                         <KeyRound className="h-3.5 w-3.5" />
                         <span className="ml-1.5">Temp password</span>
                       </Button>
+                      <Button
+                        type="button"
+                        variant={expanded ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setExpandedId(expanded ? null : m.id)}
+                        aria-label="Permissions and assignments"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                        <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
+                      </Button>
                     </div>
                   </td>
                 </tr>
+                {expanded ? (
+                  <tr className="border-b border-border last:border-0">
+                    <td colSpan={4} className="p-0">
+                      <MemberDetailPanel userId={m.id} isSelf={isSelf} />
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               )
             })}
             {filtered.length === 0 ? (

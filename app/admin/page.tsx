@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { requirePermissionPage } from "@/lib/access"
 import { getAdminSummary, getSeasonsWithDivisions, getRegions, getPlayoffs, getPlayoffVenues } from "@/lib/queries-admin"
 import { getPlacementBoard } from "@/lib/queries-placement"
 import { db } from "@/lib/db"
@@ -26,6 +27,7 @@ export default async function AdminPage({
   searchParams: Promise<{ tab?: string; season?: string }>
 }) {
   const sp = await searchParams
+  await requirePermissionPage("league_management")
   const activeTab: TabId = TABS.some((t) => t.id === sp.tab) ? (sp.tab as TabId) : "seasons"
 
   const [summary, seasons, regions] = await Promise.all([

@@ -2,10 +2,12 @@ import { PageHeader } from "@/components/dashboard/page-header"
 import { BroadcastForm } from "@/components/admin/broadcast-form"
 import { DisputesPanel } from "@/components/admin/disputes-panel"
 import { getOpenDisputes } from "@/lib/queries-admin"
+import { requirePermissionPage } from "@/lib/access"
 
 export const dynamic = "force-dynamic"
 
 export default async function AdminCommunicationsPage() {
+  await requirePermissionPage("league_management")
   const disputes = await getOpenDisputes()
 
   return (

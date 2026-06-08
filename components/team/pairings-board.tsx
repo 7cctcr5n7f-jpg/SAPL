@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -64,7 +65,7 @@ export function PairingsBoard({
       })
       if (res?.error) toast.error(res.error)
       else {
-        toast.success(res?.success ?? "Invited")
+        toast.success(res?.success ?? "Player added")
         setInviteTarget(null)
         setEmail("")
       }
@@ -198,7 +199,7 @@ export function PairingsBoard({
                       }
                     >
                       <UserPlus className="mr-1 h-3.5 w-3.5" />
-                      Invite
+                      Add
                     </Button>
                   </div>
                 </div>
@@ -217,6 +218,9 @@ export function PairingsBoard({
                 <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                   <Mail className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{inv.email}</span>
+                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                    Pending
+                  </Badge>
                 </span>
                 <button
                   onClick={() =>
@@ -265,11 +269,11 @@ export function PairingsBoard({
       <Dialog open={!!inviteTarget} onOpenChange={(open) => !open && setInviteTarget(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Invite a Player</DialogTitle>
+            <DialogTitle>Add a Player</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Enter the player&apos;s email. If they already have a profile they&apos;ll be added immediately;
-            otherwise they&apos;ll join this team automatically when they register.
+            Enter the player&apos;s email. If they already have a profile they&apos;ll be added to the team
+            immediately; otherwise they&apos;ll be marked pending and join automatically once they create an account.
           </p>
           <Input
             type="email"
@@ -279,7 +283,7 @@ export function PairingsBoard({
             onKeyDown={(e) => e.key === "Enter" && sendInvite()}
           />
           <Button onClick={sendInvite} disabled={pending || !email}>
-            {pending ? "Sending..." : "Send Invite"}
+            {pending ? "Adding..." : "Add player"}
           </Button>
         </DialogContent>
       </Dialog>

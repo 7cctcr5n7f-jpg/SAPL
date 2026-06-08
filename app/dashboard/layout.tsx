@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { UserMenu } from "@/components/dashboard/user-menu"
 
@@ -8,6 +9,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!me) redirect("/sign-in")
   // Players must complete onboarding first (super admins skip this entirely).
   if (!me.playerId && me.role === "player" && !me.isSuperAdmin) redirect("/onboarding")
+
+  const access = await getAccessContext(me)
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -18,6 +21,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           email={me.email}
           isSuperAdmin={me.isSuperAdmin}
           actingRole={me.actingRole}
+          permissions={[...access.permissions]}
+          canCaptainHub={access.canCaptainHub}
+          canManageMembers={access.permissions.has("league_management") && !me.actingRole}
         />
       </div>
       <main className="flex-1 overflow-y-auto">

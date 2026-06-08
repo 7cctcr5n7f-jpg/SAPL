@@ -7,7 +7,6 @@ import {
   teamPairings,
   teamInvites,
   players,
-  organisations,
   user as authUser,
   notifications,
 } from "@/lib/db/schema"
@@ -16,6 +15,9 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
+import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
+import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
+import { getAccessContext } from "@/lib/access"
 
 // ---------------------------------------------------------------------------
 // Permission helper: who may manage a team's pairings / invites?
@@ -26,17 +28,11 @@ import { recomputeTeamStats } from "@/lib/engine/team-stats"
 async function canManageTeam(me: CurrentUser, teamId: number) {
   const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return null
-  if (me.isSuperAdmin || me.role === "league_admin") return team
-  if (team.captainUserId === me.id) return team
-  if (me.role === "org_admin") {
-    const [org] = await db
-      .select()
-      .from(organisations)
-      .where(eq(organisations.id, team.organisationId))
-      .limit(1)
-    if (org?.ownerUserId === me.id) return team
-  }
-  return null
+  const access = await getAccessContext(me)
+  if (access.isLeagueAdmin) return team
+  if (!access.can("captain_hub") && !access.can("team_management")) return null
+  // Owner email / captaincy / manual assignment / club-homed teams are in scope.
+  return access.canManageTeam(teamId) ? team : null
 }
 
 // Assign a roster player to a specific pairing slot (or clear it with playerId=null).
@@ -85,9 +81,11 @@ export async function setPairingSlot(input: {
   return { success: "Lineup updated." }
 }
 
-// Invite a player by email to a team and (optionally) a specific pairing slot.
-// If the email already belongs to a registered player, they are joined immediately.
-// Otherwise a pending invite is stored and resolved when they register.
+// Add a player to a team by email and (optionally) a specific pairing slot.
+// If the email already belongs to a registered player, they are added to the
+// roster immediately (no approval needed). Otherwise a pending invite is stored,
+// an account-creation email is sent, and the membership is resolved when they
+// register with that email address.
 export async function invitePlayerByEmail(input: {
   teamId: number
   email: string
@@ -111,7 +109,14 @@ export async function invitePlayerByEmail(input: {
   }
 
   if (existingPlayer) {
-    // Immediate join for an existing player.
+    // One team per player per season.
+    const conflict = await getPlayerSeasonTeamConflict(existingPlayer.id, team.seasonId, input.teamId)
+    if (conflict) {
+      return {
+        error: `${existingPlayer.firstName} already plays for ${conflict.teamName} this season. They must leave that team first.`,
+      }
+    }
+    // Immediate add for an existing player — no approval needed.
     await joinTeam(input.teamId, existingPlayer.id, {
       category: input.category,
       pairIndex: input.pairIndex,
@@ -126,7 +131,8 @@ export async function invitePlayerByEmail(input: {
     })
     revalidatePath("/dashboard/captain")
     revalidatePath("/dashboard/org")
-    return { success: `${existingPlayer.firstName} ${existingPlayer.lastName} joined ${team.name}.` }
+    revalidatePath("/dashboard")
+    return { success: `${existingPlayer.firstName} ${existingPlayer.lastName} added to ${team.name}.` }
   }
 
   // Otherwise store a pending invite to be resolved on registration.
@@ -157,9 +163,24 @@ export async function invitePlayerByEmail(input: {
     })
   }
 
+  // Send an account-creation email so the invitee can claim their spot. The
+  // registration page pre-fills the email; their membership resolves on signup.
+  const registerUrl = `${appBaseUrl()}/register?email=${encodeURIComponent(email)}`
+  const { subject, html, text } = teamAddInviteEmail({
+    teamName: team.name,
+    captainName: me.name,
+    registerUrl,
+  })
+  const { sent } = await sendEmail({ to: email, subject, html, text })
+  if (!sent) {
+    console.log(`[v0] Team add invite for ${email} (no email provider): ${registerUrl}`)
+  }
+
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
-  return { success: `Invite sent to ${email}. They'll join automatically when they register.` }
+  return {
+    success: `${email} has been added as pending. They'll join ${team.name} automatically once they create their account.`,
+  }
 }
 
 export async function cancelInvite(inviteId: number) {
@@ -242,6 +263,14 @@ export async function resolvePendingInvites(email: string, playerId: number) {
     .where(and(eq(teamInvites.email, normalized), eq(teamInvites.status, "pending")))
 
   for (const invite of pending) {
+    const [team] = await db.select().from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+    // Respect "one team per player per season": if the player has already been
+    // joined to another team in this season (e.g. an earlier pending invite),
+    // skip this one and leave it pending so a captain/player can resolve it.
+    if (team) {
+      const conflict = await getPlayerSeasonTeamConflict(playerId, team.seasonId, invite.teamId)
+      if (conflict) continue
+    }
     await joinTeam(invite.teamId, playerId, {
       category: invite.category ?? undefined,
       pairIndex: invite.pairIndex ?? undefined,

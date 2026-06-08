@@ -1,6 +1,6 @@
 import { db } from "@/lib/db"
 import { clubs, organisations, teams, players } from "@/lib/db/schema"
-import { asc, eq, inArray, sql } from "drizzle-orm"
+import { asc, eq, inArray, sql, and } from "drizzle-orm"
 
 export type PlayerOption = {
   id: number
@@ -105,20 +105,28 @@ const clubColumns = {
  * Returns every club/venue with its organisation name and derived hosting usage.
  * `used` = number of teams whose home venue is this club. `remaining` =
  * hostingCapacity - used (clamped at 0).
+ *
+ * @param organisationId   Optionally restrict to a single organisation.
+ * @param restrictClubIds  When provided (non-null), only these club ids are
+ *                         returned — used to scope club admins to their assigned
+ *                         clubs. An empty array returns no clubs.
  */
-export async function getClubsWithUsage(organisationId?: number): Promise<ClubRow[]> {
-  const baseRows = organisationId
-    ? await db
-        .select(clubColumns)
-        .from(clubs)
-        .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
-        .where(eq(clubs.organisationId, organisationId))
-        .orderBy(asc(clubs.name))
-    : await db
-        .select(clubColumns)
-        .from(clubs)
-        .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
-        .orderBy(asc(clubs.name))
+export async function getClubsWithUsage(
+  organisationId?: number,
+  restrictClubIds?: number[] | null,
+): Promise<ClubRow[]> {
+  if (restrictClubIds != null && restrictClubIds.length === 0) return []
+
+  const conditions = []
+  if (organisationId) conditions.push(eq(clubs.organisationId, organisationId))
+  if (restrictClubIds != null) conditions.push(inArray(clubs.id, restrictClubIds))
+
+  const baseRows = await db
+    .select(clubColumns)
+    .from(clubs)
+    .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(asc(clubs.name))
 
   const ids = baseRows.map((c) => c.id)
   const usageMap = new Map<number, number>()

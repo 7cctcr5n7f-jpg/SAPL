@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation"
-import { getCurrentUser } from "@/lib/session"
 import {
   getOrgByOwner,
   getOrgTeams,
@@ -17,14 +15,15 @@ import { getPlayerFee } from "@/lib/queries"
 import { isSeasonLocked } from "@/lib/season-lock"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { OrgHub } from "@/components/org/org-hub"
+import { requirePermissionPage } from "@/lib/access"
 
 export default async function OrgPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect("/sign-in")
+  const access = await requirePermissionPage("team_management")
+  const user = access.user
 
   // League and super admins manage every team; org admins are scoped to their
   // own. A super admin previewing the org_admin role drops to the scoped view.
-  const isAdminWide = user.role === "league_admin" || user.role === "super_admin"
+  const isAdminWide = access.isLeagueAdmin
 
   let org = await getOrgByOwner(user.id)
 
@@ -121,6 +120,7 @@ export default async function OrgPage() {
       homeClubId: row.team.homeClubId ?? null,
       homeClubName: club?.name ?? null,
       homeClubLogoUrl: club?.logoUrl ?? null,
+      ownerEmail: row.team.ownerEmail ?? null,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
       maxPlayers: row.team.maxPlayers,

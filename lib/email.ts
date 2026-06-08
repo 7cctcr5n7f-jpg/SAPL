@@ -127,3 +127,46 @@ export function verifyEmail(url: string) {
   const text = `Activate your ${BRAND.name} account using this link (expires in 24 hours): ${url}`
   return { subject, html, text }
 }
+
+/** Best-effort public base URL for building links inside emails. */
+export function appBaseUrl(): string {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return process.env.V0_RUNTIME_URL ?? "https://southafricapadelleague.co.za"
+}
+
+/**
+ * Email sent to a person who has been added to a team but doesn't yet have an
+ * account. Prompts them to register; their team membership is resolved
+ * automatically once they sign up with this email address.
+ */
+export function teamAddInviteEmail(opts: { teamName: string; captainName?: string | null; registerUrl: string }) {
+  const { teamName, captainName, registerUrl } = opts
+  const subject = `You've been added to ${teamName} on ${BRAND.short}`
+  const html = `
+  <div style="background:#0a0a0a;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden;">
+      <div style="padding:28px 32px;border-bottom:1px solid #262626;">
+        <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:2px;">${BRAND.short}</span>
+        <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
+      </div>
+      <div style="padding:32px;">
+        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">You're on the squad</h1>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 24px;">
+          ${captainName ? `${captainName} has` : "A captain has"} added you to <strong style="color:#ffffff;">${teamName}</strong> on ${BRAND.name}.
+          Create your free account with this email address to claim your spot — you'll join the team automatically.
+        </p>
+        <a href="${registerUrl}" style="display:inline-block;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:8px;">
+          Create your account
+        </a>
+        <p style="color:#737373;font-size:12px;line-height:1.6;margin:24px 0 0;">
+          Or paste this link into your browser:<br/>
+          <a href="${registerUrl}" style="color:#E10600;word-break:break-all;">${registerUrl}</a>
+        </p>
+      </div>
+    </div>
+  </div>`
+  const text = `${captainName ? `${captainName} has` : "A captain has"} added you to ${teamName} on ${BRAND.name}. Create your account with this email to join automatically: ${registerUrl}`
+  return { subject, html, text }
+}

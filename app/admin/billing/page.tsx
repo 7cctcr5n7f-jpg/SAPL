@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/dashboard/page-header"
-import { getCurrentUser } from "@/lib/session"
+import { requirePermissionPage } from "@/lib/access"
 import { getOutstandingFees } from "@/lib/queries-dashboard"
 import { BillingManagement } from "@/components/admin/billing-management"
 
@@ -8,9 +7,7 @@ export const dynamic = "force-dynamic"
 export const metadata = { title: "Billing Management | SAPL" }
 
 export default async function AdminBillingPage() {
-  const me = await getCurrentUser()
-  if (!me) redirect("/sign-in")
-  if (me.role !== "league_admin" && me.role !== "super_admin") redirect("/dashboard")
+  await requirePermissionPage("billing_management")
 
   const fees = await getOutstandingFees()
 

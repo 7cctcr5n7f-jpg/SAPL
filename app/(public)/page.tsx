@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { getCurrentSeason, getTeamRankings } from "@/lib/queries"
+import { getCurrentSeason, getTeamRankings, getMainSponsor, getPrizePool } from "@/lib/queries"
 import {
   getLandingStats,
   getRegionBreakdown,
@@ -27,17 +27,21 @@ import {
   NoTeam,
   FinalCta,
 } from "@/components/landing/info-sections"
+import { PresentedBy, PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
 
 export default async function HomePage() {
   const season = await getCurrentSeason()
-  const [stats, regions, featuredClubs, rankings, topClubs, upcoming] = await Promise.all([
+  const [stats, regions, featuredClubs, rankings, topClubs, upcoming, mainSponsor, prizePool] = await Promise.all([
     getLandingStats(),
     getRegionBreakdown(),
     getFeaturedClubs(),
     getTeamRankings(5),
     getPublicClubs(5),
     season ? getUpcomingFixtures(season.id, 6) : Promise.resolve([]),
+    getMainSponsor(),
+    getPrizePool(),
   ])
+  const sponsor = mainSponsor as unknown as PublicSponsor | null
 
   return (
     <>
@@ -73,9 +77,15 @@ export default async function HomePage() {
               View Rankings
             </Button>
           </div>
+          {sponsor ? (
+            <div className="mt-10">
+              <PresentedBy sponsor={sponsor} />
+            </div>
+          ) : null}
         </div>
       </section>
 
+      <PrizeCallout prizePool={prizePool} sponsor={sponsor} />
       <StatsSection stats={stats} />
       <WhySapl />
       <RoadToTitle />

@@ -1,17 +1,14 @@
-import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { MembersTable } from "@/components/admin/members-table"
-import { getCurrentUser } from "@/lib/session"
 import { listMembers } from "@/lib/actions/members"
+import { requirePermissionPage } from "@/lib/access"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Members & Roles | SAPL" }
 
 export default async function AdminMembersPage() {
-  const me = await getCurrentUser()
-  if (!me) redirect("/sign-in")
-  // Members & Roles management is main-admin only.
-  if (me.realRole !== "super_admin") redirect("/admin")
+  const access = await requirePermissionPage("league_management")
+  const me = access.user
 
   const members = await listMembers()
 

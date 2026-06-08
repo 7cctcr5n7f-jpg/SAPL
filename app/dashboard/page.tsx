@@ -10,6 +10,11 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TeamsPanel } from "@/components/dashboard/teams-panel"
+import { PlayerSelfService } from "@/components/dashboard/player-self-service"
+import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
+import { MySeason } from "@/components/dashboard/my-season"
+import { getLeagueCentreData } from "@/lib/queries-league-centre"
+import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { Stat } from "@/components/brand/bits"
 import { Badge } from "@/components/ui/badge"
@@ -20,11 +25,14 @@ import { fmtZAR } from "@/lib/format"
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
+  const access = await getAccessContext(me)
   const player = me.playerId ? await getPlayerByUserId(me.id) : null
   const memberships = player ? await getPlayerMemberships(player.id) : []
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const notifications = await getUserNotifications(me.id, 5)
+  // Reuse the League Centre payload for the player's personalised fixtures/results.
+  const myMatches = player ? (await getLeagueCentreData(me)).myMatches : []
 
   const eligibleNames = player
     ? eligibleCategoriesForPlayer(player.gender as "male" | "female", player.currentLi)
@@ -44,6 +52,8 @@ export default async function DashboardOverview() {
     teamName: m.team.name,
     orgName: m.org?.name ?? "—",
     divisionName: m.division?.name ?? "Unassigned",
+    seasonName: m.season?.name ?? null,
+    seasonIsCurrent: m.season?.isCurrent ?? false,
     tpr: m.team.tpr,
     role: m.membership.role,
   }))
@@ -51,6 +61,15 @@ export default async function DashboardOverview() {
   return (
     <div>
       <PageHeader title={`Welcome, ${me.name.split(" ")[0]}`} subtitle="Your league command centre." />
+
+      {/* Self-service onboarding: members who don't yet manage a team can create
+          one (becoming its owner) or list themselves on the marketplace. */}
+      {!access.isLeagueAdmin && access.teamIds.length === 0 && (
+        <section className="mb-8">
+          <h2 className="heading mb-3 text-lg">Get Started</h2>
+          <TeamOwnerCta hasPlayerProfile={!!player} listedOnMarketplace={!!player?.lookingForTeam} />
+        </section>
+      )}
 
       {player ? (
         <section className="grid gap-6 lg:grid-cols-3">
@@ -143,6 +162,14 @@ export default async function DashboardOverview() {
         </section>
       )}
 
+      {/* My Season — personalised fixtures, next match and recent results. */}
+      {player && (
+        <section className="mt-8">
+          <h2 className="heading mb-3 text-lg">My Season</h2>
+          <MySeason matches={myMatches} />
+        </section>
+      )}
+
       {/* My Teams — invitations, active teams and history all live here now. */}
       {player && (
         <section className="mt-8">
@@ -150,6 +177,12 @@ export default async function DashboardOverview() {
           <TeamsPanel entries={teamEntries} />
         </section>
       )}
+
+      {/* Self-service: create your own team or list yourself on the Marketplace. */}
+      <section className="mt-8">
+        <h2 className="heading mb-3 text-lg">Player Tools</h2>
+        <PlayerSelfService hasPlayerProfile={!!player} listed={player?.lookingForTeam ?? false} />
+      </section>
 
       <section className="mt-8">
         <Card>
