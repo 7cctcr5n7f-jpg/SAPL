@@ -5,22 +5,25 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Logo } from "@/components/brand/logo"
 import { Button } from "@/components/ui/button"
+import { UserMenu } from "@/components/dashboard/user-menu"
 import { cn } from "@/lib/utils"
 import { Menu, X } from "lucide-react"
 
 const NAV = [
+  { href: "/league-centre", label: "League Centre" },
   { href: "/rankings", label: "Rankings" },
-  { href: "/standings", label: "Standings" },
-  { href: "/fixtures", label: "Fixtures" },
   { href: "/clubs", label: "Clubs" },
-  { href: "/marketplace", label: "Players" },
+  { href: "/marketplace", label: "Marketplace" },
   { href: "/sponsors", label: "Sponsors" },
   { href: "/rules", label: "Rules" },
 ]
 
-export function SiteHeader({ authed }: { authed?: boolean }) {
+type HeaderUser = { name: string; email: string; role: string }
+
+export function SiteHeader({ user }: { user?: HeaderUser | null }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const authed = !!user
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
@@ -42,18 +45,25 @@ export function SiteHeader({ authed }: { authed?: boolean }) {
           </nav>
         </div>
         <div className="hidden items-center gap-2 lg:flex">
-          <Button render={<Link href={authed ? "/dashboard" : "/sign-in"} />} variant="ghost" size="sm">
-            {authed ? "Dashboard" : "Sign In"}
-          </Button>
-          <Button render={<Link href={authed ? "/dashboard" : "/sign-up"} />} size="sm">
-            {authed ? "My League" : "Join League"}
-          </Button>
+          {authed ? (
+            <>
+              <Button render={<Link href="/dashboard" />} variant="ghost" size="sm">
+                Dashboard
+              </Button>
+              <UserMenu name={user.name} email={user.email} role={user.role} />
+            </>
+          ) : (
+            <>
+              <Button render={<Link href="/sign-in" />} variant="ghost" size="sm">
+                Sign In
+              </Button>
+              <Button render={<Link href="/sign-up" />} size="sm">
+                Join League
+              </Button>
+            </>
+          )}
         </div>
-        <button
-          className="lg:hidden"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
+        <button className="lg:hidden" onClick={() => setOpen((v) => !v)} aria-label="Toggle menu">
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
@@ -74,12 +84,42 @@ export function SiteHeader({ authed }: { authed?: boolean }) {
               </Link>
             ))}
             <div className="mt-3 flex gap-2">
-              <Button render={<Link href={authed ? "/dashboard" : "/sign-in"} />} variant="outline" size="sm" className="flex-1">
-                {authed ? "Dashboard" : "Sign In"}
-              </Button>
-              <Button render={<Link href={authed ? "/dashboard" : "/sign-up"} />} size="sm" className="flex-1">
-                {authed ? "My League" : "Join"}
-              </Button>
+              {authed ? (
+                <>
+                  <Button
+                    render={<Link href="/dashboard" />}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setOpen(false)}
+                  >
+                    Dashboard
+                  </Button>
+                  <Button
+                    render={<Link href="/dashboard/profile" />}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setOpen(false)}
+                  >
+                    Profile
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    render={<Link href="/sign-in" />}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setOpen(false)}
+                  >
+                    Sign In
+                  </Button>
+                  <Button render={<Link href="/sign-up" />} size="sm" className="flex-1" onClick={() => setOpen(false)}>
+                    Join
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </nav>
