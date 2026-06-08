@@ -10,9 +10,9 @@ export default async function ClubsPage() {
   const clubs = await getPublicClubs()
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-12">
       <SectionTitle eyebrow="Club Performance Index" title="Clubs" />
-      <p className="mt-3 max-w-2xl text-muted-foreground">
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:mt-3 md:text-base">
         Every padel club competing in the league, ranked by Club Performance Index on the road to SAPL Club of the
         Year.
       </p>
@@ -20,35 +20,32 @@ export default async function ClubsPage() {
       {clubs.length === 0 ? (
         <p className="mt-8 text-muted-foreground">Clubs will appear here once they are added in the admin portal.</p>
       ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:mt-8">
           {clubs.map((c, i) => (
             <Link
               key={c.id}
               href={c.slug ? `/clubs/${c.slug}` : "/clubs"}
-              className="group flex flex-col gap-3 border border-border bg-card p-6 transition-colors hover:border-primary"
+              className="group flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary md:p-4"
             >
-              <div className="flex items-center justify-between">
-                <span className="heading text-3xl text-primary tabular-nums">#{i + 1}</span>
-                {c.logoUrl ? (
-                  <span className="relative h-12 w-12 overflow-hidden rounded-sm ring-1 ring-border">
-                    <Image src={c.logoUrl} alt={`${c.name} logo`} fill className="object-cover" />
-                  </span>
-                ) : (
-                  <span className="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-muted-foreground ring-1 ring-border">
-                    <Building2 className="h-5 w-5" />
-                  </span>
-                )}
-              </div>
-              <h3 className="heading text-xl group-hover:text-primary">{c.name}</h3>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">
-                {c.saplRegion ?? "Tshwane"}
-              </div>
-              <div className="mt-auto flex items-end justify-between border-t border-border pt-3">
-                <div>
-                  <div className="heading text-2xl tabular-nums">{Math.round(c.cpi)}</div>
-                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">CPI</div>
+              <span className="heading w-7 shrink-0 text-2xl text-primary tabular-nums md:text-3xl">{i + 1}</span>
+              {c.logoUrl ? (
+                <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-sm ring-1 ring-border">
+                  <Image src={c.logoUrl} alt={`${c.name} logo`} fill className="object-cover" />
+                </span>
+              ) : (
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground ring-1 ring-border">
+                  <Building2 className="h-5 w-5" />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <h3 className="heading truncate text-base group-hover:text-primary md:text-lg">{c.name}</h3>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {c.saplRegion ?? "Tshwane"} · {c.teamCount} teams
                 </div>
-                <span className="text-xs text-muted-foreground">{c.teamCount} teams</span>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="heading text-xl tabular-nums md:text-2xl">{Math.round(c.cpi)}</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">CPI</div>
               </div>
             </Link>
           ))}
