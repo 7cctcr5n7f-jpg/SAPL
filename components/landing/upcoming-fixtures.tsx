@@ -14,8 +14,8 @@ export function UpcomingFixtures({ fixtures }: { fixtures: UpcomingFixture[] }) 
           <span className="text-xs font-semibold uppercase tracking-[0.3em] text-primary">Match Night</span>
           <h2 className="heading mt-3 text-4xl text-balance md:text-5xl">Upcoming Fixtures</h2>
         </div>
-        <Button render={<Link href="/fixtures" />} variant="outline" size="sm">
-          View Full Fixtures
+        <Button render={<Link href="/league-centre" />} variant="outline" size="sm">
+          View League Centre
         </Button>
       </Reveal>
 
