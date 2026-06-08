@@ -13,29 +13,29 @@ export default async function ClubDetailPage({ params }: { params: Promise<{ slu
   const bestTpr = teams.length ? Math.max(...teams.map((t) => Number(t.tpr ?? 0))) : 0
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 md:px-6">
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-12">
       <Link href="/clubs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
         <ArrowLeft className="h-4 w-4" /> All clubs
       </Link>
 
-      <div className="mt-6 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end">
+      <div className="mt-4 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end md:mt-6 md:pb-8">
         {club.logoUrl ? (
-          <span className="relative h-24 w-24 shrink-0 overflow-hidden rounded-sm ring-1 ring-border">
+          <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-sm ring-1 ring-border md:h-24 md:w-24">
             <Image src={club.logoUrl} alt={`${club.name} logo`} fill className="object-cover" />
           </span>
         ) : (
-          <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground ring-1 ring-border">
-            <Building2 className="h-8 w-8" />
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground ring-1 ring-border md:h-24 md:w-24">
+            <Building2 className="h-7 w-7 md:h-8 md:w-8" />
           </span>
         )}
-        <div>
+        <div className="min-w-0">
           <span className="inline-flex items-center gap-1 text-xs uppercase tracking-widest text-primary">
             <MapPin className="h-3 w-3" /> {club.saplRegion ?? "Tshwane"}
           </span>
-          <h1 className="heading mt-2 text-4xl md:text-6xl">{club.name}</h1>
+          <h1 className="heading mt-2 text-3xl md:text-6xl">{club.name}</h1>
           {club.address ? (
-            <div className="mt-3 flex items-center gap-1 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" /> {club.address}
+            <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground md:mt-3">
+              <MapPin className="h-4 w-4 shrink-0" /> {club.address}
             </div>
           ) : null}
         </div>
@@ -43,7 +43,7 @@ export default async function ClubDetailPage({ params }: { params: Promise<{ slu
 
       {club.description ? <p className="mt-6 max-w-2xl text-muted-foreground">{club.description}</p> : null}
 
-      <div className="grid grid-cols-2 gap-6 border-b border-border py-8 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 border-b border-border py-6 md:grid-cols-4 md:gap-6 md:py-8">
         <Stat label="Club Performance Index" value={Math.round(club.cpi)} />
         <Stat label="Teams" value={teams.length} />
         <Stat label="Best Team TPR" value={Math.round(bestTpr)} />
@@ -61,7 +61,7 @@ export default async function ClubDetailPage({ params }: { params: Promise<{ slu
         </a>
       ) : null}
 
-      <h2 className="heading mt-10 text-2xl">Teams</h2>
+      <h2 className="heading mt-8 text-xl md:mt-10 md:text-2xl">Teams</h2>
       {teams.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">No teams play out of this club yet.</p>
       ) : (

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
+import { MobileTabBar } from "@/components/dashboard/mobile-tab-bar"
 import { UserMenu } from "@/components/dashboard/user-menu"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -30,8 +31,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="sticky top-0 z-30 flex h-16 items-center justify-end border-b border-border bg-background/95 px-5 backdrop-blur lg:px-10">
           <UserMenu name={me.name} email={me.email} role={me.isSuperAdmin && !me.actingRole ? "main admin" : me.role} />
         </header>
-        <div className="mx-auto max-w-6xl px-5 py-8 lg:px-10">{children}</div>
+        <div className="mx-auto max-w-6xl px-5 py-8 pb-24 lg:px-10 lg:pb-8">{children}</div>
       </main>
+
+      <MobileTabBar
+        role={me.role}
+        name={me.name}
+        email={me.email}
+        isSuperAdmin={me.isSuperAdmin}
+        actingRole={me.actingRole}
+        permissions={[...access.permissions]}
+        canCaptainHub={access.canCaptainHub}
+        canManageMembers={access.permissions.has("league_management") && !me.actingRole}
+      />
     </div>
   )
 }

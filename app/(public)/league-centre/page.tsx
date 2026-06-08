@@ -23,7 +23,7 @@ export default async function LeagueCentrePage() {
     <div>
       <LeagueCentreHero stats={data.stats} />
       <PrizeCallout prizePool={prizePool} sponsor={sponsor} />
-      <div className="mx-auto max-w-7xl px-4 py-10 md:px-6 md:py-14">
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-10">
         <LeagueCentreExperience data={data} />
       </div>
     </div>

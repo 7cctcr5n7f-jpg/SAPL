@@ -12,7 +12,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
   }
   const total = rows.length
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="hidden grid-cols-[2.5rem_1fr_repeat(7,2.5rem)_3.5rem] items-center gap-2 border-b border-border bg-secondary/50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid">
         <span className="text-center">#</span>
         <span>Team</span>
@@ -34,7 +34,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-border px-4 py-3 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(7,2.5rem)_3.5rem]",
+                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-border px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(7,2.5rem)_3.5rem] md:px-4",
                 promo && "bg-primary/[0.06]",
                 releg && "bg-destructive/[0.06]",
               )}

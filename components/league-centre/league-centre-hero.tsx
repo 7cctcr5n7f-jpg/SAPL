@@ -33,21 +33,21 @@ export function LeagueCentreHero({
         }}
       />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-14 md:px-6 md:py-20">
+      <div className="relative mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
         <span className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
           <span className="h-1.5 w-1.5 rounded-full bg-primary" />
           {stats.seasonName ?? "SAPL Season"}
         </span>
-        <h1 className="mt-5 heading text-5xl text-balance md:text-7xl">League Centre</h1>
-        <p className="mt-4 max-w-2xl text-pretty text-base text-muted-foreground md:text-lg">
+        <h1 className="mt-3 heading text-4xl text-balance md:text-6xl">League Centre</h1>
+        <p className="mt-2 max-w-2xl text-pretty text-sm text-muted-foreground md:text-base">
           Follow the action. Track the standings. View results. See upcoming fixtures.
         </p>
 
-        <div className="mt-10 grid max-w-3xl grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-6 grid max-w-3xl grid-cols-3 gap-x-4 gap-y-4 sm:grid-cols-5">
           <Stat label="Season" value={stats.seasonName ?? "—"} />
           <Stat label="Teams" value={stats.teamCount} />
           <Stat label="Clubs" value={stats.clubCount} />
-          <Stat label="Matches Played" value={stats.matchesPlayed} />
+          <Stat label="Played" value={stats.matchesPlayed} />
           <Stat label="Remaining" value={stats.matchesRemaining} />
         </div>
       </div>
