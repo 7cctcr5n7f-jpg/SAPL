@@ -3,10 +3,12 @@ import { sponsors } from "@/lib/db/schema"
 import { asc } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { SponsorManager } from "@/components/admin/sponsor-manager"
+import { requirePermissionPage } from "@/lib/access"
 
 export const dynamic = "force-dynamic"
 
 export default async function AdminSponsorsPage() {
+  await requirePermissionPage("league_management")
   const rows = await db.select().from(sponsors).orderBy(asc(sponsors.level))
   const data = rows.map((s) => ({
     id: s.id,

@@ -53,49 +53,64 @@ export function DashboardNav({
   email,
   isSuperAdmin = false,
   actingRole = null,
+  permissions,
+  canCaptainHub = false,
+  canManageMembers = false,
 }: {
   role: string
   name: string
   email: string
   isSuperAdmin?: boolean
   actingRole?: string | null
+  /** Effective granular permissions for the current (possibly impersonated) view. */
+  permissions: string[]
+  /** Captain Hub is only shown when the user captains or owns a team. */
+  canCaptainHub?: boolean
+  /** Members & Roles is gated by league_management (and not while previewing). */
+  canManageMembers?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isAdminView = role === "league_admin" || role === "super_admin"
-  const isOrgView = role === "org_admin" || isAdminView
-  const isCaptainView = role === "captain" || isOrgView
+  const has = (p: string) => permissions.includes(p)
 
   const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
 
-  if (isCaptainView) {
+  // League Centre — always available to every signed-in user.
+  items.push({ href: "/league-centre", label: "League Centre", icon: ICONS.rankings })
+
+  if (canCaptainHub) {
     items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
   }
 
-  // Fixture Management sits just below Captain Hub.
-  items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
+  if (has("fixture_management")) {
+    items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
+  }
 
-  if (isAdminView) {
-    // League-admin only billing dashboard, placed just above Player Management.
+  if (has("billing_management")) {
     items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
   }
-  // Player Management is visible to captains, club admins and league admins —
-  // each only sees the players within their own scope.
-  if (isCaptainView) {
+
+  if (has("player_management")) {
     items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
   }
-  if (isOrgView) {
+
+  if (has("team_management")) {
     items.push({ href: "/dashboard/org", label: "Team Management", icon: ICONS.org })
   }
-  if (isAdminView) {
-    items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
+
+  if (has("club_management")) {
     items.push({ href: "/admin/clubs", label: "Club Management", icon: ICONS.venues })
+  }
+
+  if (has("league_management")) {
+    items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
     items.push({ href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce })
     items.push({ href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors })
   }
-  // Members & Roles is main-admin only (not shown while previewing another role).
-  if (isSuperAdmin && !actingRole) {
+
+  // Members & Roles is league-management only (hidden while previewing a role).
+  if (canManageMembers) {
     items.push({ href: "/admin/members", label: "Members & Roles", icon: ICONS.members })
   }
 

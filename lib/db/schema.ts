@@ -69,6 +69,13 @@ export const userMeta = pgTable(
     role: text("role").notNull().default("player"),
     phone: text("phone"),
     whatsappOptIn: boolean("whatsappOptIn").notNull().default(true),
+    // Granular permission override. null => fall back to the role's defaults.
+    // A non-null array is an explicit, authoritative permission list.
+    permissions: jsonb("permissions").$type<string[] | null>(),
+    // Manual club assignment add/remove on top of email-matched clubs.
+    clubOverrides: jsonb("clubOverrides").$type<{ add: number[]; remove: number[] }>().notNull().default({ add: [], remove: [] }),
+    // Manual team assignment add/remove on top of owner/captain-matched teams.
+    teamOverrides: jsonb("teamOverrides").$type<{ add: number[]; remove: number[] }>().notNull().default({ add: [], remove: [] }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -264,6 +271,9 @@ export const teams = pgTable(
     regionId: integer("regionId"),
     captainUserId: text("captainUserId"),
     managerUserId: text("managerUserId"),
+    // Team Owner Email — drives team + fixture access in the permission system.
+    // Defaults to the creator's email; reassignable by admins.
+    ownerEmail: text("ownerEmail"),
     // Cached roster aggregates (kept fresh on roster mutations).
     avgLi: doublePrecision("avgLi").notNull().default(0),
     playerCount: integer("playerCount").notNull().default(0),

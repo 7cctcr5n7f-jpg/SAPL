@@ -1,14 +1,27 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { UserMenu } from "@/components/dashboard/user-menu"
+
+// Permissions that grant access to at least one page under /admin. Per-page
+// guards narrow this further; this just keeps users with no admin-area
+// permission out of the whole section.
+const ADMIN_AREA_PERMISSIONS = [
+  "league_management",
+  "club_management",
+  "player_management",
+  "billing_management",
+  "fixture_management",
+] as const
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser()
   if (!me) redirect("/sign-in")
-  // League Control is open to league admins and the main (super) admin.
-  // While a super admin previews a lower role, the effective role gates them out.
-  if (me.role !== "league_admin" && me.role !== "super_admin") redirect("/dashboard")
+
+  const access = await getAccessContext(me)
+  // Must hold at least one admin-area permission to see any /admin page.
+  if (!ADMIN_AREA_PERMISSIONS.some((p) => access.permissions.has(p))) redirect("/dashboard")
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -19,6 +32,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           email={me.email}
           isSuperAdmin={me.isSuperAdmin}
           actingRole={me.actingRole}
+          permissions={[...access.permissions]}
+          canCaptainHub={access.canCaptainHub}
+          canManageMembers={access.permissions.has("league_management") && !me.actingRole}
         />
       </div>
       <main className="flex-1 overflow-y-auto">
