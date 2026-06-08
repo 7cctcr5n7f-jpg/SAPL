@@ -69,7 +69,14 @@ export async function createTeam(formData: FormData) {
   const divisionId = formData.get("divisionId") ? Number(formData.get("divisionId")) : null
   const teamType = String(formData.get("teamType") ?? "Club Team").trim() || "Club Team"
   const homeClubId = formData.get("homeClubId") ? Number(formData.get("homeClubId")) : null
+  // Team Owner Email: the address that auto-grants team-management access to its
+  // holder (see lib/access.ts). Optional, normalised to lowercase.
+  const ownerEmailRaw = String(formData.get("ownerEmail") ?? "").trim().toLowerCase()
   if (!name) return { ok: false, error: "Team name is required" }
+  if (ownerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmailRaw)) {
+    return { ok: false, error: "Enter a valid team owner email" }
+  }
+  const ownerEmail = ownerEmailRaw || null
 
   // Derive region from the chosen home club so the team is board-ready.
   let regionId: number | null = null
@@ -92,6 +99,7 @@ export async function createTeam(formData: FormData) {
     homeClubId,
     regionId,
     saplRegion,
+    ownerEmail,
     tpr: 1000,
     status: "active",
   })
@@ -107,6 +115,7 @@ export async function updateTeamRegistration(input: {
   homeClubId?: number | null
   managerPlayerId?: number | null
   clubPaysFees?: boolean
+  ownerEmail?: string | null
 }) {
   const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
@@ -124,6 +133,13 @@ export async function updateTeamRegistration(input: {
   }
   if (input.teamType) patch.teamType = input.teamType
   if (input.clubPaysFees !== undefined) patch.clubPaysFees = input.clubPaysFees
+  if (input.ownerEmail !== undefined) {
+    const e = (input.ownerEmail ?? "").trim().toLowerCase()
+    if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      return { ok: false, error: "Enter a valid team owner email" }
+    }
+    patch.ownerEmail = e || null
+  }
   if (input.homeClubId !== undefined) {
     patch.homeClubId = input.homeClubId
     if (input.homeClubId && input.homeClubId !== team.homeClubId) {

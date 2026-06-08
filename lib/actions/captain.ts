@@ -9,7 +9,6 @@ import {
   players,
   notifications,
   fixtureUnavailable,
-  organisations,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"

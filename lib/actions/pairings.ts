@@ -7,7 +7,6 @@ import {
   teamPairings,
   teamInvites,
   players,
-  organisations,
   user as authUser,
   notifications,
 } from "@/lib/db/schema"
@@ -18,6 +17,7 @@ import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
+import { getAccessContext } from "@/lib/access"
 
 // ---------------------------------------------------------------------------
 // Permission helper: who may manage a team's pairings / invites?

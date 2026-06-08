@@ -2,19 +2,39 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, players, teams, teamMembers, organisations } from "@/lib/db/schema"
-import { eq, and } from "drizzle-orm"
-import { getCurrentUser, type Role } from "@/lib/session"
+import { user, userMeta, players, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
+import { eq, and, asc } from "drizzle-orm"
+import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
+import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
+import {
+  PERMISSIONS,
+  ROLE_DEFAULTS,
+  sanitizePermissions,
+  type Permission,
+} from "@/lib/permissions"
 
 const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "league_admin", "super_admin"]
+/** Roles only a main (super) admin may grant — prevents privilege escalation. */
+const PRIVILEGED_ROLES: Role[] = ["league_admin", "super_admin"]
 
-/** Members management is restricted to the main (super) admin. */
-async function requireSuperAdmin() {
+/**
+ * Members management requires the League Management permission. Only a main
+ * (super) admin may grant privileged roles or god-mode permissions; this helper
+ * returns both the actor and whether they hold that elevated authority.
+ */
+async function requireMemberManager() {
   const me = await getCurrentUser()
   if (!me) throw new Error("Not authenticated")
-  if (me.realRole !== "super_admin") throw new Error("Main admin access required")
+  const access = await getAccessContext(me)
+  if (!access.can("league_management")) throw new Error("League management access required")
+  return { me, isMainAdmin: me.realRole === "super_admin" }
+}
+
+/** Back-compat alias used by the existing create/password/role actions. */
+async function requireSuperAdmin() {
+  const { me } = await requireMemberManager()
   return me
 }
 
@@ -55,9 +75,19 @@ export async function listMembers(): Promise<MemberRow[]> {
 }
 
 export async function setMemberRole(userId: string, role: Role) {
-  const me = await requireSuperAdmin()
+  const { me, isMainAdmin } = await requireMemberManager()
   if (!ASSIGNABLE.includes(role)) return { ok: false, error: "Invalid role" }
   if (userId === me.id) return { ok: false, error: "You can't change your own role." }
+  // Only the main admin may grant League Admin / Main Admin.
+  if (!isMainAdmin && PRIVILEGED_ROLES.includes(role)) {
+    return { ok: false, error: "Only the main admin can grant that role." }
+  }
+
+  const [target] = await db.select({ role: userMeta.role }).from(userMeta).where(eq(userMeta.userId, userId)).limit(1)
+  // Non-main-admins also can't demote an existing privileged member.
+  if (!isMainAdmin && target && PRIVILEGED_ROLES.includes(target.role as Role)) {
+    return { ok: false, error: "Only the main admin can change that member." }
+  }
 
   const existing = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, userId)).limit(1)
   if (existing.length) {
