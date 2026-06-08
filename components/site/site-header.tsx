@@ -16,6 +16,7 @@ const NAV = [
   { href: "/marketplace", label: "Marketplace" },
   { href: "/sponsors", label: "Sponsors" },
   { href: "/rules", label: "Rules" },
+  { href: "/faq", label: "FAQ" },
 ]
 
 type HeaderUser = { name: string; email: string; role: string }

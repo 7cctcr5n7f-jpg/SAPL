@@ -147,10 +147,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
           ) : tab === "fixtures" ? (
             <FixturesTimeline fixtures={divisionFixtures} />
           ) : (
-            <div className="flex flex-col gap-6">
-              <RankingsLeaderboard rows={regionRankings} />
-              <LiveExperienceShowcase />
-            </div>
+            <RankingsLeaderboard rows={regionRankings} />
           )}
         </div>
       </section>
@@ -325,7 +322,7 @@ function FixturesTimeline({ fixtures }: { fixtures: LCFixture[] }) {
   )
 }
 
-function LiveExperienceShowcase() {
+export function LiveExperienceShowcase() {
   const items = [
     { icon: <Radio className="h-5 w-5" />, title: "Live Scores", desc: "Set-by-set scoring streamed to every device as rubbers finish." },
     { icon: <Activity className="h-5 w-5" />, title: "Match Events", desc: "A live feed of court-by-court swings, comebacks and clinchers." },
