@@ -15,6 +15,8 @@ import { getCurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { applyFixtureResult } from "@/lib/engine/apply-result"
+import { recomputeTeamStats } from "@/lib/engine/team-stats"
+import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 
 async function getFixtureForUser(userId: string, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
@@ -164,7 +166,7 @@ export async function setPlayerAvailability(
   return { success: unavailable ? "Marked unavailable" : "Marked available" }
 }
 
-export async function invitePlayer(teamId: number, playerId: number) {
+export async function addPlayer(teamId: number, playerId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const [team] = await db
@@ -174,43 +176,58 @@ export async function invitePlayer(teamId: number, playerId: number) {
     .limit(1)
   if (!team) return { error: "You do not captain this team." }
 
+  // One team per player per season: block if the player is already active on a
+  // different team in the same season.
+  const conflict = await getPlayerSeasonTeamConflict(playerId, team.seasonId, teamId)
+  if (conflict) {
+    return { error: `This player already plays for ${conflict.teamName} this season. They must leave that team first.` }
+  }
+
   const [existing] = await db
     .select()
     .from(teamMembers)
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, playerId)))
     .limit(1)
-  if (existing && ["active", "invited"].includes(existing.status)) {
-    return { error: "Player is already on the roster or invited." }
+  if (existing && existing.status === "active") {
+    return { error: "Player is already on the roster." }
   }
 
+  // Add the player straight onto the roster — no approval needed from the player.
   if (existing) {
     await db
       .update(teamMembers)
-      .set({ status: "invited", initiatedBy: "team", updatedAt: new Date() })
+      .set({ status: "active", initiatedBy: "team", updatedAt: new Date() })
       .where(eq(teamMembers.id, existing.id))
   } else {
     await db.insert(teamMembers).values({
       teamId,
       playerId,
       role: "member",
-      status: "invited",
+      status: "active",
       initiatedBy: "team",
     })
   }
 
   const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
   if (player) {
+    await db
+      .update(players)
+      .set({ availability: "on_team", lookingForTeam: false, updatedAt: new Date() })
+      .where(eq(players.id, playerId))
     await db.insert(notifications).values({
       userId: player.userId,
       type: "team_invite",
-      title: "You've been invited to a team",
-      body: `${team.name} has invited you to join their roster.`,
+      title: "You've been added to a team",
+      body: `${team.name} has added you to their roster.`,
       scope: "direct",
     })
   }
 
+  await recomputeTeamStats(teamId)
   revalidatePath("/dashboard/captain")
-  return { success: `Invitation sent to ${player ? player.firstName : "player"}.` }
+  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard")
+  return { success: `${player ? player.firstName : "Player"} added to ${team.name}.` }
 }
 
 export async function removeMember(teamId: number, membershipId: number) {

@@ -127,6 +127,7 @@ export type RosterEntry = {
   team: typeof teams.$inferSelect
   org: typeof organisations.$inferSelect | null
   division: typeof divisions.$inferSelect | null
+  season: typeof seasons.$inferSelect | null
 }
 
 export async function getPlayerMemberships(playerId: number): Promise<RosterEntry[]> {
@@ -136,14 +137,39 @@ export async function getPlayerMemberships(playerId: number): Promise<RosterEntr
       team: teams,
       org: organisations,
       division: divisions,
+      season: seasons,
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .leftJoin(organisations, eq(teams.organisationId, organisations.id))
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .leftJoin(seasons, eq(teams.seasonId, seasons.id))
     .where(eq(teamMembers.playerId, playerId))
     .orderBy(desc(teamMembers.updatedAt))
   return rows as RosterEntry[]
+}
+
+/**
+ * Enforces "one team per player per season". Returns the conflicting team
+ * (name + id) if the player is already an active member of a *different* team
+ * in the same season, otherwise null. A null seasonId (team not yet assigned to
+ * a season) is treated as unconstrained.
+ */
+export async function getPlayerSeasonTeamConflict(
+  playerId: number,
+  seasonId: number | null,
+  excludeTeamId: number,
+): Promise<{ teamId: number; teamName: string } | null> {
+  if (seasonId == null) return null
+  const rows = await db
+    .select({ teamId: teams.id, teamName: teams.name })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(
+      and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active"), eq(teams.seasonId, seasonId)),
+    )
+  const conflict = rows.find((r) => r.teamId !== excludeTeamId)
+  return conflict ?? null
 }
 
 export async function getPlayerPayments(userId: string, playerId: number) {

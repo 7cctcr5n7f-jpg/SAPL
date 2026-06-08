@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { ResultEntry } from "@/components/captain/result-entry"
 import { PairingsBoard } from "@/components/team/pairings-board"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
-import { invitePlayer, removeMember, setPlayerAvailability } from "@/lib/actions/captain"
+import { addPlayer, removeMember, setPlayerAvailability } from "@/lib/actions/captain"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -105,9 +105,9 @@ export function CaptainHub({
 
   function invite(playerId: number) {
     start(async () => {
-      const res = await invitePlayer(team.id, playerId)
+      const res = await addPlayer(team.id, playerId)
       if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Invited")
+      else toast.success(res?.success ?? "Player added")
     })
   }
   function remove(membershipId: number) {
@@ -161,11 +161,11 @@ export function CaptainHub({
             <Dialog>
               <DialogTrigger render={<Button size="sm" variant="outline" />}>
                 <UserPlus className="mr-1.5 h-4 w-4" />
-                Invite
+                Add player
               </DialogTrigger>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Invite a Player</DialogTitle>
+                  <DialogTitle>Add a Player</DialogTitle>
                 </DialogHeader>
                 <Input
                   placeholder="Search free agents..."
