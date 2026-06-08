@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/schema"
 import { eq, and, ne, sql } from "drizzle-orm"
 import { isSeasonLocked } from "@/lib/season-lock"
+import { TEAM_OWNER_PERMISSIONS, isTeamOwnerGrant } from "@/lib/permissions"
 
 /**
  * Guard a home-venue assignment against the club's hosting capacity. Returns an
@@ -47,8 +48,7 @@ import { revalidatePath } from "next/cache"
 import { notify } from "@/lib/notify"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
-async function requireOrgOwner(orgId: number) {
-  const user = await getCurrentUser()
+async function requireOrgOwner(orgId: number) {  const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
   const [org] = await db.select().from(organisations).where(eq(organisations.id, orgId)).limit(1)
   if (!org) throw new Error("Organisation not found")
@@ -281,6 +281,12 @@ export async function deleteTeam(teamId: number) {
     await requireOrgOwner(team.organisationId)
   } catch {
     return { ok: false, error: "You cannot manage this team." }
+  }
+
+  // A team can only be deleted while no season is active. Once the league is
+  // running, removing a placed team would corrupt fixtures and standings.
+  if (await isSeasonLocked()) {
+    return { ok: false, error: "The season has started — teams can't be deleted while the league is active." }
   }
 
   await db.delete(teamMembers).where(eq(teamMembers.teamId, teamId))

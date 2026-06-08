@@ -61,6 +61,27 @@ export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
   super_admin: [...PERMISSIONS],
 }
 
+/**
+ * Permissions automatically granted to a self-service Team Owner — someone who
+ * created their own team from the dashboard. This mirrors a club admin's powers
+ * minus club_management and league_management, scoped (by the access layer) to
+ * the teams they own. Granted on team creation and revoked when they own none.
+ */
+export const TEAM_OWNER_PERMISSIONS: Permission[] = [
+  "team_management",
+  "player_management",
+  "billing_management",
+  "fixture_management",
+  "captain_hub",
+]
+
+/** True when `values` is exactly the auto-granted Team Owner permission set. */
+export function isTeamOwnerGrant(values: string[] | null | undefined): boolean {
+  if (!values) return false
+  const set = new Set(sanitizePermissions(values))
+  return set.size === TEAM_OWNER_PERMISSIONS.length && TEAM_OWNER_PERMISSIONS.every((p) => set.has(p))
+}
+
 /** Type guard for unknown string arrays coming from the DB / forms. */
 export function isPermission(value: string): value is Permission {
   return (PERMISSIONS as readonly string[]).includes(value)

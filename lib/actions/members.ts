@@ -45,16 +45,19 @@ export type MemberRow = {
   role: Role
   playerName: string | null
   createdAt: string
+  /** True when this member has an explicit permission override (vs role defaults). */
+  hasPermissionOverride: boolean
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
-  await requireSuperAdmin()
+  await requireMemberManager()
   const rows = await db
     .select({
       id: user.id,
       name: user.name,
       email: user.email,
       role: userMeta.role,
+      permissions: userMeta.permissions,
       firstName: players.firstName,
       lastName: players.lastName,
       createdAt: user.createdAt,
@@ -71,6 +74,7 @@ export async function listMembers(): Promise<MemberRow[]> {
     role: (r.role as Role) ?? "player",
     playerName: r.firstName ? `${r.firstName} ${r.lastName ?? ""}`.trim() : null,
     createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
+    hasPermissionOverride: r.permissions != null,
   }))
 }
 
@@ -96,6 +100,186 @@ export async function setMemberRole(userId: string, role: Role) {
     await db.insert(userMeta).values({ userId, role })
   }
 
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Permissions & assignments
+// ---------------------------------------------------------------------------
+
+export type MemberDetail = {
+  /** Effective permissions currently in force (role defaults or stored override). */
+  effectivePermissions: Permission[]
+  /** True when this member has an explicit override list (vs. role defaults). */
+  hasOverride: boolean
+  /** The member's role default permissions (shown as the baseline). */
+  roleDefaults: Permission[]
+  clubAssignments: ClubAssignment[]
+  teamAssignments: TeamAssignment[]
+}
+
+function getEffectiveForTarget(role: Role | undefined, override: string[] | null): Permission[] {
+  const r = role ?? "player"
+  if (r === "super_admin") return [...PERMISSIONS]
+  if (override == null) return ROLE_DEFAULTS[r] ?? []
+  return sanitizePermissions(override)
+}
+
+/** Loads the permission + assignment detail for a single member (expand panel). */
+export async function getMemberDetail(userId: string): Promise<MemberDetail> {
+  await requireMemberManager()
+
+  const [target] = await db
+    .select({ id: user.id, name: user.name, email: user.email, role: userMeta.role, permissions: userMeta.permissions })
+    .from(user)
+    .leftJoin(userMeta, eq(userMeta.userId, user.id))
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!target) throw new Error("Member not found")
+
+  const role = (target.role as Role) ?? "player"
+  const access = await getAccessContext({
+    id: target.id,
+    name: target.name,
+    email: target.email,
+    role,
+    realRole: role,
+    isSuperAdmin: role === "super_admin",
+    actingRole: null,
+    playerId: null,
+  })
+
+  return {
+    effectivePermissions: [...access.permissions],
+    hasOverride: target.permissions != null,
+    roleDefaults: ROLE_DEFAULTS[role] ?? [],
+    clubAssignments: access.clubAssignments,
+    teamAssignments: access.teamAssignments,
+  }
+}
+
+async function upsertMeta(userId: string, patch: Partial<typeof userMeta.$inferInsert>) {
+  const [existing] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, userId)).limit(1)
+  if (existing) {
+    await db.update(userMeta).set({ ...patch, updatedAt: new Date() }).where(eq(userMeta.userId, userId))
+  } else {
+    await db.insert(userMeta).values({ userId, role: "player", ...patch })
+  }
+}
+
+/**
+ * Set a member's explicit permission override. Passing `null` reverts them to
+ * their role defaults. Only the main admin may grant or revoke league_management
+ * (god mode) on another member.
+ */
+export async function setMemberPermissions(userId: string, permissions: string[] | null) {
+  const { me, isMainAdmin } = await requireMemberManager()
+  if (userId === me.id) return { ok: false, error: "You can't change your own permissions." }
+
+  let value: Permission[] | null = null
+  if (permissions != null) {
+    value = sanitizePermissions(permissions)
+    if (!isMainAdmin && value.includes("league_management")) {
+      return { ok: false, error: "Only the main admin can grant League Management." }
+    }
+  }
+
+  if (!isMainAdmin) {
+    const [target] = await db
+      .select({ role: userMeta.role, permissions: userMeta.permissions })
+      .from(userMeta)
+      .where(eq(userMeta.userId, userId))
+      .limit(1)
+    const current = getEffectiveForTarget(target?.role as Role, target?.permissions ?? null)
+    if (current.includes("league_management")) {
+      return { ok: false, error: "Only the main admin can change that member." }
+    }
+  }
+
+  await upsertMeta(userId, { permissions: value })
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Options for the club/team assignment pickers. */
+export async function getAssignmentOptions(): Promise<{
+  clubs: { id: number; name: string }[]
+  teams: { id: number; name: string }[]
+}> {
+  await requireMemberManager()
+  const [clubRows, teamRows] = await Promise.all([
+    db.select({ id: clubs.id, name: clubs.name }).from(clubs).orderBy(asc(clubs.name)),
+    db.select({ id: teams.id, name: teams.name }).from(teams).orderBy(asc(teams.name)),
+  ])
+  return { clubs: clubRows, teams: teamRows }
+}
+
+type OverrideShape = { add: number[]; remove: number[] }
+function normalise(v: unknown): OverrideShape {
+  const o = (v ?? {}) as Partial<OverrideShape>
+  const ints = (a: unknown) => (Array.isArray(a) ? a.map(Number).filter(Number.isInteger) : [])
+  return { add: ints(o.add), remove: ints(o.remove) }
+}
+
+/**
+ * Add or remove a manual club assignment for a member. Email-matched (auto)
+ * clubs are toggled via the remove-set; everything else via the add-set.
+ */
+export async function setMemberClubAssignment(userId: string, clubId: number, assigned: boolean) {
+  await requireMemberManager()
+  if (!Number.isInteger(clubId)) return { ok: false as const, error: "Invalid club." }
+  const [meta] = await db
+    .select({ clubOverrides: userMeta.clubOverrides })
+    .from(userMeta)
+    .where(eq(userMeta.userId, userId))
+    .limit(1)
+  const ov = normalise(meta?.clubOverrides)
+
+  const [target] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId)).limit(1)
+  const email = target?.email?.trim().toLowerCase() ?? ""
+  const [club] = await db.select({ contactEmail: clubs.contactEmail }).from(clubs).where(eq(clubs.id, clubId)).limit(1)
+  const isAuto = !!email && (club?.contactEmail ?? "").trim().toLowerCase() === email
+
+  if (isAuto) {
+    ov.remove = assigned ? ov.remove.filter((id) => id !== clubId) : [...new Set([...ov.remove, clubId])]
+  } else {
+    ov.add = assigned ? [...new Set([...ov.add, clubId])] : ov.add.filter((id) => id !== clubId)
+  }
+
+  await upsertMeta(userId, { clubOverrides: ov })
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Add or remove a manual team assignment for a member (owner/captain teams are auto). */
+export async function setMemberTeamAssignment(userId: string, teamId: number, assigned: boolean) {
+  await requireMemberManager()
+  if (!Number.isInteger(teamId)) return { ok: false as const, error: "Invalid team." }
+  const [meta] = await db
+    .select({ teamOverrides: userMeta.teamOverrides })
+    .from(userMeta)
+    .where(eq(userMeta.userId, userId))
+    .limit(1)
+  const ov = normalise(meta?.teamOverrides)
+
+  const [target] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId)).limit(1)
+  const email = target?.email?.trim().toLowerCase() ?? ""
+  const [team] = await db
+    .select({ ownerEmail: teams.ownerEmail, captainUserId: teams.captainUserId })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
+  const isAuto =
+    (!!email && (team?.ownerEmail ?? "").trim().toLowerCase() === email) || team?.captainUserId === userId
+
+  if (isAuto) {
+    ov.remove = assigned ? ov.remove.filter((id) => id !== teamId) : [...new Set([...ov.remove, teamId])]
+  } else {
+    ov.add = assigned ? [...new Set([...ov.add, teamId])] : ov.add.filter((id) => id !== teamId)
+  }
+
+  await upsertMeta(userId, { teamOverrides: ov })
   revalidatePath("/admin/members")
   return { ok: true }
 }

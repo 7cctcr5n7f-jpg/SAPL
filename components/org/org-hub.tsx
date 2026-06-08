@@ -224,7 +224,10 @@ export function OrgHub({
         <p className="text-sm text-muted-foreground">
           Add players to the league, then build squads and assign captains.
         </p>
-        <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        <div className="flex items-center gap-2">
+          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
+          <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -239,7 +242,6 @@ export function OrgHub({
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" /> Teams
           </CardTitle>
-          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Filters */}
@@ -614,7 +616,7 @@ function CreateTeamDialog({
       <DialogTrigger
         render={
           <Button size="sm" variant="outline">
-            <Plus className="mr-1 h-4 w-4" /> New team
+            <Plus className="mr-1 h-4 w-4" /> Create team
           </Button>
         }
       />
