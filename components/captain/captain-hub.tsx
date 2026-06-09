@@ -16,11 +16,11 @@ import { Input } from "@/components/ui/input"
 import { ResultEntry } from "@/components/captain/result-entry"
 import { PairingsBoard } from "@/components/team/pairings-board"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
-import { addPlayer, removeMember, setPlayerAvailability } from "@/lib/actions/captain"
+import { addPlayer, removeMember } from "@/lib/actions/captain"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { UserPlus, X, DollarSign, Mars, Venus, CalendarDays, UserX, Check, ShieldCheck } from "lucide-react"
+import { UserPlus, X, DollarSign, Mars, Venus, ShieldCheck } from "lucide-react"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
 
 type RosterMember = {
@@ -308,8 +308,6 @@ export function CaptainHub({
         </Card>
       </div>
 
-      <FutureSchedule team={team} />
-
       <div>
         <h2 className="mb-1 text-lg font-semibold">Team Pairings</h2>
         <p className="mb-4 text-sm text-muted-foreground">
@@ -400,91 +398,6 @@ function FeeSummary({
       <span className={cn("text-sm font-semibold tabular-nums", allPaid ? "text-green-600" : "text-amber-600")}>
         {allPaid ? "All paid" : `${fmtZAR(outstanding)} due`}
       </span>
-    </div>
-  )
-}
-
-/**
- * Upcoming (not-yet-played) fixtures with a per-fixture availability editor so
- * the captain can drop specific roster players from a given week.
- */
-function FutureSchedule({ team }: { team: CaptainTeam }) {
-  const [pending, start] = useTransition()
-  const upcoming = team.fixtures
-    .filter((f) => f.status !== "completed")
-    .sort((a, b) => a.week - b.week)
-
-  function toggle(fixtureId: number, playerId: number, makeUnavailable: boolean) {
-    start(async () => {
-      const res = await setPlayerAvailability(fixtureId, team.id, playerId, makeUnavailable)
-      if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Updated")
-    })
-  }
-
-  return (
-    <div>
-      <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
-        <CalendarDays className="h-5 w-5 text-primary" /> Future Schedule
-      </h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Mark players unavailable for an upcoming fixture so they&apos;re excluded from that week&apos;s lineup.
-      </p>
-      {upcoming.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">No upcoming fixtures scheduled.</CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {upcoming.map((f) => {
-            const out = new Set(team.unavailable[f.id] ?? [])
-            const availableCount = team.roster.filter((m) => !out.has(m.playerId)).length
-            return (
-              <Card key={f.id}>
-                <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
-                  <div>
-                    <CardTitle className="text-sm">
-                      {f.homeName} <span className="text-muted-foreground">vs</span> {f.awayName}
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      Week {f.week} · {fmtDate(f.matchDate)}
-                    </p>
-                  </div>
-                  <Badge variant={availableCount > 0 ? "secondary" : "destructive"}>
-                    {availableCount} available
-                  </Badge>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {team.roster.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No roster players yet.</p>
-                  )}
-                  {team.roster.map((m) => {
-                    const unavailable = out.has(m.playerId)
-                    return (
-                      <button
-                        key={m.playerId}
-                        type="button"
-                        disabled={pending}
-                        onClick={() => toggle(f.id, m.playerId, !unavailable)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50",
-                          unavailable
-                            ? "border-border bg-muted text-muted-foreground line-through"
-                            : "border-primary/30 bg-primary/10 text-foreground hover:bg-primary/20",
-                        )}
-                        title={unavailable ? "Tap to mark available" : "Tap to mark unavailable"}
-                      >
-                        {unavailable ? <UserX className="h-3 w-3" /> : <Check className="h-3 w-3 text-primary" />}
-                        {m.name}
-                      </button>
-                    )
-                  })}
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

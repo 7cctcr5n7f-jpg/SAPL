@@ -1,9 +1,10 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { fixtures, clubs, organisations } from "@/lib/db/schema"
+import { fixtures, clubs } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { notifyTeam } from "@/lib/notify"
 
@@ -37,27 +38,29 @@ function isLeagueAdmin(role: string) {
 
 /**
  * Does this user have authority over a fixture for link editing?
- * League admins always; otherwise only the org owner whose own club hosts the
- * fixture. A manager cannot edit links for matches their team plays away at
+ * League admins always; otherwise any club manager (assigned via the club's
+ * contact email or a manual Members & Roles assignment) whose own club hosts
+ * the fixture. A manager cannot edit links for matches their team plays away at
  * another club's venue.
  */
-async function canManageFixtureLink(userId: string, role: string, fixtureId: number) {
-  if (isLeagueAdmin(role)) return true
-  const [org] = await db.select().from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
-  if (!org) return false
-  const [fx] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
-  if (!fx || fx.venueClubId == null) return false
+async function canManageFixtureLink(fixtureId: number) {
+  const user = await requireUser()
+  const access = await getAccessContext(user)
+  if (access.isLeagueAdmin) return true
+  if (!access.can("fixture_management")) return false
 
-  const orgClubIds = (await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.organisationId, org.id))).map(
-    (c) => c.id,
-  )
-  return orgClubIds.includes(fx.venueClubId)
+  const [fx] = await db
+    .select({ venueClubId: fixtures.venueClubId })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fx || fx.venueClubId == null) return false
+  return access.canManageClub(fx.venueClubId)
 }
 
 /** Set (or clear) a fixture's Playtomic booking link. */
 export async function setFixturePlaytomicUrl(fixtureId: number, url: string) {
-  const user = await requireUser()
-  const allowed = await canManageFixtureLink(user.id, user.realRole, fixtureId)
+  const allowed = await canManageFixtureLink(fixtureId)
   if (!allowed) return { ok: false, error: "Not authorised to edit this fixture" }
 
   const normalized = normalizeUrl(url)
@@ -82,8 +85,7 @@ export async function setFixturePlaytomicUrl(fixtureId: number, url: string) {
 
 /** Set (or clear) a single court's Playtomic booking link for a category. */
 export async function setFixtureCourtLink(fixtureId: number, category: string, url: string) {
-  const user = await requireUser()
-  const allowed = await canManageFixtureLink(user.id, user.realRole, fixtureId)
+  const allowed = await canManageFixtureLink(fixtureId)
   if (!allowed) return { ok: false, error: "Not authorised to edit this fixture" }
 
   const [fx] = await db.select({ courtLinks: fixtures.courtLinks }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)

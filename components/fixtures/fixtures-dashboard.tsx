@@ -35,9 +35,10 @@ const SCOPE_COPY: Record<FixtureScope, string> = {
 // The four courts played each match night, in running order.
 const COURTS = [...CATEGORY_RULES].sort((a, b) => a.sortOrder - b.sortOrder).map((c) => c.name)
 
-// "Mens Open" -> "Mens O", "Mens Beginner" -> "Mens B", "Mens Intermediate" -> "Mens I"
-function shortCategory(name: string) {
-  return name.replace("Beginner", "B").replace("Intermediate", "I").replace("Open", "O")
+// The category is shown in full (e.g. "Mens Open", "Ladies Beginner") so the
+// match-up reads clearly rather than as a cryptic single letter.
+function categoryLabel(name: string) {
+  return name
 }
 
 function teamLabel(name: string | null, slot: number | null) {
@@ -394,25 +395,26 @@ function FixtureRow({
           <ul className="space-y-1.5">
             {COURTS.map((category, i) => {
               const url = f.courtLinks?.[category]
-              const short = shortCategory(category)
+              const short = categoryLabel(category)
               return (
                 <li
                   key={category}
                   className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2"
                 >
-                  <span className="inline-flex h-5 w-12 shrink-0 items-center justify-center rounded bg-secondary text-[10px] font-semibold uppercase text-secondary-foreground">
+                  <span className="inline-flex h-5 shrink-0 items-center justify-center rounded bg-secondary px-2 text-[10px] font-semibold uppercase text-secondary-foreground">
                     Court {i + 1}
                   </span>
                   <span className="min-w-0 flex-1 text-sm">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {short}
+                    </span>
                     <span className={cn("font-medium", home.placeholder && "italic text-muted-foreground")}>
                       {home.text}
-                    </span>{" "}
-                    <span className="text-muted-foreground">{short}</span>
-                    <span className="mx-1 text-muted-foreground">vs</span>
+                    </span>
+                    <span className="mx-1.5 text-muted-foreground">vs</span>
                     <span className={cn("font-medium", away.placeholder && "italic text-muted-foreground")}>
                       {away.text}
-                    </span>{" "}
-                    <span className="text-muted-foreground">{short}</span>
+                    </span>
                   </span>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {url ? (
@@ -523,7 +525,7 @@ function EditDialog({
         {editing?.mode === "court" ? (
           <>
             <DialogHeader>
-              <DialogTitle>{shortCategory(editing.category)} court — booking link</DialogTitle>
+              <DialogTitle>{categoryLabel(editing.category)} court — booking link</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">{matchup}</p>
             <Input

@@ -12,11 +12,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { invitePlayerByEmail, setPairingSlot, cancelInvite, removeFromTeam } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, setPairingSlot, cancelInvite } from "@/lib/actions/pairings"
 import { PAIRING_LAYOUT } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { DollarSign, Mail, Mars, UserMinus, UserPlus, Venus, X } from "lucide-react"
+import { DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
 import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
 type Invite = { id: number; email: string; category: string | null }
@@ -49,15 +49,6 @@ export function PairingsBoard({
       const res = await setPairingSlot({ teamId, category, pairIndex, slotIndex, playerId })
       if (res?.error) toast.error(res.error)
       else toast.success(res?.success ?? "Updated")
-    })
-  }
-
-  function removePlayer(playerId: number, name: string) {
-    if (!confirm(`Remove ${name} from this team? They'll be freed up to join another team.`)) return
-    start(async () => {
-      const res = await removeFromTeam({ teamId, playerId })
-      if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Player removed")
     })
   }
 
@@ -131,29 +122,58 @@ export function PairingsBoard({
     const avail = availableFor(cat)
     const catInvites = invites.filter((i) => i.category === categoryName)
     const filled = pair.filter((s) => s.player).length
+    const complete = filled === 2
+    const isLadies = /^Ladies/.test(categoryName)
+    const shortName = categoryName.replace(/^(Ladies|Mens)\s/, "")
 
     return (
-      <div className="rounded-lg border border-border bg-card p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm font-semibold">{categoryName.replace(/^(Ladies|Mens)\s/, "")}</p>
-          <span className="text-[11px] font-medium text-muted-foreground">{filled}/2</span>
+      <div
+        className={cn(
+          "overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+          complete ? "border-primary/40" : "border-border",
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-secondary/40 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex h-6 w-6 items-center justify-center rounded-full",
+                isLadies ? "bg-pink-500/15 text-pink-500" : "bg-blue-500/15 text-blue-500",
+              )}
+            >
+              {isLadies ? <Venus className="h-3.5 w-3.5" /> : <Mars className="h-3.5 w-3.5" />}
+            </span>
+            <p className="text-sm font-semibold">{shortName}</p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums",
+              complete ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {filled}/2
+          </span>
         </div>
-        <div className="space-y-2">
+
+        <div className="space-y-2 p-2.5">
           {pair.map((slot) => (
             <div
               key={slot.slotIndex}
-              className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
+              className={cn(
+                "flex min-h-12 items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors",
+                slot.player ? "border-border bg-background" : "border-dashed border-border/70 bg-secondary/20",
+              )}
             >
               {slot.player ? (
                 <>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback className="text-[10px]">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="text-xs font-semibold">
                         {slot.player.name.slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="flex items-center gap-1 truncate text-sm font-medium">
+                      <p className="flex items-center gap-1 truncate text-sm font-semibold">
                         <GenderIcon gender={slot.player.gender} />
                         <span className="truncate">{slot.player.name}</span>
                       </p>
@@ -165,7 +185,7 @@ export function PairingsBoard({
                     <button
                       onClick={() => assign(categoryName, slot.pairIndex, slot.slotIndex, null)}
                       disabled={pending}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                       aria-label="Clear slot"
                     >
                       <X className="h-4 w-4" />
@@ -174,12 +194,17 @@ export function PairingsBoard({
                 </>
               ) : (
                 <div className="flex w-full items-center justify-between gap-2">
-                  <span className="text-sm text-muted-foreground">Empty slot</span>
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground/50">
+                      <UserPlus className="h-4 w-4" />
+                    </span>
+                    Open slot
+                  </span>
                   <div className="flex items-center gap-1.5">
                     {avail.length > 0 && (
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          render={<Button size="sm" variant="ghost" className="h-7 px-2 text-xs" />}
+                          render={<Button size="sm" variant="secondary" className="h-8 px-3 text-xs" />}
                         >
                           Assign
                         </DropdownMenuTrigger>
@@ -198,7 +223,7 @@ export function PairingsBoard({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 px-2 text-xs"
+                      className="h-8 px-3 text-xs"
                       onClick={() =>
                         setInviteTarget({
                           category: categoryName,
@@ -207,92 +232,54 @@ export function PairingsBoard({
                         })
                       }
                     >
-                      <UserPlus className="mr-1 h-3.5 w-3.5" />
-                      Add
+                      <Mail className="mr-1 h-3.5 w-3.5" />
+                      Invite
                     </Button>
                   </div>
                 </div>
               )}
             </div>
           ))}
-        </div>
 
-        {catInvites.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {catInvites.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs"
-              >
-                <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{inv.email}</span>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">
-                    Pending
-                  </Badge>
-                </span>
-                <button
-                  onClick={() =>
-                    start(async () => {
-                      const res = await cancelInvite(inv.id)
-                      if (res?.error) toast.error(res.error)
-                      else toast.success(res?.success ?? "Cancelled")
-                    })
-                  }
-                  disabled={pending}
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  aria-label="Cancel invite"
+          {catInvites.length > 0 && (
+            <div className="space-y-1.5 pt-0.5">
+              {catInvites.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-secondary/20 px-3 py-1.5 text-xs"
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+                  <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{inv.email}</span>
+                    <Badge variant="outline" className="shrink-0 text-[10px]">
+                      Pending
+                    </Badge>
+                  </span>
+                  <button
+                    onClick={() =>
+                      start(async () => {
+                        const res = await cancelInvite(inv.id)
+                        if (res?.error) toast.error(res.error)
+                        else toast.success(res?.success ?? "Cancelled")
+                      })
+                    }
+                    disabled={pending}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    aria-label="Cancel invite"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {/* Full squad roster with a true "remove from team" control. Clearing a
-          pairing slot only unsets the lineup; removing here frees the player to
-          join another team. */}
-      {roster.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-3">
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Squad ({roster.length})
-          </h3>
-          <div className="flex flex-col gap-1.5">
-            {roster.map((p) => (
-              <div
-                key={p.playerId}
-                className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <GenderIcon gender={p.gender} />
-                  <span className="truncate text-sm font-medium">{p.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">LI {p.li.toFixed(1)}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <PaidIcon paid={p.paid} />
-                  <button
-                    type="button"
-                    onClick={() => removePlayer(p.playerId, p.name)}
-                    disabled={pending}
-                    className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
-                    aria-label={`Remove ${p.name} from team`}
-                  >
-                    <UserMinus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Remove</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="grid gap-4 sm:grid-cols-2">
         {(["female", "male"] as const).map((gender) => {
           const group = PAIRING_LAYOUT[gender]
