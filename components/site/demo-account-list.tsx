@@ -41,11 +41,13 @@ function DemoAccountCard({ account, password }: { account: DemoAccount; password
         <CopyRow label="Password" value={password} />
       </div>
 
-      <Button asChild size="sm" className="mt-auto w-full">
-        <Link href={`/sign-in?email=${encodeURIComponent(account.email)}`}>
-          <LogIn className="h-4 w-4" />
-          Sign in as {account.label}
-        </Link>
+      <Button
+        size="sm"
+        className="mt-auto w-full"
+        render={<Link href={`/sign-in?email=${encodeURIComponent(account.email)}`} />}
+      >
+        <LogIn className="h-4 w-4" />
+        Sign in as {account.label}
       </Button>
     </div>
   )

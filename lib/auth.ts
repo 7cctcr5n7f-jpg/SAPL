@@ -49,6 +49,13 @@ export const auth = betterAuth({
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_PROJECT_PRODUCTION_URL ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`] : []),
+    // Extra trusted origins (comma-separated). Required when serving from a
+    // custom domain that differs from the Vercel-assigned URL — e.g. the Demo
+    // Environment on https://demo.sapl.co.za — so Better Auth accepts its
+    // sign-in requests instead of rejecting them as "Invalid origin".
+    ...(process.env.AUTH_TRUSTED_ORIGINS
+      ? process.env.AUTH_TRUSTED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+      : []),
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
