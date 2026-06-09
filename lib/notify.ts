@@ -2,6 +2,12 @@ import { db } from "@/lib/db"
 import { notifications, teams, teamMembers, players, user as userTable } from "@/lib/db/schema"
 import { and, eq, sql } from "drizzle-orm"
 import { notificationProvider, type NotificationChannel } from "@/lib/providers"
+import { NOTE_LINK_SEP } from "@/lib/notify-constants"
+
+// Re-export so server modules can keep importing it from "@/lib/notify".
+// The canonical definition lives in the dependency-free notify-constants module
+// so client components can use it without bundling the server-only DB client.
+export { NOTE_LINK_SEP }
 
 export type NotifyInput = {
   userId?: string | null
@@ -18,8 +24,7 @@ export type NotifyInput = {
 
 // Marker used to embed an action link inside the stored body. The list UI
 // splits on this to render a button without needing a schema migration.
-export const NOTE_LINK_SEP = "\u0001link\u0001"
-
+// (Canonical definition imported above from notify-constants.)
 function packBody(body: string, href?: string | null) {
   return href ? `${body}${NOTE_LINK_SEP}${href}` : body
 }
