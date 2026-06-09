@@ -12,11 +12,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { invitePlayerByEmail, setPairingSlot, cancelInvite } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, setPairingSlot, cancelInvite, removeFromTeam } from "@/lib/actions/pairings"
 import { PAIRING_LAYOUT } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
+import { DollarSign, Mail, Mars, UserMinus, UserPlus, Venus, X } from "lucide-react"
 import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
 type Invite = { id: number; email: string; category: string | null }
@@ -49,6 +49,15 @@ export function PairingsBoard({
       const res = await setPairingSlot({ teamId, category, pairIndex, slotIndex, playerId })
       if (res?.error) toast.error(res.error)
       else toast.success(res?.success ?? "Updated")
+    })
+  }
+
+  function removePlayer(playerId: number, name: string) {
+    if (!confirm(`Remove ${name} from this team? They'll be freed up to join another team.`)) return
+    start(async () => {
+      const res = await removeFromTeam({ teamId, playerId })
+      if (res?.error) toast.error(res.error)
+      else toast.success(res?.success ?? "Player removed")
     })
   }
 
@@ -246,6 +255,44 @@ export function PairingsBoard({
 
   return (
     <div className="space-y-4">
+      {/* Full squad roster with a true "remove from team" control. Clearing a
+          pairing slot only unsets the lineup; removing here frees the player to
+          join another team. */}
+      {roster.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Squad ({roster.length})
+          </h3>
+          <div className="flex flex-col gap-1.5">
+            {roster.map((p) => (
+              <div
+                key={p.playerId}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <GenderIcon gender={p.gender} />
+                  <span className="truncate text-sm font-medium">{p.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">LI {p.li.toFixed(1)}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <PaidIcon paid={p.paid} />
+                  <button
+                    type="button"
+                    onClick={() => removePlayer(p.playerId, p.name)}
+                    disabled={pending}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+                    aria-label={`Remove ${p.name} from team`}
+                  >
+                    <UserMinus className="h-4 w-4" />
+                    <span className="hidden sm:inline">Remove</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         {(["female", "male"] as const).map((gender) => {
           const group = PAIRING_LAYOUT[gender]

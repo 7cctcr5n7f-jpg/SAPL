@@ -311,7 +311,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
     const acc = new Map<number, StandingRow>(
       divTeamIds.map((id) => [
         id,
-        { teamId: id, played: 0, wins: 0, losses: 0, setsWon: 0, setsLost: 0, points: 0, pointsDiff: 0, rank: 0, headToHead: {} },
+        { teamId: id, played: 0, wins: 0, losses: 0, setsWon: 0, setsLost: 0, gamesFor: 0, gamesAgainst: 0, points: 0, pointsDiff: 0, rank: 0, headToHead: {} },
       ]),
     )
 
@@ -326,9 +326,46 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
         // bias by relative team strength
         const strength = 1 / (1 + Math.pow(10, (awayTpr - homeTpr) / 400))
         const homeWins = rand() < strength
-        const homeSets = homeWins ? 2 : randInt(0, 1)
-        const awaySets = homeWins ? randInt(0, 1) : 2
-        return { category: cat.name, homeSetsWon: homeSets, awaySetsWon: awaySets }
+        // Build realistic best-of-3 set scores (winner takes 2 sets).
+        const winnerSets = 2
+        const loserSets = randInt(0, 1)
+        const buildSet = (winnerSide: "home" | "away") => {
+          // Winner of the set scores 6 (or 7), loser 0-5 (or 6 vs 7).
+          const seven = rand() < 0.25
+          const winGames = seven ? 7 : 6
+          const loseGames = seven ? randInt(5, 6) : randInt(0, 5)
+          return winnerSide === "home"
+            ? { home: winGames, away: loseGames }
+            : { home: loseGames, away: winGames }
+        }
+        const setRows: { home: number; away: number }[] = []
+        const totalSets = winnerSets + loserSets
+        let homeSetsAssigned = 0
+        let awaySetsAssigned = 0
+        for (let i = 0; i < totalSets; i++) {
+          const homeNeeds = homeWins ? winnerSets : loserSets
+          const homeStillNeeds = homeNeeds - homeSetsAssigned
+          const setsLeft = totalSets - i
+          // Assign the set winner to keep totals consistent.
+          const homeTakes = homeStillNeeds >= setsLeft ? true : homeStillNeeds <= 0 ? false : rand() < 0.5
+          if (homeTakes) {
+            setRows.push(buildSet("home"))
+            homeSetsAssigned++
+          } else {
+            setRows.push(buildSet("away"))
+            awaySetsAssigned++
+          }
+        }
+        const homeGames = setRows.reduce((s, r) => s + r.home, 0)
+        const awayGames = setRows.reduce((s, r) => s + r.away, 0)
+        return {
+          category: cat.name,
+          homeSetsWon: homeSetsAssigned,
+          awaySetsWon: awaySetsAssigned,
+          homeGames,
+          awayGames,
+          scoreDetail: setRows.map((r) => `${r.home}-${r.away}`).join(", "),
+        }
       })
 
       const score = scoreFixture(matchResults)
@@ -365,7 +402,9 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
             isFeatureCourt: cat.isFeatureCourt,
             homeSetsWon: m.homeSetsWon,
             awaySetsWon: m.awaySetsWon,
-            scoreDetail: `${m.homeSetsWon}-${m.awaySetsWon}`,
+            homeGames: m.homeGames,
+            awayGames: m.awayGames,
+            scoreDetail: m.scoreDetail,
             winnerTeamId: m.homeSetsWon > m.awaySetsWon ? fx.homeTeamId : fx.awayTeamId,
           }
         }),
@@ -394,10 +433,14 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
       h.setsLost += score.awaySetsWon
       a.setsWon += score.awaySetsWon
       a.setsLost += score.homeSetsWon
+      h.gamesFor += score.homeGames
+      h.gamesAgainst += score.awayGames
+      a.gamesFor += score.awayGames
+      a.gamesAgainst += score.homeGames
       h.points += score.homePoints
       a.points += score.awayPoints
-      h.pointsDiff += score.homePoints - score.awayPoints
-      a.pointsDiff += score.awayPoints - score.homePoints
+      h.pointsDiff = h.gamesFor - h.gamesAgainst
+      a.pointsDiff = a.gamesFor - a.gamesAgainst
       if (score.winnerSide === "home") {
         h.wins++
         a.losses++
@@ -441,6 +484,8 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
         losses: row.losses,
         setsWon: row.setsWon,
         setsLost: row.setsLost,
+        gamesFor: row.gamesFor,
+        gamesAgainst: row.gamesAgainst,
         points: row.points,
         pointsDiff: row.pointsDiff,
         rank: row.rank,

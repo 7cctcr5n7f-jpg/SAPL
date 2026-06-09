@@ -5,6 +5,23 @@ import { fixtures, clubs, organisations } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
+import { notifyTeam } from "@/lib/notify"
+
+/**
+ * Notify both teams in a fixture about a scheduling change. No-ops for template
+ * fixtures that don't yet have both teams assigned.
+ */
+async function notifyFixtureTeams(fixtureId: number, type: string, title: string, body: string) {
+  const [fx] = await db
+    .select({ homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fx) return
+  const targets = [fx.homeTeamId, fx.awayTeamId].filter((id): id is number => id != null)
+  const href = `/league-centre/match/${fixtureId}`
+  await Promise.all(targets.map((teamId) => notifyTeam(teamId, { type, title, body, fixtureId, href })))
+}
 
 function normalizeUrl(raw: string): string | null {
   const v = raw.trim()
@@ -43,12 +60,23 @@ export async function setFixturePlaytomicUrl(fixtureId: number, url: string) {
   const allowed = await canManageFixtureLink(user.id, user.realRole, fixtureId)
   if (!allowed) return { ok: false, error: "Not authorised to edit this fixture" }
 
+  const normalized = normalizeUrl(url)
   await db
     .update(fixtures)
-    .set({ playtomicUrl: normalizeUrl(url), updatedAt: new Date() })
+    .set({ playtomicUrl: normalized, updatedAt: new Date() })
     .where(eq(fixtures.id, fixtureId))
 
+  if (normalized) {
+    await notifyFixtureTeams(
+      fixtureId,
+      "fixture_ready",
+      "Your fixture is ready to book",
+      "A Playtomic booking link was added for your match night. Tap to view and join.",
+    )
+  }
+
   revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
   return { ok: true }
 }
 
@@ -67,7 +95,20 @@ export async function setFixtureCourtLink(fixtureId: number, category: string, u
   else delete next[category]
 
   await db.update(fixtures).set({ courtLinks: next, updatedAt: new Date() }).where(eq(fixtures.id, fixtureId))
+
+  // Adding (not clearing) a court link makes the fixture bookable — let both
+  // teams know their match night is ready to join on Playtomic.
+  if (normalized) {
+    await notifyFixtureTeams(
+      fixtureId,
+      "fixture_ready",
+      "Your fixture is ready to book",
+      `A Playtomic court link was added for ${category}. Tap to view and join.`,
+    )
+  }
+
   revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
   return { ok: true }
 }
 
@@ -77,7 +118,14 @@ export async function setFixtureTimeslot(fixtureId: number, timeslot: string | n
   if (!isLeagueAdmin(user.realRole)) return { ok: false, error: "League admin access required" }
   const value = timeslot && /^\d{1,2}:\d{2}$/.test(timeslot) ? timeslot : null
   await db.update(fixtures).set({ timeslot: value, updatedAt: new Date() }).where(eq(fixtures.id, fixtureId))
+  await notifyFixtureTeams(
+    fixtureId,
+    "fixture_updated",
+    "Fixture time updated",
+    value ? `Your match night is now scheduled for ${value}. Tap to view.` : "Your match night time was cleared.",
+  )
   revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
   return { ok: true }
 }
 
@@ -97,6 +145,14 @@ export async function setFixtureVenue(fixtureId: number, venueClubId: number | n
     .set({ venueClubId, venue, updatedAt: new Date() })
     .where(eq(fixtures.id, fixtureId))
 
+  await notifyFixtureTeams(
+    fixtureId,
+    "fixture_updated",
+    "Fixture venue updated",
+    venue ? `Your match night is now hosted at ${venue}. Tap to view.` : "Your match night venue was cleared.",
+  )
+
   revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
   return { ok: true }
 }

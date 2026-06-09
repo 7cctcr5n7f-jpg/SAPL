@@ -15,6 +15,8 @@ type Row = {
   losses: number
   setsWon: number
   setsLost: number
+  gamesFor: number
+  gamesAgainst: number
   points: number
   pointsDiff: number
   rank: number
@@ -104,7 +106,9 @@ export function StandingsView({
               <TableHead className="text-right">W</TableHead>
               <TableHead className="text-right">L</TableHead>
               <TableHead className="text-right">Sets</TableHead>
-              <TableHead className="text-right">Diff</TableHead>
+              <TableHead className="text-right" title="Games For">GF</TableHead>
+              <TableHead className="text-right" title="Games Against">GA</TableHead>
+              <TableHead className="text-right" title="Points Difference (Games For − Games Against)">Diff</TableHead>
               <TableHead className="text-right">Pts</TableHead>
             </TableRow>
           </TableHeader>
@@ -137,6 +141,8 @@ export function StandingsView({
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     {r.setsWon}-{r.setsLost}
                   </TableCell>
+                  <TableCell className="text-right tabular-nums">{r.gamesFor}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.gamesAgainst}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {r.pointsDiff > 0 ? `+${r.pointsDiff}` : r.pointsDiff}
                   </TableCell>

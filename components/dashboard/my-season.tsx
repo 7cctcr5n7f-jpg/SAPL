@@ -4,7 +4,7 @@ import { Crest } from "@/components/league-centre/crest"
 import { Badge } from "@/components/ui/badge"
 import { MatchRow, MatchList, MatchGroupHeader } from "@/components/league-centre/match-row"
 import type { LCFixture } from "@/lib/queries-league-centre"
-import { ArrowRight, Trophy } from "lucide-react"
+import { ArrowRight, ExternalLink, MapPin, Trophy } from "lucide-react"
 
 function dateLabel(iso: string | null, timeslot: string | null) {
   if (!iso) return timeslot ?? "Date TBD"
@@ -66,6 +66,40 @@ export function MySeason({ matches }: { matches: LCFixture[] }) {
               <span className="text-sm font-semibold">{next.awayName ?? "TBD"}</span>
             </div>
           </CardContent>
+          {(next.venue || next.joinUrl) && (
+            <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                {next.venue ? (
+                  <>
+                    <MapPin className="h-3.5 w-3.5" />
+                    {next.venue}
+                  </>
+                ) : (
+                  "Venue to be confirmed"
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/league-centre/match/${next.id}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-secondary"
+                >
+                  View details
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+                {next.joinUrl && (
+                  <a
+                    href={next.joinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-opacity hover:opacity-90"
+                  >
+                    Join on Playtomic
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

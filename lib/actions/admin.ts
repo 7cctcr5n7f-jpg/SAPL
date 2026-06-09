@@ -111,6 +111,14 @@ export async function generateSeason(formData: FormData) {
   const divisionsWithTeams = new Set(
     assignedRows.map((r) => r.divisionId).filter((x): x is number => x != null),
   )
+  // Number of teams actually placed into each division. Used to size the
+  // round-robin to the real squad count (6/7/8…) instead of always filling
+  // every slot, so no fixtures are scheduled against empty placeholder slots.
+  const assignedCountByDivision = new Map<number, number>()
+  for (const r of assignedRows) {
+    if (r.divisionId == null) continue
+    assignedCountByDivision.set(r.divisionId, (assignedCountByDivision.get(r.divisionId) ?? 0) + 1)
+  }
 
   const emptyDivIds: number[] = []
   for (const d of allDivs) {
@@ -147,8 +155,14 @@ export async function generateSeason(formData: FormData) {
   let lastRoundDate = firstNight
   for (const d of divs) {
     const maxTeams = d.maxTeams ?? 8
-    if (maxTeams < 2) continue
-    const slots = Array.from({ length: maxTeams }, (_, i) => i + 1)
+    // Size the round-robin to the teams actually placed in this division so we
+    // never schedule matches against empty placeholder slots. A division with 6
+    // or 7 assigned teams gets a 6- or 7-team round-robin (with byes for odd
+    // counts); it never grows beyond the division's maxTeams cap.
+    const assigned = assignedCountByDivision.get(d.id) ?? 0
+    const slotCount = Math.min(maxTeams, Math.max(2, assigned))
+    if (slotCount < 2) continue
+    const slots = Array.from({ length: slotCount }, (_, i) => i + 1)
     const rr = generateRoundRobin(slots)
     if (rr.length === 0) continue
     // Balance 17:00 / 18:30 fairly across each division slot for the season.

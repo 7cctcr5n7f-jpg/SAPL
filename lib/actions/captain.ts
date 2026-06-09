@@ -14,54 +14,43 @@ import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { applyFixtureResult } from "@/lib/engine/apply-result"
+import { tallySets } from "@/lib/engine/scoring"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { getAccessContext } from "@/lib/access"
+import { notifyTeam } from "@/lib/notify"
 
-async function getFixtureForUser(userId: string, fixtureId: number, isAdmin: boolean) {
+async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fixture) return null
   // Admins can edit any fixture's result.
   if (isAdmin) return fixture
   // Template fixtures with no teams assigned yet cannot have a result.
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) return null
-  const myTeams = await db.select().from(teams).where(eq(teams.captainUserId, userId))
-  const ids = new Set(myTeams.map((t) => t.id))
-  if (!ids.has(fixture.homeTeamId) && !ids.has(fixture.awayTeamId)) return null
+  // Anyone who can manage either team (captain, team owner, or team/club manager
+  // with captain_hub access) may record the result.
+  const canHome = await canManageTeam(user, fixture.homeTeamId)
+  const canAway = await canManageTeam(user, fixture.awayTeamId)
+  if (!canHome && !canAway) return null
   return fixture
-}
-
-async function notifyTeamCaptain(teamId: number, title: string, body: string) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (team?.captainUserId) {
-    await db.insert(notifications).values({
-      userId: team.captainUserId,
-      type: "result_recorded",
-      title,
-      body,
-      scope: "direct",
-    })
-  }
 }
 
 export type SubmittedCategory = {
   category: string
   session: number
   isFeatureCourt: boolean
-  homeSetsWon: number
-  awaySetsWon: number
-  scoreDetail?: string
+  /** Actual set scores entered by the captain, e.g. [{home:6,away:4},...]. */
+  sets: { home: number; away: number }[]
 }
 
 export async function submitResult(fixtureId: number, categories: SubmittedCategory[]) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const isAdmin = me.isSuperAdmin || me.role === "league_admin"
-  if (!isAdmin && me.role !== "captain" && me.role !== "org_admin") {
-    return { error: "Only captains can submit results." }
-  }
-  const fixture = await getFixtureForUser(me.id, fixtureId, isAdmin)
-  if (!fixture) return { error: "You do not captain a team in this fixture." }
+  // getFixtureForUser enforces that the user can manage one of the teams in this
+  // fixture (captain, owner, or team/club manager), so we don't gate on role here.
+  const fixture = await getFixtureForUser(me, fixtureId, isAdmin)
+  if (!fixture) return { error: "You do not manage a team in this fixture." }
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) {
     return { error: "Both teams must be assigned before recording a result." }
   }
@@ -73,10 +62,11 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   // entitled to this fixture.
   const wasCompleted = fixture.status === "completed"
 
-  // Validate scores
+  // Validate scores: every category needs at least one decisive set.
   for (const c of categories) {
-    if (c.homeSetsWon < 0 || c.awaySetsWon < 0 || (c.homeSetsWon === 0 && c.awaySetsWon === 0)) {
-      return { error: `Enter a valid score for ${c.category}.` }
+    const tally = tallySets(c.sets)
+    if (tally.homeSetsWon === 0 && tally.awaySetsWon === 0) {
+      return { error: `Enter a valid set score for ${c.category}.` }
     }
   }
 
@@ -99,15 +89,18 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
     approvedAt: new Date(),
   })
 
-  // Notify both captains that the result is final.
+  // Notify both teams' rosters that the result is final, with a link to view it.
   const scoreLine = `${score.homePoints} – ${score.awayPoints}`
-  const verb = wasCompleted ? "updated by a league admin" : "recorded"
-  await notifyTeamCaptain(homeTeamId, "Result " + verb, `Fixture #${fixtureId} final score: ${scoreLine}.`)
-  await notifyTeamCaptain(awayTeamId, "Result " + verb, `Fixture #${fixtureId} final score: ${scoreLine}.`)
+  const title = wasCompleted ? "Result updated" : "Result recorded — standings updated"
+  const body = `Final score ${scoreLine}. Tap to view the match.`
+  const href = `/league-centre/match/${fixtureId}`
+  await notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId, href })
+  await notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId, href })
 
   revalidatePath("/dashboard/captain")
   revalidatePath("/admin/fixtures")
   revalidatePath("/standings")
+  revalidatePath("/league-centre")
   return { success: wasCompleted ? "Result updated." : "Result recorded. Standings updated." }
 }
 
@@ -162,12 +155,9 @@ export async function setPlayerAvailability(
 export async function addPlayer(teamId: number, playerId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.captainUserId, me.id)))
-    .limit(1)
-  if (!team) return { error: "You do not captain this team." }
+  if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
+  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  if (!team) return { error: "Team not found." }
 
   // One team per player per season: block if the player is already active on a
   // different team in the same season.
@@ -226,12 +216,7 @@ export async function addPlayer(teamId: number, playerId: number) {
 export async function removeMember(teamId: number, membershipId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.captainUserId, me.id)))
-    .limit(1)
-  if (!team) return { error: "You do not captain this team." }
+  if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
 
   await db
     .update(teamMembers)

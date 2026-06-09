@@ -459,6 +459,10 @@ export const matches = pgTable(
     isFeatureCourt: boolean("isFeatureCourt").notNull().default(false),
     homeSetsWon: integer("homeSetsWon").notNull().default(0),
     awaySetsWon: integer("awaySetsWon").notNull().default(0),
+    // Total games won across all sets in this rubber (drives Games For/Against
+    // and the games-based points difference in standings).
+    homeGames: integer("homeGames").notNull().default(0),
+    awayGames: integer("awayGames").notNull().default(0),
     scoreDetail: text("scoreDetail"), // e.g. "6-3, 4-6, 6-2"
     winnerTeamId: integer("winnerTeamId"),
     homePlayerIds: jsonb("homePlayerIds"),
@@ -506,6 +510,10 @@ export const standings = pgTable(
     losses: integer("losses").notNull().default(0),
     setsWon: integer("setsWon").notNull().default(0),
     setsLost: integer("setsLost").notNull().default(0),
+    // Total games won/conceded across all rubbers. gamesFor - gamesAgainst is
+    // the "Points Difference" tiebreaker shown in the standings table.
+    gamesFor: integer("gamesFor").notNull().default(0),
+    gamesAgainst: integer("gamesAgainst").notNull().default(0),
     points: integer("points").notNull().default(0),
     pointsDiff: integer("pointsDiff").notNull().default(0),
     rank: integer("rank").notNull().default(0),

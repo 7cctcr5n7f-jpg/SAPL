@@ -17,7 +17,7 @@ import { createOwnTeam, setMarketplaceListing } from "@/lib/actions/org"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Users, Store } from "lucide-react"
-import { TEAM_TYPES } from "@/lib/constants"
+import { TEAM_TYPES, SAPL_REGIONS } from "@/lib/constants"
 
 // Self-service teams are not entered through a venue, so they default to a
 // Private Team. Captains/managers can pick Company or Private here; "Club Team"
@@ -48,6 +48,7 @@ function CreateTeamCard() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [teamType, setTeamType] = useState<string>(SELF_SERVICE_TEAM_TYPES[0])
+  const [saplRegion, setSaplRegion] = useState<string>("")
   const [pending, start] = useTransition()
   const router = useRouter()
 
@@ -56,12 +57,17 @@ function CreateTeamCard() {
       toast.error("Team name is required")
       return
     }
+    if (!saplRegion) {
+      toast.error("Select the region you'll play in")
+      return
+    }
     start(async () => {
-      const res = await createOwnTeam({ name, teamType })
+      const res = await createOwnTeam({ name, teamType, saplRegion })
       if (res.ok) {
         toast.success("Team created — you're now the team owner")
         setOpen(false)
         setName("")
+        setSaplRegion("")
         router.refresh()
       } else {
         toast.error(res.error ?? "Failed to create team")
@@ -117,6 +123,28 @@ function CreateTeamCard() {
                 <p className="text-xs text-muted-foreground">
                   Choose Private Team for a group of friends, or Company Team if you represent a business. Club Teams are
                   entered by a venue under Venue Management.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ownTeamRegion">Region</Label>
+                <select
+                  id="ownTeamRegion"
+                  value={saplRegion}
+                  onChange={(e) => setSaplRegion(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="" disabled>
+                    Select your region…
+                  </option>
+                  {SAPL_REGIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  The region you&apos;ll compete in. The league office places your team into a division within this
+                  region.
                 </p>
               </div>
               <Button onClick={submit} disabled={pending} className="w-full">

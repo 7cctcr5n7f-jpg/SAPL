@@ -8,16 +8,15 @@ import {
   divisions,
 } from "@/lib/db/schema"
 import { eq, and } from "drizzle-orm"
-import { scoreFixture, type MatchResult } from "@/lib/engine/scoring"
+import { scoreFixture, tallySets, formatScoreDetail, type MatchResult, type SetScore } from "@/lib/engine/scoring"
 import { calculateTpr } from "@/lib/engine/tpr"
 
 export type CategoryScoreInput = {
   category: string
   session: number
   isFeatureCourt: boolean
-  homeSetsWon: number
-  awaySetsWon: number
-  scoreDetail?: string
+  /** Actual set scores entered by the captain, e.g. [{home:6,away:4},...]. */
+  sets: SetScore[]
   homePlayerIds?: number[]
   awayPlayerIds?: number[]
 }
@@ -45,11 +44,14 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
     ? await db.select().from(divisions).where(eq(divisions.id, fixture.divisionId)).limit(1)
     : [null]
 
-  // 1. Score the fixture
-  const matchResults: MatchResult[] = categoryScores.map((c) => ({
-    category: c.category,
-    homeSetsWon: c.homeSetsWon,
-    awaySetsWon: c.awaySetsWon,
+  // 1. Score the fixture. Derive sets won + games from the entered set scores.
+  const tallied = categoryScores.map((c) => ({ input: c, tally: tallySets(c.sets) }))
+  const matchResults: MatchResult[] = tallied.map(({ input, tally }) => ({
+    category: input.category,
+    homeSetsWon: tally.homeSetsWon,
+    awaySetsWon: tally.awaySetsWon,
+    homeGames: tally.homeGames,
+    awayGames: tally.awayGames,
   }))
   const score = scoreFixture(matchResults)
   const winnerTeamId =
@@ -57,11 +59,11 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
 
   // 2. Persist matches (reset first for idempotency)
   await db.delete(matches).where(eq(matches.fixtureId, fixtureId))
-  for (const c of categoryScores) {
+  for (const { input: c, tally } of tallied) {
     const mWinner =
-      c.homeSetsWon > c.awaySetsWon
+      tally.homeSetsWon > tally.awaySetsWon
         ? fixture.homeTeamId
-        : c.awaySetsWon > c.homeSetsWon
+        : tally.awaySetsWon > tally.homeSetsWon
           ? fixture.awayTeamId
           : null
     await db.insert(matches).values({
@@ -69,9 +71,11 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
       category: c.category,
       session: c.session,
       isFeatureCourt: c.isFeatureCourt,
-      homeSetsWon: c.homeSetsWon,
-      awaySetsWon: c.awaySetsWon,
-      scoreDetail: c.scoreDetail ?? null,
+      homeSetsWon: tally.homeSetsWon,
+      awaySetsWon: tally.awaySetsWon,
+      homeGames: tally.homeGames,
+      awayGames: tally.awayGames,
+      scoreDetail: formatScoreDetail(c.sets) || null,
       winnerTeamId: mWinner,
       homePlayerIds: c.homePlayerIds ?? null,
       awayPlayerIds: c.awayPlayerIds ?? null,
@@ -100,6 +104,8 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
     points: score.homePoints,
     setsWon: score.homeSetsWon,
     setsLost: score.awaySetsWon,
+    gamesFor: score.homeGames,
+    gamesAgainst: score.awayGames,
     won: score.winnerSide === "home",
     lost: score.winnerSide === "away",
   })
@@ -110,6 +116,8 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
     points: score.awayPoints,
     setsWon: score.awaySetsWon,
     setsLost: score.homeSetsWon,
+    gamesFor: score.awayGames,
+    gamesAgainst: score.homeGames,
     won: score.winnerSide === "away",
     lost: score.winnerSide === "home",
   })
@@ -165,6 +173,8 @@ async function bumpStanding(args: {
   points: number
   setsWon: number
   setsLost: number
+  gamesFor: number
+  gamesAgainst: number
   won: boolean
   lost: boolean
 }) {
@@ -184,12 +194,16 @@ async function bumpStanding(args: {
       losses: args.lost ? 1 : 0,
       setsWon: args.setsWon,
       setsLost: args.setsLost,
+      gamesFor: args.gamesFor,
+      gamesAgainst: args.gamesAgainst,
       points: args.points,
-      pointsDiff: args.setsWon - args.setsLost,
+      pointsDiff: args.gamesFor - args.gamesAgainst,
     })
     return
   }
 
+  const gamesFor = existing.gamesFor + args.gamesFor
+  const gamesAgainst = existing.gamesAgainst + args.gamesAgainst
   await db
     .update(standings)
     .set({
@@ -198,8 +212,10 @@ async function bumpStanding(args: {
       losses: existing.losses + (args.lost ? 1 : 0),
       setsWon: existing.setsWon + args.setsWon,
       setsLost: existing.setsLost + args.setsLost,
+      gamesFor,
+      gamesAgainst,
       points: existing.points + args.points,
-      pointsDiff: existing.pointsDiff + (args.setsWon - args.setsLost),
+      pointsDiff: gamesFor - gamesAgainst,
       updatedAt: new Date(),
     })
     .where(eq(standings.id, existing.id))

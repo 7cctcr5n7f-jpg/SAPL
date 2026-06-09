@@ -73,18 +73,28 @@ export async function validateSeason(seasonId: number): Promise<SeasonValidation
         ),
       )
     const assigned = entries.length
-    const max = d.maxTeams ?? 8
     if (assigned < 2) {
       issues.push({
         level: "error",
         code: "division_too_few_teams",
         message: `${d.name} has only ${assigned} team(s) assigned — assign at least 2.`,
       })
-    } else if (assigned < max) {
+      continue
+    }
+    // The round-robin is sized to the assigned team count at generation time, so
+    // a partially-filled division (e.g. 6/8) is fine. Only warn if the scheduled
+    // fixtures still reference slots beyond the teams placed — that means the
+    // template predates the current placement and needs re-fitting.
+    const divFixtures = seasonFixtures.filter((f) => f.divisionId === d.id)
+    const highestSlot = divFixtures.reduce(
+      (mx, f) => Math.max(mx, f.homeSlot ?? 0, f.awaySlot ?? 0),
+      0,
+    )
+    if (highestSlot > assigned) {
       issues.push({
         level: "warning",
-        code: "division_not_full",
-        message: `${d.name} has ${assigned}/${max} teams. Use "Adjust fixtures" to re-fit the round robin.`,
+        code: "division_needs_refit",
+        message: `${d.name} has ${assigned} teams but fixtures still use ${highestSlot} slots. Use "Adjust fixtures" to re-fit the round robin.`,
       })
     }
   }

@@ -15,11 +15,13 @@ import {
   teamEntries,
   payments,
   fixtures,
+  regions,
   user as authUser,
 } from "@/lib/db/schema"
 import { eq, and, ne, sql } from "drizzle-orm"
 import { isSeasonLocked } from "@/lib/season-lock"
 import { TEAM_OWNER_PERMISSIONS, isTeamOwnerGrant } from "@/lib/permissions"
+import { SAPL_REGIONS } from "@/lib/constants"
 
 /**
  * Guard a home-venue assignment against the club's hosting capacity. Returns an
@@ -79,7 +81,9 @@ export async function createTeam(formData: FormData) {
   }
   const ownerEmail = ownerEmailRaw || null
 
-  // Derive region from the chosen home club so the team is board-ready.
+  // Region: derive from the chosen home club when one is set, otherwise fall
+  // back to an explicitly chosen region so venue-less teams (Company/Private)
+  // are still board-ready and filterable.
   let regionId: number | null = null
   let saplRegion: string | null = null
   if (homeClubId) {
@@ -90,6 +94,17 @@ export async function createTeam(formData: FormData) {
       regionId = club.regionId ?? null
       saplRegion = club.saplRegion ?? null
     }
+  }
+  if (!saplRegion) {
+    const chosen = String(formData.get("saplRegion") ?? "").trim()
+    if (chosen && SAPL_REGIONS.includes(chosen as (typeof SAPL_REGIONS)[number])) {
+      saplRegion = chosen
+      const [regionRow] = await db.select({ id: regions.id }).from(regions).where(eq(regions.name, chosen)).limit(1)
+      regionId = regionRow?.id ?? null
+    }
+  }
+  if (!saplRegion) {
+    return { ok: false, error: "Choose a home venue or select a region for this team" }
   }
 
   await db.insert(teams).values({
@@ -114,6 +129,7 @@ export async function updateTeamRegistration(input: {
   name?: string
   teamType?: string
   homeClubId?: number | null
+  saplRegion?: string | null
   managerPlayerId?: number | null
   clubPaysFees?: boolean
   ownerEmail?: string | null
@@ -153,6 +169,23 @@ export async function updateTeamRegistration(input: {
         patch.regionId = club.regionId ?? null
         patch.saplRegion = club.saplRegion ?? null
       }
+    }
+  }
+  // Allow setting the region directly (e.g. venue-less Company/Private teams, or
+  // fixing teams that were created before regions were captured). A chosen home
+  // club above takes precedence and will have already set the region.
+  if (input.saplRegion !== undefined && patch.saplRegion === undefined) {
+    const chosen = (input.saplRegion ?? "").trim()
+    if (chosen) {
+      if (!SAPL_REGIONS.includes(chosen as (typeof SAPL_REGIONS)[number])) {
+        return { ok: false, error: "Invalid region" }
+      }
+      const [regionRow] = await db.select({ id: regions.id }).from(regions).where(eq(regions.name, chosen)).limit(1)
+      patch.saplRegion = chosen
+      patch.regionId = regionRow?.id ?? null
+    } else {
+      patch.saplRegion = null
+      patch.regionId = null
     }
   }
   if (input.managerPlayerId !== undefined) {
@@ -371,12 +404,23 @@ async function revokeTeamOwnerPermissionsIfOrphaned(userId: string, email: strin
  * the user's email (auto-granting access via the access layer), and grants the
  * Team Owner permission set. Teams start unassigned for the league to place.
  */
-export async function createOwnTeam(input: { name: string; teamType?: string }) {
+export async function createOwnTeam(input: { name: string; teamType?: string; saplRegion?: string | null }) {
   const user = await getCurrentUser()
   if (!user) return { ok: false, error: "Not authenticated" }
   const name = input.name.trim()
   if (!name) return { ok: false, error: "Team name is required" }
   const teamType = (input.teamType ?? "Private Team").trim() || "Private Team"
+
+  // Region the team will compete in. Required so the league office can filter
+  // and place the team into the correct regional division.
+  const saplRegion = (input.saplRegion ?? "").trim() || null
+  if (!saplRegion || !SAPL_REGIONS.includes(saplRegion as (typeof SAPL_REGIONS)[number])) {
+    return { ok: false, error: "Select a region for your team" }
+  }
+  // Resolve the matching region row so both the denormalised label and the FK
+  // are stored (mirrors how venue-entered teams inherit their club's region).
+  const [regionRow] = await db.select({ id: regions.id }).from(regions).where(eq(regions.name, saplRegion)).limit(1)
+  const regionId = regionRow?.id ?? null
 
   // Find or create a personal organisation to hold the user's own teams.
   let [org] = await db.select().from(organisations).where(eq(organisations.ownerUserId, user.id)).limit(1)
@@ -399,6 +443,8 @@ export async function createOwnTeam(input: { name: string; teamType?: string }) 
     name,
     organisationId: org.id,
     teamType,
+    saplRegion,
+    regionId,
     ownerEmail: user.email.trim().toLowerCase(),
     tpr: 1000,
     status: "active",
