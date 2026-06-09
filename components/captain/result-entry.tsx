@@ -98,65 +98,68 @@ export function ResultEntry({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between text-sm font-semibold">
-        <span className="flex-1 truncate">{homeName}</span>
-        <span className="px-2 text-muted-foreground">vs</span>
-        <span className="flex-1 truncate text-right">{awayName}</span>
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-4 py-3">
+        <span className="flex-1 truncate text-sm font-semibold">{homeName}</span>
+        <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          vs
+        </span>
+        <span className="flex-1 truncate text-right text-sm font-semibold">{awayName}</span>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {categories.map((c) => {
           const rows = sets[c.category] ?? EMPTY_SETS
           const t = tallySets(rows)
           const hw = t.homeSetsWon > t.awaySetsWon
           const aw = t.awaySetsWon > t.homeSetsWon
           return (
-            <div key={c.category} className="rounded-md border border-border px-3 py-2">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{c.category}</span>
+            <div key={c.category} className="rounded-lg border border-border bg-card p-3">
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-semibold">{c.category}</span>
                   {c.isFeatureCourt && (
-                    <Badge variant="secondary" className="text-[10px]">
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
                       Feature
                     </Badge>
                   )}
                 </div>
-                <span className="font-mono text-xs text-muted-foreground">
-                  Sets{" "}
-                  <span className={cn(hw && "font-bold text-primary")}>{t.homeSetsWon}</span>
-                  {"–"}
-                  <span className={cn(aw && "font-bold text-primary")}>{t.awaySetsWon}</span>
+                <span className="flex shrink-0 items-center gap-1 rounded-md bg-secondary px-2 py-0.5 font-mono text-xs">
+                  <span className={cn(hw ? "font-bold text-primary" : "text-muted-foreground")}>{t.homeSetsWon}</span>
+                  <span className="text-muted-foreground">–</span>
+                  <span className={cn(aw ? "font-bold text-primary" : "text-muted-foreground")}>{t.awaySetsWon}</span>
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {rows.map((r, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <span className="w-8 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <div key={i} className="rounded-md bg-secondary/60 p-1.5">
+                    <div className="mb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Set {i + 1}
-                    </span>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={99}
-                      value={r.home === 0 ? "" : r.home}
-                      placeholder="0"
-                      onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
-                      className="h-9 w-12 px-1 text-center"
-                      aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
-                    />
-                    <span className="text-muted-foreground">–</span>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={99}
-                      value={r.away === 0 ? "" : r.away}
-                      placeholder="0"
-                      onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
-                      className="h-9 w-12 px-1 text-center"
-                      aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
-                    />
+                    </div>
+                    <div className="flex items-center justify-center gap-1">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={99}
+                        value={r.home === 0 ? "" : r.home}
+                        placeholder="0"
+                        onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
+                        className="h-10 w-full min-w-0 px-0 text-center text-base font-semibold tabular-nums"
+                        aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
+                      />
+                      <span className="text-xs text-muted-foreground">–</span>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={99}
+                        value={r.away === 0 ? "" : r.away}
+                        placeholder="0"
+                        onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
+                        className="h-10 w-full min-w-0 px-0 text-center text-base font-semibold tabular-nums"
+                        aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

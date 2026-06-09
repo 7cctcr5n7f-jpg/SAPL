@@ -48,12 +48,11 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
  */
 export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
   player: [],
-  captain: ["player_management", "billing_management", "fixture_management", "captain_hub"],
+  captain: ["player_management", "fixture_management", "captain_hub"],
   org_admin: [
     "club_management",
     "team_management",
     "player_management",
-    "billing_management",
     "fixture_management",
     "captain_hub",
   ],
@@ -70,7 +69,6 @@ export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
 export const TEAM_OWNER_PERMISSIONS: Permission[] = [
   "team_management",
   "player_management",
-  "billing_management",
   "fixture_management",
   "captain_hub",
 ]
