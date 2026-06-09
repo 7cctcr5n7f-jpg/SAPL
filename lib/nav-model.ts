@@ -93,8 +93,6 @@ export function buildNavModel(user: CurrentUser | null, access: AccessContext | 
         SPONSORS,
         { label: "FAQ", icon: "faq", href: "/faq" },
         { label: "Contact", icon: "contact", href: "/contact" },
-        { label: "Login", icon: "login", href: "/sign-in" },
-        { label: "Register", icon: "register", href: "/sign-up" },
       ],
     }
   }
