@@ -2,6 +2,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { PwaProvider } from "@/components/pwa/pwa-provider"
+import { DemoBanner } from "@/components/site/demo-banner"
 import { GlobalBottomNavServer } from "@/components/site/global-bottom-nav-server"
 import type { Metadata } from "next"
 import { Geist } from "next/font/google"
@@ -62,6 +63,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable} ${oswald.variable} bg-background`}>
       <body className="font-sans antialiased">
+        <DemoBanner />
         {children}
         <Suspense fallback={null}>
           <GlobalBottomNavServer />
