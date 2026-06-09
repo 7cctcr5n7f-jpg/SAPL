@@ -710,6 +710,25 @@ export const auditLog = pgTable("ppl_audit_log", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 
+// Web Push subscriptions for PWA push notifications. One row per browser/device
+// endpoint. userId may be null for anonymous (logged-out) subscribers.
+export const pushSubscriptions = pgTable(
+  "ppl_push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("userId"),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("userAgent"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    endpointIdx: uniqueIndex("ppl_push_subscriptions_endpoint_idx").on(t.endpoint),
+    userIdx: index("ppl_push_subscriptions_user_idx").on(t.userId),
+  }),
+)
+
 // Billing management: admin notes + reminder tracking per outstanding-fee line
 // item. Outstanding fees are computed on the fly, so each row is keyed by the
 // line item's stable identity (kind + teamId + playerId).
