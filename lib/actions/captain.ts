@@ -18,6 +18,7 @@ import { tallySets } from "@/lib/engine/scoring"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { getAccessContext } from "@/lib/access"
+import { notifyTeam } from "@/lib/notify"
 
 async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
@@ -32,19 +33,6 @@ async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: 
   const canAway = await canManageTeam(user, fixture.awayTeamId)
   if (!canHome && !canAway) return null
   return fixture
-}
-
-async function notifyTeamCaptain(teamId: number, title: string, body: string) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (team?.captainUserId) {
-    await db.insert(notifications).values({
-      userId: team.captainUserId,
-      type: "result_recorded",
-      title,
-      body,
-      scope: "direct",
-    })
-  }
 }
 
 export type SubmittedCategory = {
@@ -101,15 +89,17 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
     approvedAt: new Date(),
   })
 
-  // Notify both captains that the result is final.
+  // Notify both teams' rosters that the result is final, with a link to view it.
   const scoreLine = `${score.homePoints} – ${score.awayPoints}`
-  const verb = wasCompleted ? "updated by a league admin" : "recorded"
-  await notifyTeamCaptain(homeTeamId, "Result " + verb, `Fixture #${fixtureId} final score: ${scoreLine}.`)
-  await notifyTeamCaptain(awayTeamId, "Result " + verb, `Fixture #${fixtureId} final score: ${scoreLine}.`)
+  const title = wasCompleted ? "Result updated" : "Result recorded — standings updated"
+  const body = `Final score ${scoreLine}. Tap to view the match.`
+  await notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId })
+  await notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId })
 
   revalidatePath("/dashboard/captain")
   revalidatePath("/admin/fixtures")
   revalidatePath("/standings")
+  revalidatePath("/league-centre")
   return { success: wasCompleted ? "Result updated." : "Result recorded. Standings updated." }
 }
 

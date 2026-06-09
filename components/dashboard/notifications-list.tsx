@@ -1,11 +1,12 @@
 "use client"
 
 import { useTransition } from "react"
+import Link from "next/link"
 import { markAllRead } from "@/lib/actions/notifications"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { fmtDateTime } from "@/lib/format"
-import { Bell } from "lucide-react"
+import { Bell, ArrowRight } from "lucide-react"
 
 type Note = {
   id: number
@@ -13,8 +14,18 @@ type Note = {
   body: string
   type: string
   channel: string
+  scope?: string | null
+  scopeId?: number | null
   readAt: Date | string | null
   createdAt: Date | string
+}
+
+// Notification types that link to a fixture detail page (via scopeId).
+const FIXTURE_LINK_TYPES = new Set(["result_recorded", "fixture_ready", "fixture_updated", "fixture_created"])
+
+function actionLabel(type: string) {
+  if (type === "fixture_ready") return "View & join"
+  return "View match"
 }
 
 export function NotificationsList({ notes }: { notes: Note[] }) {
@@ -28,7 +39,9 @@ export function NotificationsList({ notes }: { notes: Note[] }) {
           {unread > 0 ? `${unread} unread` : "All caught up"}
         </p>
         {unread > 0 && (
-          <Button size="sm" variant="outline" disabled={pending} onClick={() => start(() => markAllRead())}>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => start(() => {
+            void markAllRead()
+          })}>
             Mark all read
           </Button>
         )}
@@ -65,6 +78,15 @@ export function NotificationsList({ notes }: { notes: Note[] }) {
                   <span className="mt-1 inline-block text-[10px] font-bold uppercase tracking-wider text-primary">
                     WhatsApp
                   </span>
+                )}
+                {FIXTURE_LINK_TYPES.has(n.type) && n.scopeId != null && (
+                  <Link
+                    href={`/league-centre/match/${n.scopeId}`}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                  >
+                    {actionLabel(n.type)}
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
                 )}
               </div>
             </div>

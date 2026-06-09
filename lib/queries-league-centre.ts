@@ -53,6 +53,8 @@ export type LCStanding = {
   losses: number
   setsWon: number
   setsLost: number
+  gamesFor: number
+  gamesAgainst: number
   points: number
   pointsDiff: number
   rank: number | null
@@ -250,6 +252,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
             losses: standings.losses,
             setsWon: standings.setsWon,
             setsLost: standings.setsLost,
+            gamesFor: standings.gamesFor,
+            gamesAgainst: standings.gamesAgainst,
             points: standings.points,
             pointsDiff: standings.pointsDiff,
             rank: standings.rank,

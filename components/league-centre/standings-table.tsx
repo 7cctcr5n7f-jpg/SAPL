@@ -13,14 +13,17 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
   const total = rows.length
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="hidden grid-cols-[2.5rem_1fr_repeat(7,2.5rem)_3.5rem] items-center gap-2 border-b border-border bg-secondary/50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid">
+      <div className="hidden grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] items-center gap-2 border-b border-border bg-secondary/50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid">
         <span className="text-center">#</span>
         <span>Team</span>
         <span className="text-center">P</span>
         <span className="text-center">W</span>
         <span className="text-center">L</span>
-        <span className="text-center">SW</span>
-        <span className="text-center">SL</span>
+        <span className="text-center" title="Sets Won">SW</span>
+        <span className="text-center" title="Sets Lost">SL</span>
+        <span className="text-center" title="Games For">GF</span>
+        <span className="text-center" title="Games Against">GA</span>
+        <span className="text-center" title="Points Difference (Games For − Games Against)">+/−</span>
         <span className="text-center">Pts</span>
         <span className="text-center" title="Team Power Rating">TPR</span>
       </div>
@@ -34,7 +37,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-border px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(7,2.5rem)_3.5rem] md:px-4",
+                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-border px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
                 promo && "bg-primary/[0.06]",
                 releg && "bg-destructive/[0.06]",
               )}
@@ -62,6 +65,16 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
               <span className="hidden text-center text-sm tabular-nums md:block">{r.losses}</span>
               <span className="hidden text-center text-sm tabular-nums md:block">{r.setsWon}</span>
               <span className="hidden text-center text-sm tabular-nums md:block">{r.setsLost}</span>
+              <span className="hidden text-center text-sm tabular-nums md:block">{r.gamesFor}</span>
+              <span className="hidden text-center text-sm tabular-nums md:block">{r.gamesAgainst}</span>
+              <span
+                className={cn(
+                  "hidden text-center text-sm font-semibold tabular-nums md:block",
+                  r.pointsDiff > 0 ? "text-primary" : r.pointsDiff < 0 ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {r.pointsDiff > 0 ? `+${r.pointsDiff}` : r.pointsDiff}
+              </span>
               <span className="hidden text-center text-sm font-bold tabular-nums md:block">{r.points}</span>
               <span className="text-right text-sm font-semibold tabular-nums text-muted-foreground md:text-center">
                 {r.tpr != null ? Math.round(r.tpr) : "—"}

@@ -211,9 +211,19 @@ export default async function DashboardOverview() {
             {notifications.map((n) => (
               <div key={n.id} className="flex gap-3 rounded-md bg-secondary px-4 py-3">
                 <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">{n.title}</p>
                   <p className="text-xs text-muted-foreground">{n.body}</p>
+                  {["result_recorded", "fixture_ready", "fixture_updated", "fixture_created"].includes(n.type) &&
+                    n.scopeId != null && (
+                      <Link
+                        href={`/league-centre/match/${n.scopeId}`}
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                      >
+                        {n.type === "fixture_ready" ? "View & join" : "View match"}
+                        <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    )}
                 </div>
               </div>
             ))}
