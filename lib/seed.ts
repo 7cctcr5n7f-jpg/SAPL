@@ -54,6 +54,30 @@ const ORGS = [
   { name: "Northern Smash", type: "Community Organisation", city: "Montana", region: "Pretoria North", prefix: "NS", names: ["NS Vipers", "NS Cobras", "NS Mambas", "NS Pythons"] },
 ]
 
+type OrgSeed = (typeof ORGS)[number]
+
+// Extra organisations used by the Demo Environment to reach a richer scale
+// (~20 orgs / ~80 teams). Production uses ORGS only.
+export const DEMO_EXTRA_ORGS: OrgSeed[] = [
+  { name: "Waterkloof Racquet Society", type: "Padel Club", city: "Waterkloof", region: "Pretoria Old East", prefix: "WKF", names: ["Waterkloof Aces", "Waterkloof Smash", "Waterkloof Volley", "Waterkloof Drive"] },
+  { name: "Menlyn Maine Padel", type: "Corporate Company", city: "Menlyn", region: "Pretoria East", prefix: "MEN", names: ["Menlyn Sharks", "Menlyn Rays", "Menlyn Marlins", "Menlyn Orcas"] },
+  { name: "Brooklyn Padel Collective", type: "Social Group", city: "Brooklyn", region: "Pretoria Old East", prefix: "BRK", names: ["Brooklyn Bolts", "Brooklyn Surge", "Brooklyn Flux", "Brooklyn Arc"] },
+  { name: "Silver Lakes Padel", type: "Padel Club", city: "Silver Lakes", region: "Pretoria East", prefix: "SLV", names: ["Silver Foxes", "Silver Wolves", "Silver Bears", "Silver Hawks"] },
+  { name: "Wonderboom Smashers", type: "Community Organisation", city: "Wonderboom", region: "Pretoria North", prefix: "WBM", names: ["Wonder Bolts", "Wonder Storm", "Wonder Blaze", "Wonder Comets"] },
+  { name: "Hazelwood Padel Club", type: "Padel Club", city: "Hazelwood", region: "Pretoria Old East", prefix: "HZW", names: ["Hazelwood Kings", "Hazelwood Dukes", "Hazelwood Earls", "Hazelwood Knights"] },
+  { name: "Equestria Active", type: "Social Group", city: "Equestria", region: "Pretoria East", prefix: "EQA", names: ["Equestria Mustangs", "Equestria Stallions", "Equestria Broncos", "Equestria Colts"] },
+  { name: "Annlin Padel Centre", type: "Padel Club", city: "Annlin", region: "Pretoria North", prefix: "ANN", names: ["Annlin Comets", "Annlin Meteors", "Annlin Pulsars", "Annlin Quasars"] },
+  { name: "Garsfontein Padel", type: "Educational Institution", city: "Garsfontein", region: "Pretoria East", prefix: "GAR", names: ["Gars Tigers", "Gars Jaguars", "Gars Lynx", "Gars Ocelots"] },
+  { name: "Faerie Glen Falcons", type: "Community Organisation", city: "Faerie Glen", region: "Pretoria East", prefix: "FGF", names: ["FG Talons", "FG Wings", "FG Feathers", "FG Beaks"] },
+  { name: "Moreleta Padel Park", type: "Padel Club", city: "Moreleta", region: "Pretoria East", prefix: "MOR", names: ["Moreleta Surge", "Moreleta Tide", "Moreleta Wave", "Moreleta Current"] },
+  { name: "Die Wilgers Racquet", type: "Social Group", city: "Die Wilgers", region: "Pretoria Old East", prefix: "DWL", names: ["Wilgers Oaks", "Wilgers Pines", "Wilgers Cedars", "Wilgers Birch"] },
+  { name: "Montana Padel United", type: "Corporate Company", city: "Montana", region: "Pretoria North", prefix: "MTU", names: ["Montana Pumas", "Montana Cougars", "Montana Panthers", "Montana Caracals"] },
+  { name: "Lynnwood Ridge Padel", type: "Padel Club", city: "Lynnwood Ridge", region: "Pretoria Old East", prefix: "LWR", names: ["Ridge Rockets", "Ridge Jets", "Ridge Comets", "Ridge Stars"] },
+]
+
+// The full organisation list used to seed the Demo Environment (~20 orgs / ~80 teams).
+export const DEMO_ORGS: OrgSeed[] = [...ORGS, ...DEMO_EXTRA_ORGS]
+
 const MALE_FIRST = ["Johan", "Pieter", "Thabo", "Sipho", "Daniel", "Riaan", "Kabelo", "Andre", "Lwazi", "Marco", "Jaco", "Tshepo"]
 const FEMALE_FIRST = ["Lerato", "Anel", "Naledi", "Chante", "Zanele", "Marike", "Palesa", "Ronel", "Karabo", "Lize", "Thandi", "Elmari"]
 const LAST = ["van der Merwe", "Nkosi", "Botha", "Dlamini", "Pretorius", "Khumalo", "Venter", "Mokoena", "du Plessis", "Mahlangu", "Coetzee", "Ngwenya"]
@@ -80,7 +104,7 @@ async function clearAll() {
   await db.delete(regions)
 }
 
-export async function runSeed() {
+export async function runSeed(orgList: OrgSeed[] = ORGS) {
   await clearAll()
 
   // --- Regions ---
@@ -138,7 +162,7 @@ export async function runSeed() {
   const orgIds: number[] = []
   let playerCounter = 0
 
-  for (const org of ORGS) {
+  for (const org of orgList) {
     const regionId = regionByName.get(org.region) ?? null
     const [orgRow] = await db
       .insert(organisations)
@@ -407,8 +431,8 @@ export async function runSeed() {
   }
 
   // --- CPI ---
-  const orgList = ORGS.map((_, idx) => orgIds[idx])
-  const cpiInputs = orgList.map((orgId) => {
+  const orgList2 = orgIds
+  const cpiInputs = orgList2.map((orgId) => {
     const orgTeamTprs = seedTeams.filter((t) => t.orgId === orgId).map((t) => tprByTeam.get(t.id)!)
     return { organisationId: orgId, cpi: calculateCpi(orgTeamTprs), province: "Gauteng" }
   })

@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { Copy, Check, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { DemoAccount } from "@/lib/demo"
+import type { DemoAccount } from "@/lib/demo-accounts"
 
 /**
  * Interactive list of demo logins with copy-to-clipboard for each credential.
