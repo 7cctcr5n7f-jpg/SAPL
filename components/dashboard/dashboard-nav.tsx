@@ -24,6 +24,7 @@ import {
   Store,
   UserCog,
   Warehouse,
+  FlaskConical,
 } from "lucide-react"
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> }
@@ -45,6 +46,7 @@ const ICONS = {
   members: UserCog,
   sponsors: Trophy,
   venues: Warehouse,
+  demo: FlaskConical,
 } as const
 
 export function DashboardNav({
@@ -107,6 +109,10 @@ export function DashboardNav({
     items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
     items.push({ href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce })
     items.push({ href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors })
+    // Demo Controls only appear in the Demo Environment deployment.
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
+      items.push({ href: "/admin/demo", label: "Demo Controls", icon: ICONS.demo })
+    }
   }
 
   // Members & Roles is league-management only (hidden while previewing a role).

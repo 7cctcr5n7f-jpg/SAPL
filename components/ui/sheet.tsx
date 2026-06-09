@@ -26,7 +26,7 @@ function SheetContent({
   showCloseButton = true,
   ...props
 }: SheetPrimitive.Popup.Props & {
-  side?: "right" | "left"
+  side?: "right" | "left" | "top" | "bottom"
   showCloseButton?: boolean
 }) {
   return (
@@ -40,11 +40,16 @@ function SheetContent({
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 bg-popover p-5 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/10 outline-none duration-200 data-open:animate-in data-closed:animate-out",
+          "fixed z-50 flex flex-col gap-4 bg-popover p-5 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/10 outline-none duration-200 data-open:animate-in data-closed:animate-out",
+          (side === "right" || side === "left") && "inset-y-0 h-full w-full max-w-md",
           side === "right" &&
             "right-0 data-open:slide-in-from-right data-closed:slide-out-to-right",
           side === "left" &&
             "left-0 data-open:slide-in-from-left data-closed:slide-out-to-left",
+          side === "bottom" &&
+            "inset-x-0 bottom-0 w-full data-open:slide-in-from-bottom data-closed:slide-out-to-bottom",
+          side === "top" &&
+            "inset-x-0 top-0 w-full data-open:slide-in-from-top data-closed:slide-out-to-top",
           className,
         )}
         {...props}

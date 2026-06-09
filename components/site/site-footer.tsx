@@ -27,6 +27,7 @@ export function SiteFooter() {
               <li><Link href="/clubs" className="hover:text-primary">Clubs</Link></li>
               <li><Link href="/sponsors" className="hover:text-primary">Sponsors</Link></li>
               <li><Link href="/rules" className="hover:text-primary">Rules &amp; Format</Link></li>
+              <li><Link href="/contact" className="hover:text-primary">Contact</Link></li>
               <li><Link href="/sign-up" className="hover:text-primary">Register</Link></li>
             </ul>
           </div>

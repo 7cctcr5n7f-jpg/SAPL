@@ -2,7 +2,6 @@ import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
-import { MobileTabBar } from "@/components/dashboard/mobile-tab-bar"
 import { UserMenu } from "@/components/dashboard/user-menu"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -33,17 +32,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </header>
         <div className="mx-auto max-w-6xl px-5 py-8 pb-24 lg:px-10 lg:pb-8">{children}</div>
       </main>
-
-      <MobileTabBar
-        role={me.role}
-        name={me.name}
-        email={me.email}
-        isSuperAdmin={me.isSuperAdmin}
-        actingRole={me.actingRole}
-        permissions={[...access.permissions]}
-        canCaptainHub={access.canCaptainHub}
-        canManageMembers={access.permissions.has("league_management") && !me.actingRole}
-      />
     </div>
   )
 }
