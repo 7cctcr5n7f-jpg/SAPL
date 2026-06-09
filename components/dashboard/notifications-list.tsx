@@ -3,7 +3,7 @@
 import { useTransition } from "react"
 import Link from "next/link"
 import { markAllRead } from "@/lib/actions/notifications"
-import { NOTE_LINK_SEP } from "@/lib/notify"
+import { parseNotificationBody } from "@/lib/notify-constants"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { fmtDateTime } from "@/lib/format"
@@ -30,11 +30,7 @@ function actionLabel(type: string) {
 }
 
 /** Split a stored body into its display text and any packed action href. */
-function parseBody(body: string): { text: string; href: string | null } {
-  const idx = body.indexOf(NOTE_LINK_SEP)
-  if (idx === -1) return { text: body, href: null }
-  return { text: body.slice(0, idx), href: body.slice(idx + NOTE_LINK_SEP.length) || null }
-}
+const parseBody = parseNotificationBody
 
 /** Resolve the best action link + label for a notification. */
 function resolveAction(n: Note): { href: string; label: string } | null {

@@ -23,7 +23,7 @@ import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { ArrowRight } from "lucide-react"
-import { NOTE_LINK_SEP } from "@/lib/notify"
+import { NOTE_LINK_SEP } from "@/lib/notify-constants"
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
