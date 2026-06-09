@@ -18,8 +18,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Loader2, Plus, Users } from "lucide-react"
+import { TEAM_TYPES as ALL_TEAM_TYPES, SAPL_REGIONS } from "@/lib/constants"
 
-const TEAM_TYPES = ["Social Group", "Club Team", "Corporate"]
+// Self-service teams are never entered through a venue, so "Club Team" is
+// reserved for Venue Management; owners pick Company or Private here.
+const TEAM_TYPES = ALL_TEAM_TYPES.filter((t) => t !== "Club Team")
 
 /**
  * Self-service player tools shown on the dashboard Overview:
@@ -100,19 +103,25 @@ function CreateOwnTeamDialog({ onCreated }: { onCreated: () => void }) {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState("")
   const [teamType, setTeamType] = useState(TEAM_TYPES[0])
+  const [saplRegion, setSaplRegion] = useState("")
 
   function submit() {
     if (!name.trim()) {
       toast.error("Team name is required.")
       return
     }
+    if (!saplRegion) {
+      toast.error("Select the region you'll play in.")
+      return
+    }
     startTransition(async () => {
-      const res = await createOwnTeam({ name, teamType })
+      const res = await createOwnTeam({ name, teamType, saplRegion })
       if (res.ok) {
         toast.success("Team created — you're now its owner")
         setOpen(false)
         setName("")
         setTeamType(TEAM_TYPES[0])
+        setSaplRegion("")
         onCreated()
       } else {
         toast.error(res.error ?? "Could not create team")
@@ -159,9 +168,27 @@ function CreateOwnTeamDialog({ onCreated }: { onCreated: () => void }) {
               ))}
             </select>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="ownTeamRegion">Region</Label>
+            <select
+              id="ownTeamRegion"
+              value={saplRegion}
+              onChange={(e) => setSaplRegion(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="" disabled>
+                Select your region…
+              </option>
+              {SAPL_REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
           <p className="text-xs text-muted-foreground text-pretty">
             You&apos;ll be set as the team owner and can manage its squad from Team Admin. The league office places teams
-            into divisions before each season.
+            into divisions within your region before each season.
           </p>
         </div>
         <DialogFooter>
