@@ -23,6 +23,7 @@ import {
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
+import { parseScoreDetail } from "@/lib/engine/scoring"
 
 /**
  * Players a captain has marked unavailable, keyed by fixtureId.
@@ -600,12 +601,14 @@ export async function getCategories() {
 
 // Per-category set scores for a set of fixtures, used to pre-fill result edits.
 export async function getFixtureScores(fixtureIds: number[]) {
-  const map: Record<number, Record<string, { home: number; away: number }>> = {}
+  const map: Record<number, Record<string, { home: number; away: number }[]>> = {}
   if (fixtureIds.length === 0) return map
   const rows = await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
   for (const m of rows) {
     if (!map[m.fixtureId]) map[m.fixtureId] = {}
-    map[m.fixtureId][m.category] = { home: m.homeSetsWon, away: m.awaySetsWon }
+    const sets = parseScoreDetail(m.scoreDetail)
+    // Fall back to a single synthetic set if no detail was stored (legacy rows).
+    map[m.fixtureId][m.category] = sets.length > 0 ? sets : [{ home: m.homeSetsWon, away: m.awaySetsWon }]
   }
   return map
 }

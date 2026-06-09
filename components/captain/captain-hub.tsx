@@ -43,7 +43,7 @@ type FixtureLite = {
   status: string
   homePoints: number | null
   awayPoints: number | null
-  scores?: Record<string, { home: number; away: number }>
+  scores?: Record<string, { home: number; away: number }[]>
 }
 type Cat = { category: string; session: number; isFeatureCourt: boolean }
 

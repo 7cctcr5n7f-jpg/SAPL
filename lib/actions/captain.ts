@@ -14,6 +14,7 @@ import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { applyFixtureResult } from "@/lib/engine/apply-result"
+import { tallySets } from "@/lib/engine/scoring"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { getAccessContext } from "@/lib/access"
@@ -50,9 +51,8 @@ export type SubmittedCategory = {
   category: string
   session: number
   isFeatureCourt: boolean
-  homeSetsWon: number
-  awaySetsWon: number
-  scoreDetail?: string
+  /** Actual set scores entered by the captain, e.g. [{home:6,away:4},...]. */
+  sets: { home: number; away: number }[]
 }
 
 export async function submitResult(fixtureId: number, categories: SubmittedCategory[]) {
@@ -74,10 +74,11 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   // entitled to this fixture.
   const wasCompleted = fixture.status === "completed"
 
-  // Validate scores
+  // Validate scores: every category needs at least one decisive set.
   for (const c of categories) {
-    if (c.homeSetsWon < 0 || c.awaySetsWon < 0 || (c.homeSetsWon === 0 && c.awaySetsWon === 0)) {
-      return { error: `Enter a valid score for ${c.category}.` }
+    const tally = tallySets(c.sets)
+    if (tally.homeSetsWon === 0 && tally.awaySetsWon === 0) {
+      return { error: `Enter a valid set score for ${c.category}.` }
     }
   }
 
