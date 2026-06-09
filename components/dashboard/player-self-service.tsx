@@ -102,7 +102,7 @@ function CreateOwnTeamDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState("")
-  const [teamType, setTeamType] = useState(TEAM_TYPES[0])
+  const [teamType, setTeamType] = useState<string>(TEAM_TYPES[0])
   const [saplRegion, setSaplRegion] = useState("")
 
   function submit() {
