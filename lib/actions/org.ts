@@ -376,7 +376,7 @@ export async function createOwnTeam(input: { name: string; teamType?: string }) 
   if (!user) return { ok: false, error: "Not authenticated" }
   const name = input.name.trim()
   if (!name) return { ok: false, error: "Team name is required" }
-  const teamType = (input.teamType ?? "Social Group").trim() || "Social Group"
+  const teamType = (input.teamType ?? "Private Team").trim() || "Private Team"
 
   // Find or create a personal organisation to hold the user's own teams.
   let [org] = await db.select().from(organisations).where(eq(organisations.ownerUserId, user.id)).limit(1)

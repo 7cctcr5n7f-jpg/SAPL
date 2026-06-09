@@ -132,15 +132,17 @@ export default async function DashboardOverview() {
           </Card>
         </section>
       ) : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3">
           <Card>
-            <CardContent className="pt-6">
-              <Stat label="Active Teams" value={activeTeams.length} />
+            <CardContent className="flex items-center justify-between gap-2 px-4 py-3">
+              <span className="text-xs font-medium text-muted-foreground">Active Teams</span>
+              <span className="text-lg font-bold tabular-nums">{activeTeams.length}</span>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6">
-              <Stat label="Fees Due" value={fmtZAR(outstanding)} />
+            <CardContent className="flex items-center justify-between gap-2 px-4 py-3">
+              <span className="text-xs font-medium text-muted-foreground">Fees Due</span>
+              <span className="text-lg font-bold tabular-nums">{fmtZAR(outstanding)}</span>
             </CardContent>
           </Card>
         </div>

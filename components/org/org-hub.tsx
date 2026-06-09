@@ -717,6 +717,7 @@ function EditTeamDialog({
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
+  const [teamType, setTeamType] = useState<string>(team.teamType)
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
   const [ownerEmail, setOwnerEmail] = useState(team.ownerEmail ?? "")
@@ -730,6 +731,7 @@ function EditTeamDialog({
       const res = await updateTeamRegistration({
         teamId: team.id,
         name,
+        teamType,
         homeClubId: homeClubId ? Number(homeClubId) : null,
         clubPaysFees,
         ownerEmail: ownerEmail.trim() || null,
@@ -757,6 +759,25 @@ function EditTeamDialog({
           <div className="space-y-2">
             <Label htmlFor="editName">Team name</Label>
             <Input id="editName" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editTeamType">Team type</Label>
+            <select
+              id="editTeamType"
+              value={teamType}
+              onChange={(e) => setTeamType(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {TEAM_TYPES.map((tt) => (
+                <option key={tt} value={tt}>
+                  {tt}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Club Teams are entered by a venue, Company Teams represent a business, and Private Teams are independent
+              groups.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="editHomeClub">Home club / venue</Label>

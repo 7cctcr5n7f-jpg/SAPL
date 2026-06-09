@@ -56,6 +56,26 @@ const ORGS = [
 
 type OrgSeed = (typeof ORGS)[number]
 
+/**
+ * Map an organisation type to the team type its teams enter the league as.
+ * Padel clubs / schools enter as Club Teams; corporate companies as Company
+ * Teams; social & community groups as Private Teams. This keeps seeded and demo
+ * data from being uniformly "Club Team".
+ */
+function teamTypeForOrg(orgType: string): "Club Team" | "Company Team" | "Private Team" {
+  switch (orgType) {
+    case "Corporate Company":
+      return "Company Team"
+    case "Social Group":
+    case "Community Organisation":
+      return "Private Team"
+    case "Padel Club":
+    case "Educational Institution":
+    default:
+      return "Club Team"
+  }
+}
+
 // Extra organisations used by the Demo Environment to reach a richer scale
 // (~20 orgs / ~80 teams). Production uses ORGS only.
 export const DEMO_EXTRA_ORGS: OrgSeed[] = [
@@ -186,6 +206,11 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
       courts: randInt(3, 8),
     })
 
+    // Derive a realistic team type from the organisation type so seeded/demo
+    // data isn't uniformly "Club Team". Padel clubs & schools field Club Teams,
+    // companies field Company Teams, social/community groups field Private Teams.
+    const teamType = teamTypeForOrg(org.type)
+
     // one team per division
     for (let i = 0; i < DIVISIONS.length; i++) {
       const divisionName = DIVISIONS[i].name
@@ -195,6 +220,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
         .values({
           organisationId: orgRow.id,
           name: org.names[i],
+          teamType,
           divisionId: division.id,
           seasonId: season.id,
           regionId,
