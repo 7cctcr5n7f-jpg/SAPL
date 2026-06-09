@@ -81,6 +81,51 @@ export async function setPairingSlot(input: {
   return { success: "Lineup updated." }
 }
 
+/**
+ * Remove a player from a team entirely: mark their roster membership as removed,
+ * clear them out of every pairing slot for this team, and reset their
+ * availability so the one-team-per-season conflict no longer blocks re-assigning
+ * them elsewhere. Clearing a pairing slot alone does NOT do this.
+ */
+export async function removeFromTeam(input: { teamId: number; playerId: number }) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const team = await canManageTeam(me, input.teamId)
+  if (!team) return { error: "You cannot manage this team." }
+
+  // 1) Drop the roster membership.
+  await db
+    .update(teamMembers)
+    .set({ status: "removed", updatedAt: new Date() })
+    .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, input.playerId)))
+
+  // 2) Clear the player out of any pairing slots for this team.
+  await db
+    .update(teamPairings)
+    .set({ playerId: null, updatedAt: new Date() })
+    .where(and(eq(teamPairings.teamId, input.teamId), eq(teamPairings.playerId, input.playerId)))
+
+  // 3) If the player is no longer active on ANY team, mark them as a free agent
+  //    again so they can be picked up / re-assigned without a stale conflict.
+  const stillActive = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, input.playerId), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (stillActive.length === 0) {
+    await db
+      .update(players)
+      .set({ availability: "available", updatedAt: new Date() })
+      .where(eq(players.id, input.playerId))
+  }
+
+  await recomputeTeamStats(input.teamId)
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard")
+  return { success: "Player removed from team." }
+}
+
 // Add a player to a team by email and (optionally) a specific pairing slot.
 // If the email already belongs to a registered player, they are added to the
 // roster immediately (no approval needed). Otherwise a pending invite is stored,

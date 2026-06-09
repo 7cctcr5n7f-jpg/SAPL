@@ -131,8 +131,12 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     .map(([id, info]) => ({ teamId: id, teamName: info.name, source: info.source }))
   const teamIds = teamAssignments.map((t) => t.teamId)
 
+  // Captain Hub is available to anyone who can manage a team: captains and team
+  // owners (auto), plus club/team managers manually assigned to a team. They get
+  // the full captain experience for the teams in their scope.
   const canCaptainHub =
-    permissions.has("captain_hub") && (autoOwnerTeams.length > 0 || captainTeams.length > 0 || isLeagueAdmin)
+    (permissions.has("captain_hub") || permissions.has("team_management")) &&
+    (teamIds.length > 0 || isLeagueAdmin)
 
   return {
     user,

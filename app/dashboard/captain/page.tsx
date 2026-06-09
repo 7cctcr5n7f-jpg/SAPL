@@ -13,11 +13,14 @@ import { divisions, teams } from "@/lib/db/schema"
 import { eq, inArray } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { CaptainHub, type CaptainTeam } from "@/components/captain/captain-hub"
-import { requirePermissionPage } from "@/lib/access"
+import { requireAccessContext } from "@/lib/access"
+import { redirect } from "next/navigation"
 
 export default async function CaptainPage() {
-  const access = await requirePermissionPage("captain_hub")
-  const user = access.user
+  // Captains, team owners, and club/team managers all get the Captain Hub for
+  // the teams in their scope.
+  const access = await requireAccessContext()
+  if (!access.can("captain_hub") && !access.can("team_management")) redirect("/dashboard")
 
   // The captain hub shows every team the user captains OR owns (by owner email),
   // resolved through the access context's team assignments.

@@ -18,16 +18,18 @@ import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { getAccessContext } from "@/lib/access"
 
-async function getFixtureForUser(userId: string, fixtureId: number, isAdmin: boolean) {
+async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fixture) return null
   // Admins can edit any fixture's result.
   if (isAdmin) return fixture
   // Template fixtures with no teams assigned yet cannot have a result.
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) return null
-  const myTeams = await db.select().from(teams).where(eq(teams.captainUserId, userId))
-  const ids = new Set(myTeams.map((t) => t.id))
-  if (!ids.has(fixture.homeTeamId) && !ids.has(fixture.awayTeamId)) return null
+  // Anyone who can manage either team (captain, team owner, or team/club manager
+  // with captain_hub access) may record the result.
+  const canHome = await canManageTeam(user, fixture.homeTeamId)
+  const canAway = await canManageTeam(user, fixture.awayTeamId)
+  if (!canHome && !canAway) return null
   return fixture
 }
 
@@ -57,11 +59,10 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const isAdmin = me.isSuperAdmin || me.role === "league_admin"
-  if (!isAdmin && me.role !== "captain" && me.role !== "org_admin") {
-    return { error: "Only captains can submit results." }
-  }
-  const fixture = await getFixtureForUser(me.id, fixtureId, isAdmin)
-  if (!fixture) return { error: "You do not captain a team in this fixture." }
+  // getFixtureForUser enforces that the user can manage one of the teams in this
+  // fixture (captain, owner, or team/club manager), so we don't gate on role here.
+  const fixture = await getFixtureForUser(me, fixtureId, isAdmin)
+  if (!fixture) return { error: "You do not manage a team in this fixture." }
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) {
     return { error: "Both teams must be assigned before recording a result." }
   }
@@ -162,12 +163,9 @@ export async function setPlayerAvailability(
 export async function addPlayer(teamId: number, playerId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.captainUserId, me.id)))
-    .limit(1)
-  if (!team) return { error: "You do not captain this team." }
+  if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
+  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  if (!team) return { error: "Team not found." }
 
   // One team per player per season: block if the player is already active on a
   // different team in the same season.
@@ -226,12 +224,7 @@ export async function addPlayer(teamId: number, playerId: number) {
 export async function removeMember(teamId: number, membershipId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.captainUserId, me.id)))
-    .limit(1)
-  if (!team) return { error: "You do not captain this team." }
+  if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
 
   await db
     .update(teamMembers)
