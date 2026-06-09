@@ -23,6 +23,7 @@ import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { ArrowRight } from "lucide-react"
+import { NOTE_LINK_SEP } from "@/lib/notify"
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
@@ -209,25 +210,35 @@ export default async function DashboardOverview() {
           </CardHeader>
           <CardContent className="space-y-3">
             {notifications.length === 0 && <p className="text-sm text-muted-foreground">No notifications yet.</p>}
-            {notifications.map((n) => (
-              <div key={n.id} className="flex gap-3 rounded-md bg-secondary px-4 py-3">
-                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{n.title}</p>
-                  <p className="text-xs text-muted-foreground">{n.body}</p>
-                  {["result_recorded", "fixture_ready", "fixture_updated", "fixture_created"].includes(n.type) &&
-                    n.scopeId != null && (
+            {notifications.map((n) => {
+              const sepIdx = n.body.indexOf(NOTE_LINK_SEP)
+              const bodyText = sepIdx === -1 ? n.body : n.body.slice(0, sepIdx)
+              const packedHref = sepIdx === -1 ? null : n.body.slice(sepIdx + NOTE_LINK_SEP.length) || null
+              const fixtureHref =
+                ["result_recorded", "fixture_ready", "fixture_updated", "fixture_created"].includes(n.type) &&
+                n.scopeId != null
+                  ? `/league-centre/match/${n.scopeId}`
+                  : null
+              const href = packedHref ?? fixtureHref
+              return (
+                <div key={n.id} className="flex gap-3 rounded-md bg-secondary px-4 py-3">
+                  <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{n.title}</p>
+                    <p className="text-xs text-muted-foreground">{bodyText}</p>
+                    {href && (
                       <Link
-                        href={`/league-centre/match/${n.scopeId}`}
+                        href={href}
                         className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                       >
                         {n.type === "fixture_ready" ? "View & join" : "View match"}
                         <ArrowRight className="h-3 w-3" />
                       </Link>
                     )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </CardContent>
         </Card>
       </section>

@@ -3,6 +3,7 @@
 import { useTransition } from "react"
 import Link from "next/link"
 import { markAllRead } from "@/lib/actions/notifications"
+import { NOTE_LINK_SEP } from "@/lib/notify"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { fmtDateTime } from "@/lib/format"
@@ -26,6 +27,23 @@ const FIXTURE_LINK_TYPES = new Set(["result_recorded", "fixture_ready", "fixture
 function actionLabel(type: string) {
   if (type === "fixture_ready") return "View & join"
   return "View match"
+}
+
+/** Split a stored body into its display text and any packed action href. */
+function parseBody(body: string): { text: string; href: string | null } {
+  const idx = body.indexOf(NOTE_LINK_SEP)
+  if (idx === -1) return { text: body, href: null }
+  return { text: body.slice(0, idx), href: body.slice(idx + NOTE_LINK_SEP.length) || null }
+}
+
+/** Resolve the best action link + label for a notification. */
+function resolveAction(n: Note): { href: string; label: string } | null {
+  const { href } = parseBody(n.body)
+  if (href) return { href, label: actionLabel(n.type) }
+  if (FIXTURE_LINK_TYPES.has(n.type) && n.scopeId != null) {
+    return { href: `/league-centre/match/${n.scopeId}`, label: actionLabel(n.type) }
+  }
+  return null
 }
 
 export function NotificationsList({ notes }: { notes: Note[] }) {
@@ -54,7 +72,9 @@ export function NotificationsList({ notes }: { notes: Note[] }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {notes.map((n) => (
+          {notes.map((n) => {
+            const action = resolveAction(n)
+            return (
             <div
               key={n.id}
               className={cn(
@@ -73,24 +93,25 @@ export function NotificationsList({ notes }: { notes: Note[] }) {
                   <p className="text-sm font-semibold">{n.title}</p>
                   <span className="shrink-0 text-xs text-muted-foreground">{fmtDateTime(n.createdAt)}</span>
                 </div>
-                <p className="text-sm text-muted-foreground">{n.body}</p>
+                <p className="text-sm text-muted-foreground">{parseBody(n.body).text}</p>
                 {n.channel === "whatsapp" && (
                   <span className="mt-1 inline-block text-[10px] font-bold uppercase tracking-wider text-primary">
                     WhatsApp
                   </span>
                 )}
-                {FIXTURE_LINK_TYPES.has(n.type) && n.scopeId != null && (
+                {action && (
                   <Link
-                    href={`/league-centre/match/${n.scopeId}`}
+                    href={action.href}
                     className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                   >
-                    {actionLabel(n.type)}
+                    {action.label}
                     <ArrowRight className="h-3 w-3" />
                   </Link>
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
