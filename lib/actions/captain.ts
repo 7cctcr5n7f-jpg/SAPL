@@ -93,8 +93,9 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   const scoreLine = `${score.homePoints} – ${score.awayPoints}`
   const title = wasCompleted ? "Result updated" : "Result recorded — standings updated"
   const body = `Final score ${scoreLine}. Tap to view the match.`
-  await notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId })
-  await notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId })
+  const href = `/league-centre/match/${fixtureId}`
+  await notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId, href })
+  await notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId, href })
 
   revalidatePath("/dashboard/captain")
   revalidatePath("/admin/fixtures")

@@ -19,7 +19,8 @@ async function notifyFixtureTeams(fixtureId: number, type: string, title: string
     .limit(1)
   if (!fx) return
   const targets = [fx.homeTeamId, fx.awayTeamId].filter((id): id is number => id != null)
-  await Promise.all(targets.map((teamId) => notifyTeam(teamId, { type, title, body, fixtureId })))
+  const href = `/league-centre/match/${fixtureId}`
+  await Promise.all(targets.map((teamId) => notifyTeam(teamId, { type, title, body, fixtureId, href })))
 }
 
 function normalizeUrl(raw: string): string | null {

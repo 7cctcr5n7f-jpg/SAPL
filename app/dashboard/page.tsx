@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
+import { ArrowRight } from "lucide-react"
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
