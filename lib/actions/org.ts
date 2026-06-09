@@ -129,6 +129,7 @@ export async function updateTeamRegistration(input: {
   name?: string
   teamType?: string
   homeClubId?: number | null
+  saplRegion?: string | null
   managerPlayerId?: number | null
   clubPaysFees?: boolean
   ownerEmail?: string | null
@@ -168,6 +169,23 @@ export async function updateTeamRegistration(input: {
         patch.regionId = club.regionId ?? null
         patch.saplRegion = club.saplRegion ?? null
       }
+    }
+  }
+  // Allow setting the region directly (e.g. venue-less Company/Private teams, or
+  // fixing teams that were created before regions were captured). A chosen home
+  // club above takes precedence and will have already set the region.
+  if (input.saplRegion !== undefined && patch.saplRegion === undefined) {
+    const chosen = (input.saplRegion ?? "").trim()
+    if (chosen) {
+      if (!SAPL_REGIONS.includes(chosen as (typeof SAPL_REGIONS)[number])) {
+        return { ok: false, error: "Invalid region" }
+      }
+      const [regionRow] = await db.select({ id: regions.id }).from(regions).where(eq(regions.name, chosen)).limit(1)
+      patch.saplRegion = chosen
+      patch.regionId = regionRow?.id ?? null
+    } else {
+      patch.saplRegion = null
+      patch.regionId = null
     }
   }
   if (input.managerPlayerId !== undefined) {

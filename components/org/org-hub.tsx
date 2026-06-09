@@ -37,7 +37,7 @@ import {
   CircleAlert,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { TEAM_TYPES, TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { TEAM_TYPES, TEAM_SQUAD_SIZE, SAPL_REGIONS } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
@@ -680,6 +680,26 @@ function CreateTeamDialog({
               Whoever signs in with this email automatically gets team-owner access to manage this team.
             </p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="saplRegion">Region</Label>
+            <select
+              id="saplRegion"
+              name="saplRegion"
+              defaultValue=""
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Use home venue&apos;s region</option>
+              {SAPL_REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              The region inherits from the home venue. Pick one here for teams without a venue so they can be placed and
+              filtered.
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground">
             New teams start unassigned. The league office places them into a division.
           </p>
@@ -719,12 +739,20 @@ function EditTeamDialog({
   const [name, setName] = useState(team.name)
   const [teamType, setTeamType] = useState<string>(team.teamType)
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
+  const [saplRegion, setSaplRegion] = useState<string>(team.saplRegion ?? "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
   const [ownerEmail, setOwnerEmail] = useState(team.ownerEmail ?? "")
+
+  // When a home club is set, the region is inherited from it and can't be edited.
+  const hasHomeClub = Boolean(homeClubId)
 
   function save() {
     if (!name.trim()) {
       toast.error("Team name is required")
+      return
+    }
+    if (!hasHomeClub && !saplRegion) {
+      toast.error("Select a region (or choose a home venue to inherit one)")
       return
     }
     start(async () => {
@@ -733,6 +761,7 @@ function EditTeamDialog({
         name,
         teamType,
         homeClubId: homeClubId ? Number(homeClubId) : null,
+        saplRegion: homeClubId ? undefined : saplRegion || null,
         clubPaysFees,
         ownerEmail: ownerEmail.trim() || null,
       })
@@ -798,6 +827,28 @@ function EditTeamDialog({
             </select>
             <p className="text-xs text-muted-foreground">
               Division placement is managed by the league office and can&apos;t be changed here.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editRegion">Region</Label>
+            <select
+              id="editRegion"
+              value={hasHomeClub ? (team.saplRegion ?? "") : saplRegion}
+              disabled={hasHomeClub}
+              onChange={(e) => setSaplRegion(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">Select a region…</option>
+              {SAPL_REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {hasHomeClub
+                ? "Region is inherited from the home venue. Remove the home club to set it manually."
+                : "The region this team competes in. Used for division placement and filtering."}
             </p>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2.5">

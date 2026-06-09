@@ -111,6 +111,14 @@ export async function generateSeason(formData: FormData) {
   const divisionsWithTeams = new Set(
     assignedRows.map((r) => r.divisionId).filter((x): x is number => x != null),
   )
+  // Number of teams actually placed into each division. Used to size the
+  // round-robin to the real squad count (6/7/8…) instead of always filling
+  // every slot, so no fixtures are scheduled against empty placeholder slots.
+  const assignedCountByDivision = new Map<number, number>()
+  for (const r of assignedRows) {
+    if (r.divisionId == null) continue
+    assignedCountByDivision.set(r.divisionId, (assignedCountByDivision.get(r.divisionId) ?? 0) + 1)
+  }
 
   const emptyDivIds: number[] = []
   for (const d of allDivs) {
