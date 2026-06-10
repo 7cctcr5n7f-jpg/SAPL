@@ -2,6 +2,7 @@ import {
   getOrgByOwner,
   getOrgTeams,
   getAllTeamsForAdmin,
+  getScopedTeamRows,
   getStandingForTeam,
   getTeamPairingData,
   getCategories,
@@ -25,11 +26,17 @@ export default async function OrgPage() {
   // own. A super admin previewing the org_admin role drops to the scoped view.
   const isAdminWide = access.isLeagueAdmin
 
+  // A club manager assigned via a venue's contact email (or a manual team/club
+  // assignment) owns no organisation, but should still manage the teams within
+  // their scope. Detect that case so we can render their scoped teams instead of
+  // falling into the "no teams" empty state.
+  const hasScopedAccess = !isAdminWide && (access.clubIds.length > 0 || access.teamIds.length > 0)
+
   let org = await getOrgByOwner(user.id)
 
-  // Admins without an owned org borrow a sample org so the create-team dialog
-  // still has a context to attach new teams to.
-  if (!org && (isAdminWide || user.isSuperAdmin)) {
+  // Admins, and club managers without an owned org, borrow a sample org so the
+  // create-team dialog still has a context to attach new teams to.
+  if (!org && (isAdminWide || user.isSuperAdmin || hasScopedAccess)) {
     const [sample] = await db.select().from(organisations).orderBy(organisations.id).limit(1)
     org = sample ?? null
   }
@@ -48,7 +55,16 @@ export default async function OrgPage() {
     )
   }
 
-  const orgTeamRows = isAdminWide ? await getAllTeamsForAdmin() : await getOrgTeams(org.id)
+  // Team set per role:
+  //  - league/super admin: every team
+  //  - club manager (no owned org / scoped access): teams within their access
+  //    scope (assigned teams ∪ teams homed at their assigned clubs)
+  //  - org owner: that organisation's teams
+  const orgTeamRows = isAdminWide
+    ? await getAllTeamsForAdmin()
+    : hasScopedAccess
+      ? await getScopedTeamRows(access)
+      : await getOrgTeams(org.id)
 
   // Captain profiles (name + contact details so the row can show and edit them).
   type CaptainInfo = {
