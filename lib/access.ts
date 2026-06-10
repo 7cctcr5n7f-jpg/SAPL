@@ -16,8 +16,11 @@ export type ClubAssignment = {
 export type TeamAssignment = {
   teamId: number
   teamName: string
-  /** "owner" (email match), "captain", or "manual". owner/captain are auto. */
-  source: "owner" | "captain" | "manual"
+  /**
+   * "owner" (email match), "captain", "club" (team homed at a managed club), or
+   * "manual". owner/captain/club are auto (cannot be removed manually).
+   */
+  source: "owner" | "captain" | "club" | "manual"
 }
 
 export type AccessContext = {
@@ -103,13 +106,16 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   // Being assigned a club — whether via the club's contact email (auto) or a
   // manual assignment in Members & Roles — makes the user a club manager for
   // that venue. Grant the club-scoped permissions so they can reach Fixture
-  // Management and edit booking links for fixtures hosted at their club(s).
-  // These are scoped to `clubIds` by the access layer, so they only ever affect
-  // the user's own venues, never the whole league.
+  // Management and edit booking links for fixtures hosted at their club(s), plus
+  // Team Management and the Captain Hub for teams homed at their club(s).
+  // These are scoped to `clubIds` / `teamIds` by the access layer, so they only
+  // ever affect the user's own venues and teams, never the whole league.
   if (clubIds.length > 0 && !isLeagueAdmin) {
     permissions.add("club_management")
     permissions.add("fixture_management")
     permissions.add("player_management")
+    permissions.add("team_management")
+    permissions.add("captain_hub")
   }
 
   // --- Teams: owner-email (auto) + captaincy (auto) + manual overrides ---
@@ -127,6 +133,18 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   const teamSourceMap = new Map<number, { name: string; source: TeamAssignment["source"] }>()
   for (const t of autoOwnerTeams) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
   for (const t of captainTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "captain" })
+
+  // Teams homed at a club this user manages (via the club's contact email or a
+  // manual club assignment) are also in their scope. This gives club managers
+  // the Captain Hub — and all other team-scoped management — for every team
+  // that plays out of their venue, without a separate per-team assignment.
+  if (clubIds.length) {
+    const clubTeams = await db
+      .select({ id: teams.id, name: teams.name })
+      .from(teams)
+      .where(inArrayInts(teams.homeClubId, clubIds))
+    for (const t of clubTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "club" })
+  }
 
   const manualAddTeamIds = teamOverrides.add.filter((id) => !teamSourceMap.has(id))
   if (manualAddTeamIds.length) {
