@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { ManagedPlayer } from "@/lib/queries-dashboard"
-import { adminUpdatePlayer } from "@/lib/actions/player"
+import { adminUpdatePlayer, adminCreatePlayerProfile } from "@/lib/actions/player"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus, UserPlus } from "lucide-react"
 
 const ALL_CATEGORIES = CATEGORY_RULES.map((c) => c.name)
 
@@ -91,7 +91,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
       {/* Mobile cards */}
       <div className="flex flex-col gap-3 lg:hidden">
         {filtered.map((p) => (
-          <PlayerCard key={p.playerId} player={p} onEdit={() => setEditing(p)} />
+          <PlayerCard key={p.userId} player={p} onEdit={() => setEditing(p)} />
         ))}
         {filtered.length === 0 ? (
           <p className="rounded-lg border border-border bg-card px-4 py-10 text-center text-muted-foreground">
@@ -117,7 +117,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
           </thead>
           <tbody>
             {filtered.map((p) => (
-              <PlayerRow key={p.playerId} player={p} onEdit={() => setEditing(p)} />
+              <PlayerRow key={p.userId} player={p} onEdit={() => setEditing(p)} />
             ))}
             {filtered.length === 0 ? (
               <tr>
@@ -190,6 +190,11 @@ function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => vo
         <div className="flex items-center gap-2">
           <GenderIcon gender={player.gender} />
           <span className="font-medium text-foreground">{player.name}</span>
+          {player.playerId == null ? (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              No profile
+            </Badge>
+          ) : null}
         </div>
       </td>
       <td className="px-3 py-2 text-xs text-muted-foreground">
@@ -239,8 +244,17 @@ function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => vo
       <td className="px-3 py-2">
         <div className="flex items-center justify-end">
           <Button type="button" size="sm" variant="outline" onClick={onEdit}>
-            <Pencil className="h-3.5 w-3.5" />
-            <span className="ml-1.5">Edit</span>
+            {player.playerId == null ? (
+              <>
+                <UserPlus className="h-3.5 w-3.5" />
+                <span className="ml-1.5">Create profile</span>
+              </>
+            ) : (
+              <>
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="ml-1.5">Edit</span>
+              </>
+            )}
           </Button>
         </div>
       </td>
@@ -256,6 +270,11 @@ function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => v
           <div className="flex items-center gap-2">
             <GenderIcon gender={player.gender} />
             <span className="font-medium text-foreground">{player.name}</span>
+            {player.playerId == null ? (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                No profile
+              </Badge>
+            ) : null}
           </div>
         </div>
         <PrimaryCategory player={player} />
@@ -286,8 +305,17 @@ function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => v
 
       <div className="mt-3">
         <Button type="button" size="sm" variant="outline" className="w-full" onClick={onEdit}>
-          <Pencil className="h-3.5 w-3.5" />
-          <span className="ml-1.5">Edit player</span>
+          {player.playerId == null ? (
+            <>
+              <UserPlus className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Create profile</span>
+            </>
+          ) : (
+            <>
+              <Pencil className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Edit player</span>
+            </>
+          )}
         </Button>
       </div>
     </div>
@@ -313,6 +341,7 @@ function EditPlayerDialog({
 }
 
 function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: () => void }) {
+  const isCreate = player.playerId == null
   const [firstName, setFirstName] = useState(player.firstName)
   const [lastName, setLastName] = useState(player.lastName)
   const [phone, setPhone] = useState(player.phone ?? "")
@@ -324,13 +353,33 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
 
   function submit() {
     if (!firstName.trim() || !lastName.trim()) return toast.error("First and last name are required.")
+
+    // No profile yet: create one first, then the admin can edit it fully.
+    if (isCreate) {
+      startTransition(async () => {
+        const res = await adminCreatePlayerProfile({
+          userId: player.userId,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          gender: genderVal,
+        })
+        if (res.ok) {
+          toast.success(`Created profile for ${firstName} ${lastName}`)
+          onSaved()
+        } else {
+          toast.error(res.error ?? "Could not create profile")
+        }
+      })
+      return
+    }
+
     const parsedRating = rating.trim() === "" ? null : Number(rating)
     const parsedLi = Number(li)
     if (parsedRating != null && Number.isNaN(parsedRating)) return toast.error("Rating must be a number.")
     if (Number.isNaN(parsedLi)) return toast.error("LI must be a number.")
     startTransition(async () => {
       const res = await adminUpdatePlayer({
-        playerId: player.playerId,
+        playerId: player.playerId as number,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim() || null,
@@ -350,7 +399,7 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
 
   function leaveTeam(teamId: number, teamName: string) {
     startTransition(async () => {
-      const res = await adminUpdatePlayer({ playerId: player.playerId, removeFromTeamId: teamId })
+      const res = await adminUpdatePlayer({ playerId: player.playerId as number, removeFromTeamId: teamId })
       if (res.ok) {
         toast.success(`Removed from ${teamName}`)
         onSaved()
@@ -363,8 +412,12 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Edit player</DialogTitle>
-        <DialogDescription>Update profile details, rating, and team membership.</DialogDescription>
+        <DialogTitle>{isCreate ? "Create player profile" : "Edit player"}</DialogTitle>
+        <DialogDescription>
+          {isCreate
+            ? `Create a player profile for ${player.email ?? "this account"} so they can be managed and assigned to teams.`
+            : "Update profile details, rating, and team membership."}
+        </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-4 py-2">
@@ -380,10 +433,12 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="phone">Contact number</Label>
-            <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
-          </div>
+          {!isCreate ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="phone">Contact number</Label>
+              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+            </div>
+          ) : null}
           <div className="space-y-1.5">
             <Label htmlFor="gender">Gender</Label>
             <select
@@ -398,71 +453,75 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="rating">Playtomic rating</Label>
-            <Input
-              id="rating"
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              inputMode="decimal"
-              placeholder="—"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="li">League Index</Label>
-            <Input id="li" value={li} onChange={(e) => setLi(e.target.value)} inputMode="decimal" />
-          </div>
-        </div>
+        {!isCreate ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="rating">Playtomic rating</Label>
+                <Input
+                  id="rating"
+                  value={rating}
+                  onChange={(e) => setRating(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="—"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="li">League Index</Label>
+                <Input id="li" value={li} onChange={(e) => setLi(e.target.value)} inputMode="decimal" />
+              </div>
+            </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="url">Playtomic URL</Label>
-          <Input
-            id="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://playtomic.io/..."
-          />
-        </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="url">Playtomic URL</Label>
+              <Input
+                id="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://playtomic.io/..."
+              />
+            </div>
 
-        <div className="space-y-2">
-          <Label>Teams</Label>
-          {player.teams.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Not on any team.</p>
-          ) : (
-            <ul className="space-y-2">
-              {player.teams.map((t) => (
-                <li
-                  key={t.teamId}
-                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
-                >
-                  <div className="min-w-0 text-sm">
-                    <span className="font-medium">{t.teamName}</span>
-                    {t.divisionName ? (
-                      <span className="text-muted-foreground"> · {t.divisionName}</span>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onClick={() => leaveTeam(t.teamId, t.teamName)}
-                  >
-                    <UserMinus className="h-3.5 w-3.5" />
-                    <span className="ml-1.5">Remove</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            <div className="space-y-2">
+              <Label>Teams</Label>
+              {player.teams.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Not on any team.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {player.teams.map((t) => (
+                    <li
+                      key={t.teamId}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                    >
+                      <div className="min-w-0 text-sm">
+                        <span className="font-medium">{t.teamName}</span>
+                        {t.divisionName ? (
+                          <span className="text-muted-foreground"> · {t.divisionName}</span>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => leaveTeam(t.teamId, t.teamName)}
+                      >
+                        <UserMinus className="h-3.5 w-3.5" />
+                        <span className="ml-1.5">Remove</span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <DialogFooter>
         <Button type="button" disabled={pending} onClick={submit}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          <span className={pending ? "ml-2" : ""}>Save changes</span>
+          <span className={pending ? "ml-2" : ""}>{isCreate ? "Create profile" : "Save changes"}</span>
         </Button>
       </DialogFooter>
     </>

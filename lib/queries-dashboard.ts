@@ -429,7 +429,9 @@ export async function getUnreadCount(userId: string) {
 // Team / captain helpers ----------------------------------------------------
 
 export type ManagedPlayer = {
-  playerId: number
+  /** null when the user account has no player profile yet. */
+  playerId: number | null
+  userId: string
   name: string
   firstName: string
   lastName: string
@@ -469,7 +471,7 @@ async function getScopedTeamIds(access: AccessContext): Promise<number[] | null>
 /** Player ids a user may manage (used to authorise inline edits). */
 export async function getManageablePlayerIds(access: AccessContext): Promise<Set<number>> {
   const players = await getManagedPlayers(access)
-  return new Set(players.map((p) => p.playerId))
+  return new Set(players.map((p) => p.playerId).filter((id): id is number => id != null))
 }
 
 /**
@@ -484,9 +486,11 @@ export async function getScopedTeamIdSet(access: AccessContext): Promise<Set<num
 
 /**
  * Players a user may manage, scoped by their access context. League admins see
- * everyone; everyone else sees players who belong to a team within their scope
- * (assigned teams + teams homed at assigned clubs). Includes contact details
- * (email + phone), Playtomic rating, League Index and Playtomic profile link.
+ * EVERY user account — including those without a player profile yet (playerId
+ * null) — so admins can find and edit/onboard anyone. Everyone else sees players
+ * who belong to a team within their scope (assigned teams + teams homed at
+ * assigned clubs). Includes contact details (email + phone), Playtomic rating,
+ * League Index and Playtomic profile link.
  */
 export async function getManagedPlayers(access: AccessContext): Promise<ManagedPlayer[]> {
   const scopedTeamIds = await getScopedTeamIds(access)
@@ -547,6 +551,34 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
     list = list.filter((p) => p.teams.some((t) => allowed.has(t.teamId)))
   }
 
+  // League admins also see user accounts that have NO player profile yet so they
+  // can manage/onboard everyone. Append a profile-less entry for each such user.
+  if (!scopedTeamIds) {
+    const usersWithProfile = new Set(list.map((p) => p.userId))
+    const allUsers = await db
+      .select({ id: user.id, name: user.name })
+      .from(user)
+      .orderBy(user.name)
+    for (const u of allUsers) {
+      if (usersWithProfile.has(u.id)) continue
+      const [firstName, ...rest] = (u.name ?? "").trim().split(/\s+/)
+      list.push({
+        playerId: null,
+        name: (u.name ?? "").trim() || "Unnamed user",
+        firstName: firstName ?? "",
+        lastName: rest.join(" "),
+        gender: "male",
+        currentLi: 0,
+        playtomicRating: null,
+        playtomicUrl: null,
+        email: null,
+        phone: null,
+        userId: u.id,
+        teams: [],
+      })
+    }
+  }
+
   // Attach contact details (email from auth user, phone from userMeta).
   const userIds = [...new Set(list.map((p) => p.userId))]
   if (userIds.length) {
@@ -563,8 +595,10 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
     }
   }
 
-  // Strip the internal userId before returning.
-  return list.map(({ userId: _userId, ...rest }) => rest)
+  // Sort by name for a stable, alphabetical listing (profile-less users mixed in).
+  list.sort((a, b) => a.name.localeCompare(b.name))
+
+  return list
 }
 
 export async function getTeamsForCaptain(userId: string) {
