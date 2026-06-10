@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { normaliseCourtSlots, deriveSlotCounts, normaliseSlotTimeslots, deriveHostTimeslots, type CourtSlotMode } from "@/lib/constants"
 import { reconcileClubTeams } from "@/lib/club-teams"
@@ -17,20 +18,34 @@ function slugify(input: string) {
     .replace(/^-+|-+$/g, "")
 }
 
-// Venue management is a league-admin task. Organisations are no longer surfaced
-// in the UI, so we only require an admin (or, for an existing venue, its org owner).
-async function requireClubManager(organisationId?: number) {
+// Venue management authority. League/super admins may manage any venue. A club
+// manager assigned to a specific venue — via the venue's contact email (auto)
+// or a manual Members & Roles assignment — may manage that venue. For an
+// existing venue we authorise on the clubId (the contact-email assignment),
+// falling back to org ownership; for a brand-new venue (no clubId yet) only
+// league admins or the requested owner org may create it.
+async function requireClubManager(opts: { clubId?: number; organisationId?: number }) {
   const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
-  if (user.role === "league_admin" || user.role === "super_admin" || user.realRole === "super_admin") {
+
+  const ctx = await getAccessContext(user)
+  if (ctx.isLeagueAdmin) return user
+
+  // Club manager scoped to this exact venue (contact-email or manual assignment).
+  if (opts.clubId != null && ctx.can("club_management") && ctx.canManageClub(opts.clubId)) {
     return user
   }
-  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1)
-  if (meta?.role === "league_admin") return user
-  if (organisationId) {
-    const [org] = await db.select().from(organisations).where(eq(organisations.id, organisationId)).limit(1)
+
+  // Fall back to organisation ownership (legacy org-owner dashboards / venue creation).
+  if (opts.organisationId != null) {
+    const [org] = await db
+      .select()
+      .from(organisations)
+      .where(eq(organisations.id, opts.organisationId))
+      .limit(1)
     if (org?.ownerUserId === user.id) return user
   }
+
   throw new Error("Not authorised to manage venues")
 }
 
@@ -92,7 +107,7 @@ export async function saveClub(input: ClubInput) {
     existingOrgId = input.organisationId
   }
   try {
-    await requireClubManager(existingOrgId)
+    await requireClubManager({ clubId: input.id, organisationId: existingOrgId })
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
@@ -187,7 +202,7 @@ export async function deleteClub(id: number) {
   const [club] = await db.select().from(clubs).where(eq(clubs.id, id)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
-    await requireClubManager(club.organisationId)
+    await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
@@ -213,7 +228,7 @@ export async function setClubTeamCaptain(input: {
   const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
-    await requireClubManager(club.organisationId)
+    await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
