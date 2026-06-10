@@ -56,6 +56,7 @@ type Team = {
   homeClubId: number | null
   homeClubName: string | null
   homeClubLogoUrl: string | null
+  homeClubContactEmail: string | null
   ownerEmail: string | null
   avgLi: number
   playerCount: number
@@ -741,7 +742,12 @@ function EditTeamDialog({
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
   const [saplRegion, setSaplRegion] = useState<string>(team.saplRegion ?? "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
-  const [ownerEmail, setOwnerEmail] = useState(team.ownerEmail ?? "")
+  // For a Club Team, the venue that entered it owns it by default — so when no
+  // owner email has been set yet, pre-fill the club's contact email. The field
+  // stays editable so the org can hand ownership to a different person.
+  const [ownerEmail, setOwnerEmail] = useState(
+    team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
+  )
 
   // When a home club is set, the region is inherited from it and can't be edited.
   const hasHomeClub = Boolean(homeClubId)
@@ -874,7 +880,23 @@ function EditTeamDialog({
             <p className="text-xs text-muted-foreground">
               Whoever signs in with this email automatically gets team-owner access to manage this team. Leave blank to
               remove.
+              {team.teamType === "Club Team" && team.homeClubContactEmail
+                ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
+                : ""}
             </p>
+            {team.teamType === "Club Team" &&
+              team.homeClubContactEmail &&
+              ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
+                >
+                  Use venue contact ({team.homeClubContactEmail})
+                </Button>
+              )}
           </div>
         </div>
         <DialogFooter>
