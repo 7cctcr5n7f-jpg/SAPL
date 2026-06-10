@@ -1,63 +1,76 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import type { LCFixture } from "@/lib/queries-league-centre"
+import type { DashboardFixture } from "@/lib/queries-fixtures"
 import type { FixtureDetail } from "@/lib/queries-dashboard"
 import { Crest } from "@/components/league-centre/crest"
+import { CATEGORY_RULES } from "@/lib/constants"
+import { fmtDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { AlertTriangle, ArrowRight, ExternalLink, ClipboardEdit, Eye, ChevronRight } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowRight,
+  ExternalLink,
+  ClipboardEdit,
+  ChevronDown,
+  Clock,
+  MapPin,
+} from "lucide-react"
 
 // ---------------------------------------------------------------------------
-// Player Match Centre — a dense, sports-app style view of the player's own
-// fixtures (Flashscore/Sofascore feel). Sections: To Do (actions required) and
-// Team Fixtures (compact, static rows that link to the fixture detail page).
+// Player Match Centre. Two sections:
+//   1. To Do  — every non-completed fixture the player still needs to join
+//               (i.e. has at least one Playtomic court booking link), plus
+//               score actions for captains.
+//   2. Team Fixtures — an expandable list mirroring the Fixtures management
+//               view: "Team vs Team" summary that expands to the per-court
+//               "Player vs Player" line-ups.
+// Booking links are stored per court on `fixtures.courtLinks` (set on the
+// Fixtures management page), so we read them from there rather than the
+// fixture-level Playtomic URL.
 // ---------------------------------------------------------------------------
 
-type FixtureGroup = "upcoming" | "awaiting" | "completed" | "disputed"
+// The four courts played each match night, in running order.
+const COURTS = [...CATEGORY_RULES].sort((a, b) => a.sortOrder - b.sortOrder).map((c) => c.name)
 
-/** Bucket a fixture into one of the player-facing groups. */
-function groupOf(f: LCFixture): FixtureGroup {
+type FixtureGroup = "upcoming" | "awaiting" | "completed"
+
+function groupOf(f: DashboardFixture): FixtureGroup {
   if (f.status === "completed") return "completed"
-  // Anything past kickoff with no result is treated as "awaiting score".
-  const kickoff = f.matchDate ? Date.parse(f.matchDate) : null
+  const kickoff = f.matchDate ? Date.parse(f.matchDate as string) : null
   if (kickoff != null && kickoff < Date.now()) return "awaiting"
   return "upcoming"
 }
 
-function fmtParts(iso: string | null, timeslot: string | null) {
-  if (!iso) return { day: "Date TBD", time: timeslot ?? "TBD" }
-  const d = new Date(iso)
-  const day = new Intl.DateTimeFormat("en-ZA", { weekday: "short", day: "2-digit", month: "short" }).format(d)
-  const time =
-    timeslot ?? new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false }).format(d)
-  return { day, time }
+function courtLinksOf(f: DashboardFixture): Record<string, string> {
+  return (f.courtLinks ?? {}) as Record<string, string>
+}
+
+/** The booking link most relevant to the player: their own court, else the first available. */
+function primaryJoinLink(f: DashboardFixture, detail?: FixtureDetail): string | null {
+  const links = courtLinksOf(f)
+  if (detail?.myCategory && links[detail.myCategory]) return links[detail.myCategory]
+  for (const c of COURTS) if (links[c]) return links[c]
+  return null
+}
+
+function teamLabel(name: string | null, slot: number | null) {
+  if (name) return { text: name, placeholder: false }
+  if (slot) return { text: `Slot ${slot}`, placeholder: true }
+  return { text: "TBD", placeholder: true }
 }
 
 const STATUS_LABEL: Record<FixtureGroup, string> = {
   upcoming: "Upcoming",
   awaiting: "Awaiting Score",
   completed: "Completed",
-  disputed: "Disputed",
 }
 
-function StatusBadge({ group, className }: { group: FixtureGroup; className?: string }) {
-  const styles: Record<FixtureGroup, string> = {
-    upcoming: "bg-primary/10 text-primary",
-    awaiting: "bg-amber-500/15 text-amber-600 dark:text-amber-500",
-    completed: "bg-secondary text-muted-foreground",
-    disputed: "bg-destructive/15 text-destructive",
-  }
-  return (
-    <span
-      className={cn(
-        "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-        styles[group],
-        className,
-      )}
-    >
-      {STATUS_LABEL[group]}
-    </span>
-  )
+const STATUS_STYLE: Record<FixtureGroup, string> = {
+  upcoming: "bg-primary/10 text-primary",
+  awaiting: "bg-amber-500/15 text-amber-600 dark:text-amber-500",
+  completed: "bg-secondary text-muted-foreground",
 }
 
 // --- Action buttons --------------------------------------------------------
@@ -88,54 +101,132 @@ function ScoreButton({ href, label }: { href: string; label: string }) {
   )
 }
 
-// --- Compact fixture row (static link to the fixture detail page) ----------
+// --- Expandable team-fixture row (mirrors the Fixtures management view) -----
 
-function FixtureRow({ f }: { f: LCFixture }) {
+function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail }) {
+  const [open, setOpen] = useState(false)
   const group = groupOf(f)
-  const { day, time } = fmtParts(f.matchDate, f.timeslot)
+  const done = group === "completed"
+  const home = teamLabel(f.homeName, f.homeSlot)
+  const away = teamLabel(f.awayName, f.awaySlot)
   const homeWon = f.winnerTeamId != null && f.winnerTeamId === f.homeTeamId
-  const awayWon = f.winnerTeamId != null && f.winnerTeamId === f.awayTeamId
-  const hasScore = group === "completed" || group === "disputed"
+  const venueName = f.venueClubName ?? f.venue
+  const links = courtLinksOf(f)
+  const byCategory = new Map(detail?.categories.map((c) => [c.category, c]) ?? [])
 
   return (
-    <Link
-      href={`/league-centre/match/${f.id}`}
-      className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-secondary/40"
-    >
-      {/* Date / time */}
-      <div className="flex w-16 shrink-0 flex-col">
-        <span className="text-xs font-bold tabular-nums">{day}</span>
-        <span className="text-[11px] text-muted-foreground tabular-nums">{time}</span>
+    <div className={cn("border-b border-border last:border-b-0", f.mine && "bg-primary/[0.03]")}>
+      {/* Summary row */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={open}
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          />
+          <Crest name={f.homeName} size="sm" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>
+                {home.text}
+              </span>
+              <span className="text-xs text-muted-foreground">vs</span>
+              <span className={cn("truncate text-sm font-semibold", away.placeholder && "italic text-muted-foreground")}>
+                {away.text}
+              </span>
+              {done && (
+                <span className="font-mono text-sm font-bold tabular-nums">
+                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
+                  <span className="text-muted-foreground">–</span>
+                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {f.divisionName && <span>{f.regionName ? `${f.regionName} · ${f.divisionName}` : f.divisionName}</span>}
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {f.timeslot ?? "Time TBD"}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                <span className="max-w-[12rem] truncate">{venueName ?? "Venue TBD"}</span>
+              </span>
+              <span>{done ? "Final" : fmtDate(f.matchDate)}</span>
+            </div>
+          </div>
+        </button>
+
+        <span
+          className={cn(
+            "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+            STATUS_STYLE[group],
+          )}
+        >
+          {STATUS_LABEL[group]}
+        </span>
       </div>
 
-      {/* Teams */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <Crest name={f.homeName} logoUrl={f.homeLogo} size="sm" />
-          <span className={cn("min-w-0 flex-1 truncate text-sm font-semibold", awayWon && "text-muted-foreground")}>
-            {f.homeName ?? "TBD"}
-          </span>
-          {hasScore ? (
-            <span className={cn("tabular-nums", homeWon && "font-bold text-primary")}>{f.homePoints ?? 0}</span>
-          ) : null}
+      {/* Expanded courts — player vs player */}
+      {open && (
+        <div className="border-t border-border/60 bg-secondary/20 px-4 py-3">
+          <ul className="space-y-1.5">
+            {COURTS.map((category, i) => {
+              const cat = byCategory.get(category)
+              const url = links[category]
+              const homePlayers = cat?.homePlayers ?? []
+              const awayPlayers = cat?.awayPlayers ?? []
+              const homeText = homePlayers.length ? homePlayers.join(" / ") : home.text
+              const awayText = awayPlayers.length ? awayPlayers.join(" / ") : away.text
+              const noLineup = homePlayers.length === 0 && awayPlayers.length === 0
+              return (
+                <li
+                  key={category}
+                  className={cn(
+                    "flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2",
+                    cat?.isMine && "border-primary/40 bg-primary/[0.04]",
+                  )}
+                >
+                  <span className="inline-flex h-5 shrink-0 items-center justify-center rounded bg-secondary px-2 text-[10px] font-semibold uppercase text-secondary-foreground">
+                    Court {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {category}
+                      {cat?.isMine && <span className="ml-1.5 text-primary">· You</span>}
+                    </span>
+                    <span className={cn("font-medium", noLineup && "italic text-muted-foreground")}>{homeText}</span>
+                    <span className="mx-1.5 text-muted-foreground">vs</span>
+                    <span className={cn("font-medium", noLineup && "italic text-muted-foreground")}>{awayText}</span>
+                    {cat?.scoreDetail && (
+                      <span className="ml-2 font-mono text-xs text-muted-foreground">{cat.scoreDetail}</span>
+                    )}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-secondary"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Join
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <AlertTriangle className="h-3.5 w-3.5" /> No link
+                      </span>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-        <div className="mt-1 flex items-center gap-2">
-          <Crest name={f.awayName} logoUrl={f.awayLogo} size="sm" />
-          <span className={cn("min-w-0 flex-1 truncate text-sm font-semibold", homeWon && "text-muted-foreground")}>
-            {f.awayName ?? "TBD"}
-          </span>
-          {hasScore ? (
-            <span className={cn("tabular-nums", awayWon && "font-bold text-primary")}>{f.awayPoints ?? 0}</span>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Status + chevron */}
-      <div className="flex shrink-0 items-center gap-2">
-        <StatusBadge group={group} />
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-      </div>
-    </Link>
+      )}
+    </div>
   )
 }
 
@@ -143,26 +234,28 @@ function FixtureRow({ f }: { f: LCFixture }) {
 
 export function MatchCentre({
   matches,
+  details = {},
   isCaptain,
   captainHref = "/dashboard/captain",
 }: {
-  matches: LCFixture[]
-  // Kept for API compatibility with the dashboard page; pairing detail is now
-  // viewed on the fixture detail page rather than inline.
+  matches: DashboardFixture[]
   details?: Record<number, FixtureDetail>
   isCaptain: boolean
   captainHref?: string
 }) {
-  const sorted = [...matches].sort((a, b) => (a.matchDate ?? "").localeCompare(b.matchDate ?? ""))
+  const sorted = [...matches].sort((a, b) =>
+    String(a.matchDate ?? "").localeCompare(String(b.matchDate ?? "")),
+  )
   const upcoming = sorted.filter((m) => groupOf(m) === "upcoming")
   const awaiting = sorted.filter((m) => groupOf(m) === "awaiting")
-  const disputed = sorted.filter((m) => groupOf(m) === "disputed")
   const completed = sorted.filter((m) => groupOf(m) === "completed").reverse()
 
-  // To Do: every non-completed match the player still needs to join (has a join
-  // link), regardless of whether kickoff has passed, plus score actions for captains.
-  const joinActions = sorted.filter((m) => groupOf(m) !== "completed" && m.joinUrl)
-  const scoreActions = isCaptain ? [...awaiting, ...disputed] : []
+  // To Do: every non-completed match with at least one court booking link.
+  const joinActions = sorted
+    .filter((m) => groupOf(m) !== "completed")
+    .map((m) => ({ fixture: m, url: primaryJoinLink(m, details[m.id]) }))
+    .filter((x): x is { fixture: DashboardFixture; url: string } => !!x.url)
+  const scoreActions = isCaptain ? awaiting : []
   const hasActions = joinActions.length > 0 || scoreActions.length > 0
 
   if (matches.length === 0) {
@@ -189,24 +282,24 @@ export function MatchCentre({
             {scoreActions.map((f) => (
               <ActionItem
                 key={`score-${f.id}`}
-                title={groupOf(f) === "disputed" ? "Resolve Dispute" : "Submit Score"}
+                title="Submit Score"
                 detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"}`}
                 action={<ScoreButton href={captainHref} label="Open" />}
               />
             ))}
-            {joinActions.map((f) => (
+            {joinActions.map(({ fixture: f, url }) => (
               <ActionItem
                 key={`join-${f.id}`}
                 title="Join Match"
-                detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtParts(f.matchDate, f.timeslot).day}`}
-                action={f.joinUrl ? <JoinButton url={f.joinUrl} /> : null}
+                detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtDate(f.matchDate)}`}
+                action={<JoinButton url={url} />}
               />
             ))}
           </div>
         </section>
       )}
 
-      {/* SECTION 2 — Team Fixtures (compact, static rows) */}
+      {/* SECTION 2 — Team Fixtures (expandable, player-vs-player on expand) */}
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Team Fixtures</h2>
@@ -218,28 +311,21 @@ export function MatchCentre({
           {awaiting.length > 0 && (
             <FixtureGroupList label="Awaiting Score" count={awaiting.length}>
               {awaiting.map((f) => (
-                <FixtureRow key={f.id} f={f} />
-              ))}
-            </FixtureGroupList>
-          )}
-          {disputed.length > 0 && (
-            <FixtureGroupList label="Disputed" count={disputed.length}>
-              {disputed.map((f) => (
-                <FixtureRow key={f.id} f={f} />
+                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
               ))}
             </FixtureGroupList>
           )}
           {upcoming.length > 0 && (
             <FixtureGroupList label="Upcoming" count={upcoming.length}>
               {upcoming.map((f) => (
-                <FixtureRow key={f.id} f={f} />
+                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
               ))}
             </FixtureGroupList>
           )}
           {completed.length > 0 && (
             <FixtureGroupList label="Completed" count={completed.length}>
               {completed.slice(0, 6).map((f) => (
-                <FixtureRow key={f.id} f={f} />
+                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
               ))}
             </FixtureGroupList>
           )}

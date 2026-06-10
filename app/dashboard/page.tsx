@@ -6,7 +6,10 @@ import {
   getPlayerPayments,
   getPlayerTeamFees,
   getPlayerOverviewTeam,
+  getFixtureDetails,
+  type FixtureDetail,
 } from "@/lib/queries-dashboard"
+import { getDashboardFixtures } from "@/lib/queries-fixtures"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { PlayerSummary } from "@/components/dashboard/player-summary"
@@ -15,7 +18,6 @@ import { MoreInformation } from "@/components/dashboard/more-information"
 import { MyTeamCard } from "@/components/dashboard/my-team-card"
 import { PlayerSelfService } from "@/components/dashboard/player-self-service"
 import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
-import { getLeagueCentreData } from "@/lib/queries-league-centre"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
@@ -30,8 +32,19 @@ export default async function DashboardOverview() {
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
-  // Reuse the League Centre payload for the player's personalised fixtures.
-  const myMatches = player ? (await getLeagueCentreData(me)).myMatches : []
+  // Team fixtures (with per-court booking links) come from the same source the
+  // Fixtures management page uses, so links set there appear here too.
+  const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
+  // Per-category detail (player pairings + result) keyed by fixture id, so the
+  // expanded rows can show player-vs-player like the management view.
+  const detailMap =
+    player && myMatches.length
+      ? await getFixtureDetails(
+          myMatches.map((m) => m.id),
+          player.id,
+        )
+      : new Map<number, FixtureDetail>()
+  const fixtureDetails = Object.fromEntries(detailMap)
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
@@ -86,7 +99,7 @@ export default async function DashboardOverview() {
       />
 
       {/* SECTIONS 2-4 — Actions required, next match, and the fixtures list. */}
-      <MatchCentre matches={myMatches} isCaptain={isCaptain} />
+      <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
 
       {/* SECTION 5 — compact team record (only when on an active team). */}
       {overviewTeam && (
