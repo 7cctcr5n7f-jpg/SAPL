@@ -431,6 +431,8 @@ export async function getUnreadCount(userId: string) {
 export type ManagedPlayer = {
   playerId: number
   name: string
+  firstName: string
+  lastName: string
   gender: "male" | "female"
   currentLi: number
   playtomicRating: number | null
@@ -468,6 +470,16 @@ async function getScopedTeamIds(access: AccessContext): Promise<number[] | null>
 export async function getManageablePlayerIds(access: AccessContext): Promise<Set<number>> {
   const players = await getManagedPlayers(access)
   return new Set(players.map((p) => p.playerId))
+}
+
+/**
+ * Team ids a user may manage, as a Set. null means "no restriction" (league
+ * admin — every team). Used to authorise team-membership edits scoped to the
+ * actor's own teams.
+ */
+export async function getScopedTeamIdSet(access: AccessContext): Promise<Set<number> | null> {
+  const ids = await getScopedTeamIds(access)
+  return ids === null ? null : new Set(ids)
 }
 
 /**
@@ -625,6 +637,51 @@ export async function getFreeAgents(limit = 50) {
     .where(eq(players.lookingForTeam, true))
     .orderBy(desc(players.currentLi))
     .limit(limit)
+}
+
+export type AddablePlayer = {
+  id: number
+  firstName: string
+  lastName: string
+  currentLi: number
+  city: string | null
+  email: string | null
+}
+
+/**
+ * Every existing player a captain/club manager can add to a roster — not just
+ * free agents. Includes the auth email so the Captain Hub search can match on
+ * name OR email (the season/roster conflict checks still run on add). Ordered
+ * by name so the picker reads alphabetically.
+ */
+export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
+  const rows = await db
+    .select({
+      id: players.id,
+      firstName: players.firstName,
+      lastName: players.lastName,
+      currentLi: players.currentLi,
+      city: players.city,
+      userId: players.userId,
+    })
+    .from(players)
+    .orderBy(players.firstName, players.lastName)
+    .limit(limit)
+
+  const userIds = [...new Set(rows.map((r) => r.userId))]
+  const emailRows = userIds.length
+    ? await db.select({ id: user.id, email: user.email }).from(user).where(inArray(user.id, userIds))
+    : []
+  const emailMap = new Map(emailRows.map((r) => [r.id, r.email]))
+
+  return rows.map((r) => ({
+    id: r.id,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    currentLi: r.currentLi,
+    city: r.city,
+    email: emailMap.get(r.userId) ?? null,
+  }))
 }
 
 // Org admin helpers ---------------------------------------------------------

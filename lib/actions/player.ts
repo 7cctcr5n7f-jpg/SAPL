@@ -3,12 +3,13 @@
 import { db } from "@/lib/db"
 import { players, teamMembers, teams, notifications, payments, user, userMeta } from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
-import { eq, and } from "drizzle-orm"
+import { eq, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { splitVatInclusive } from "@/lib/constants"
 import { getPlayerFee } from "@/lib/queries"
-import { getManageablePlayerIds } from "@/lib/queries-dashboard"
+import { getManageablePlayerIds, getScopedTeamIdSet } from "@/lib/queries-dashboard"
 import { getAccessContext } from "@/lib/access"
+import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
 export async function updateProfile(_prev: unknown, formData: FormData) {
   const me = await getCurrentUser()
@@ -216,6 +217,118 @@ export async function adminUpdatePlayerRatings(input: {
 
   revalidatePath("/admin/players")
   revalidatePath("/dashboard")
+  revalidatePath("/marketplace")
+  return { ok: true }
+}
+
+/**
+ * Full player edit from Player Management — profile fields plus team membership.
+ * Authorised purely through the access context's `player_management` permission
+ * and player scope, so club/team managers (whose DB role is still "player") can
+ * edit every player on a team within their scope, while league admins can edit
+ * anyone. Set `removeFromTeamId` to take the player off one of their teams.
+ */
+export async function adminUpdatePlayer(input: {
+  playerId: number
+  firstName?: string
+  lastName?: string
+  phone?: string | null
+  gender?: "male" | "female"
+  playtomicRating?: number | null
+  currentLi?: number
+  playtomicUrl?: string | null
+  removeFromTeamId?: number | null
+}) {
+  const me = await getCurrentUser()
+  if (!me) return { ok: false, error: "Not authorised" }
+
+  const access = await getAccessContext(me)
+  if (!access.can("player_management")) return { ok: false, error: "Not authorised" }
+
+  const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  if (!existing) return { ok: false, error: "Player not found." }
+
+  // Scope check: non-league admins may only edit players inside their scope.
+  if (!access.isLeagueAdmin) {
+    const scopedIds = await getManageablePlayerIds(access)
+    if (!scopedIds.has(input.playerId)) return { ok: false, error: "This player is not in your scope." }
+  }
+
+  // Validate numeric ranges when provided.
+  if (input.currentLi != null && (input.currentLi < 0 || input.currentLi > 7)) {
+    return { ok: false, error: "League Index must be between 0 and 7." }
+  }
+  if (input.playtomicRating != null && (input.playtomicRating < 0 || input.playtomicRating > 7)) {
+    return { ok: false, error: "Playtomic rating must be between 0 and 7." }
+  }
+
+  const firstName = input.firstName?.trim()
+  const lastName = input.lastName?.trim()
+  if (input.firstName !== undefined && !firstName) return { ok: false, error: "First name is required." }
+  if (input.lastName !== undefined && !lastName) return { ok: false, error: "Last name is required." }
+
+  // Build the profile patch from only the fields that were supplied.
+  const patch: Partial<typeof players.$inferSelect> = { updatedAt: new Date() }
+  if (firstName !== undefined) patch.firstName = firstName
+  if (lastName !== undefined) patch.lastName = lastName
+  if (input.gender !== undefined) patch.gender = input.gender
+  if (input.playtomicUrl !== undefined) patch.playtomicUrl = input.playtomicUrl?.trim() || null
+  if (input.playtomicRating !== undefined) patch.playtomicRating = input.playtomicRating
+  if (input.currentLi !== undefined) {
+    patch.currentLi = input.currentLi
+    patch.highestLi = Math.max(existing.highestLi ?? 0, input.currentLi)
+    patch.liDate = new Date()
+  }
+
+  await db.update(players).set(patch).where(eq(players.id, input.playerId))
+
+  // Keep the auth display name in sync when the name changed.
+  if (firstName !== undefined || lastName !== undefined) {
+    const fullName = `${firstName ?? existing.firstName} ${lastName ?? existing.lastName}`.trim()
+    await db.update(user).set({ name: fullName, updatedAt: new Date() }).where(eq(user.id, existing.userId))
+  }
+
+  // Contact number lives on userMeta; upsert when supplied.
+  if (input.phone !== undefined) {
+    const phone = input.phone?.trim() || null
+    const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, existing.userId)).limit(1)
+    if (meta) {
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, existing.userId))
+    } else {
+      await db.insert(userMeta).values({ userId: existing.userId, role: "player", phone })
+    }
+  }
+
+  // Remove the player from one of their teams, if requested and in scope.
+  if (input.removeFromTeamId != null) {
+    const scopedTeams = await getScopedTeamIdSet(access)
+    if (scopedTeams !== null && !scopedTeams.has(input.removeFromTeamId)) {
+      return { ok: false, error: "That team is not in your scope." }
+    }
+    await db
+      .update(teamMembers)
+      .set({ status: "removed", updatedAt: new Date() })
+      .where(and(eq(teamMembers.teamId, input.removeFromTeamId), eq(teamMembers.playerId, input.playerId)))
+
+    // If the player now has no active team, flip them back to looking-for-team.
+    const stillActive = await db
+      .select({ id: teamMembers.id })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.playerId, input.playerId), eq(teamMembers.status, "active")))
+      .limit(1)
+    if (stillActive.length === 0) {
+      await db
+        .update(players)
+        .set({ availability: "available", lookingForTeam: true, updatedAt: new Date() })
+        .where(eq(players.id, input.playerId))
+    }
+    await recomputeTeamStats(input.removeFromTeamId)
+  }
+
+  revalidatePath("/admin/players")
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/org")
   revalidatePath("/marketplace")
   return { ok: true }
 }
