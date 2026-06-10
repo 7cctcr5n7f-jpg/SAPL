@@ -33,12 +33,24 @@ export default async function DashboardOverview() {
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
   // Reuse the League Centre payload for the player's personalised fixtures.
-  const myMatches = player ? (await getLeagueCentreData(me)).myMatches : []
+  // `myMatches` is upcoming-only; we also pull the player's recent completed
+  // fixtures from the full set so the Match Centre can show results.
+  const lc = player ? await getLeagueCentreData(me) : null
+  const myMatches = lc?.myMatches ?? []
+  const myCompleted = (lc?.fixtures ?? [])
+    .filter((f) => f.mine && f.status === "completed")
+    .sort((a, b) => {
+      const da = a.matchDate ? Date.parse(a.matchDate) : 0
+      const db_ = b.matchDate ? Date.parse(b.matchDate) : 0
+      return db_ - da // most recent first
+    })
+    .slice(0, 5)
+  const centreMatches = [...myMatches, ...myCompleted]
   // Per-category detail (partner / opponents / court / result) for each fixture.
   const detailMap =
-    player && myMatches.length
+    player && centreMatches.length
       ? await getFixtureDetails(
-          myMatches.map((m) => m.id),
+          centreMatches.map((m) => m.id),
           player.id,
         )
       : new Map<number, FixtureDetail>()
@@ -97,7 +109,7 @@ export default async function DashboardOverview() {
       />
 
       {/* SECTIONS 2-4 — Actions required, next match, and the fixtures list. */}
-      <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
+      <MatchCentre matches={centreMatches} details={fixtureDetails} isCaptain={isCaptain} />
 
       {/* SECTION 5 — compact team record (only when on an active team). */}
       {overviewTeam && (
