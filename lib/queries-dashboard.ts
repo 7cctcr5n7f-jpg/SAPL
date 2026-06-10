@@ -615,9 +615,42 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
     .select({ membership: teamMembers, player: players })
     .from(teamMembers)
     .innerJoin(players, eq(teamMembers.playerId, players.id))
-    .where(eq(teamMembers.teamId, teamId))
+    // Exclude players who have been removed from the roster — only active and
+    // invited memberships should appear in the Captain Hub.
+    .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
     .orderBy(desc(players.currentLi))
   return rows as TeamRosterMember[]
+}
+
+/**
+ * Players who can be made captain of a team: everyone NOT currently on an active
+ * roster of any team. The selected team's own squad is added separately by the
+ * caller, so this returns the pool of genuinely available players (not already
+ * committed to another team).
+ */
+export async function getUnassignedPlayers(
+  limit = 500,
+): Promise<{ playerId: number; name: string; li: number }[]> {
+  const activeRows = await db
+    .select({ playerId: teamMembers.playerId })
+    .from(teamMembers)
+    .where(eq(teamMembers.status, "active"))
+  const taken = new Set(activeRows.map((r) => r.playerId))
+
+  const all = await db
+    .select({
+      id: players.id,
+      firstName: players.firstName,
+      lastName: players.lastName,
+      currentLi: players.currentLi,
+    })
+    .from(players)
+    .orderBy(players.firstName, players.lastName)
+    .limit(limit)
+
+  return all
+    .filter((p) => !taken.has(p.id))
+    .map((p) => ({ playerId: p.id, name: `${p.firstName} ${p.lastName}`, li: p.currentLi }))
 }
 
 export async function getTeamFixtures(teamId: number) {

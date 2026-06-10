@@ -47,6 +47,7 @@ async function checkVenueCapacity(clubId: number, excludeTeamId?: number): Promi
   return null
 }
 import { getCurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { notify } from "@/lib/notify"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
