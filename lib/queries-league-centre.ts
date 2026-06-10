@@ -291,7 +291,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeOrg.logoUrl})`,
       awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayOrg.logoUrl})`,
       venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
-      playtomicUrl: fixtures.playtomicUrl,
+      // Fall back to the host club's booking link when the fixture has none.
+      playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
       homePoints: fixtures.homePoints,
       awayPoints: fixtures.awayPoints,
       homeSetsWon: fixtures.homeSetsWon,
