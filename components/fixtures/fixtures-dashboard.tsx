@@ -51,6 +51,19 @@ type EditState =
   | { fixture: DashboardFixture; mode: "venue" | "timeslot" }
   | { fixture: DashboardFixture; mode: "court"; category: string }
 
+type ClashGroup = {
+  key: string
+  week: number
+  venueClubId: number
+  venueName: string
+  timeslot: string
+  courts: number
+  fixtures: DashboardFixture[]
+}
+
+// Courts a single fixture (tie) consumes — one per category.
+const COURTS_PER_FIXTURE = CATEGORY_RULES.length
+
 export function FixturesDashboard({
   scope,
   seasonName,
@@ -109,32 +122,62 @@ export function FixturesDashboard({
   // Fixtures for the active week (used for clash detection, before other filters).
   const weekFixtures = useMemo(() => fixtures.filter((f) => f.week === week), [fixtures, week])
 
-  // Court clash map: keyed by venue+timeslot. Each fixture consumes 4 courts
-  // (one per category). A venue can't run more category matches than it has
-  // courts in a single timeslot.
-  const clashByVenueSlot = useMemo(() => {
-    const groups = new Map<string, { courts: number; fixtures: number; venueName: string; timeslot: string }>()
-    for (const f of weekFixtures) {
+  // Court clashes across ALL weeks. Each fixture consumes 4 courts (one per
+  // category), so a venue can host floor(courts / 4) fixtures per timeslot.
+  // Admins use this aggregated list to resolve every conflict in one place.
+  const allClashes = useMemo(() => {
+    const groups = new Map<string, ClashGroup>()
+    for (const f of fixtures) {
       if (f.venueClubId == null || !f.timeslot) continue
-      const key = `${f.venueClubId}|${f.timeslot}`
-      const g = groups.get(key) ?? {
-        courts: f.venueCourts ?? 0,
-        fixtures: 0,
-        venueName: f.venueClubName ?? f.venue ?? "Venue",
-        timeslot: f.timeslot,
-      }
-      g.fixtures += 1
+      const key = `${f.week}|${f.venueClubId}|${f.timeslot}`
+      const g =
+        groups.get(key) ??
+        ({
+          key,
+          week: f.week,
+          venueClubId: f.venueClubId,
+          venueName: f.venueClubName ?? f.venue ?? "Venue",
+          timeslot: f.timeslot,
+          courts: f.venueCourts ?? 0,
+          fixtures: [],
+        } as ClashGroup)
+      g.fixtures.push(f)
       groups.set(key, g)
     }
-    const clashes: { key: string; venueName: string; timeslot: string; needed: number; courts: number }[] = []
-    for (const [key, g] of groups) {
-      const needed = g.fixtures * COURTS.length
-      if (needed > g.courts) clashes.push({ key, venueName: g.venueName, timeslot: g.timeslot, needed, courts: g.courts })
+    const out: ClashGroup[] = []
+    for (const g of groups.values()) {
+      if (g.fixtures.length * COURTS.length > g.courts) out.push(g)
     }
-    return clashes
-  }, [weekFixtures])
+    return out.sort(
+      (a, b) => a.week - b.week || a.venueName.localeCompare(b.venueName) || a.timeslot.localeCompare(b.timeslot),
+    )
+  }, [fixtures])
 
-  const clashedKeys = useMemo(() => new Set(clashByVenueSlot.map((c) => c.key)), [clashByVenueSlot])
+  // Keys (week|venue|timeslot) that are in conflict, for the per-row badge.
+  const clashedKeys = useMemo(() => new Set(allClashes.map((c) => c.key)), [allClashes])
+
+  // Courts already committed per week|venue|timeslot (each fixture = 4 courts),
+  // so the time/venue pickers can flag or block slots that have no capacity for
+  // another fixture. The fixture being moved is excluded by the caller.
+  const slotUsage = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const f of fixtures) {
+      if (f.venueClubId == null || !f.timeslot) continue
+      const key = `${f.week}|${f.venueClubId}|${f.timeslot}`
+      m.set(key, (m.get(key) ?? 0) + COURTS_PER_FIXTURE)
+    }
+    return m
+  }, [fixtures])
+
+  // Free capacity (in courts) for placing `fixture` into a given venue+timeslot,
+  // counting every OTHER fixture already in that slot for the same week.
+  function freeCourtsFor(fixture: DashboardFixture, venueClubId: number, courts: number, timeslot: string) {
+    const key = `${fixture.week}|${venueClubId}|${timeslot}`
+    let used = slotUsage.get(key) ?? 0
+    // Don't count the fixture against itself if it's already in this slot.
+    if (fixture.venueClubId === venueClubId && fixture.timeslot === timeslot) used -= COURTS_PER_FIXTURE
+    return courts - used
+  }
 
   function missingLinks(f: DashboardFixture) {
     return COURTS.filter((c) => !f.courtLinks?.[c]).length
@@ -240,18 +283,77 @@ export function FixturesDashboard({
         </div>
       </div>
 
-      {/* Clash warnings */}
-      {clashByVenueSlot.length > 0 && (
-        <div className="space-y-1.5 rounded-md border border-destructive/40 bg-destructive/5 p-3">
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
-            <AlertTriangle className="h-4 w-4" /> Court clash in week {week}
-          </p>
-          {clashByVenueSlot.map((c) => (
-            <p key={c.key} className="text-xs text-destructive/90">
-              {c.venueName} at {c.timeslot} needs {c.needed} courts but only has {c.courts}. Move a fixture to another
-              slot or venue.
+      {/* Clash resolution centre — admins only. Aggregates every court clash
+          across all weeks so they can be cleared from one place. */}
+      {canManageVenue && allClashes.length > 0 && (
+        <div className="space-y-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <p className="text-sm font-semibold text-destructive">
+              {allClashes.length} court clash{allClashes.length === 1 ? "" : "es"} need resolving
             </p>
-          ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Each fixture uses {COURTS_PER_FIXTURE} courts. Move a fixture to a free timeslot or another venue to clear
+            the conflict.
+          </p>
+          <ul className="space-y-2.5">
+            {allClashes.map((c) => {
+              const capacity = Math.floor(c.courts / COURTS_PER_FIXTURE)
+              return (
+                <li key={c.key} className="rounded-md border border-destructive/30 bg-card p-3">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    <Badge variant="outline" className="text-[11px]">
+                      Week {c.week}
+                    </Badge>
+                    <span className="font-semibold">{c.venueName}</span>
+                    <span className="text-muted-foreground">at {c.timeslot}</span>
+                    <span className="text-destructive">
+                      — {c.fixtures.length} fixtures need {c.fixtures.length * COURTS_PER_FIXTURE} courts but venue has{" "}
+                      {c.courts} ({capacity === 1 ? "1 fixture" : `${capacity} fixtures`} max).
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {c.fixtures.map((f) => {
+                      const home = teamLabel(f.homeName, f.homeSlot)
+                      const away = teamLabel(f.awayName, f.awaySlot)
+                      return (
+                        <li
+                          key={f.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-background px-2.5 py-1.5"
+                        >
+                          <span className="text-xs">
+                            <span className="font-medium">{home.text}</span>
+                            <span className="mx-1 text-muted-foreground">vs</span>
+                            <span className="font-medium">{away.text}</span>
+                            {f.divisionName && <span className="ml-1.5 text-muted-foreground">· {f.divisionName}</span>}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7"
+                              onClick={() => setEditing({ fixture: f, mode: "timeslot" })}
+                            >
+                              <Clock className="mr-1.5 h-3.5 w-3.5" /> Change time
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7"
+                              onClick={() => setEditing({ fixture: f, mode: "venue" })}
+                            >
+                              <Building2 className="mr-1.5 h-3.5 w-3.5" /> Change venue
+                            </Button>
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
 
@@ -268,7 +370,7 @@ export function FixturesDashboard({
             canManageLink={canManageLinks && f.canEditLink}
             canManageVenue={canManageVenue}
             missing={missingLinks(f)}
-            clashed={f.venueClubId != null && f.timeslot != null && clashedKeys.has(`${f.venueClubId}|${f.timeslot}`)}
+            clashed={f.venueClubId != null && f.timeslot != null && clashedKeys.has(`${f.week}|${f.venueClubId}|${f.timeslot}`)}
             onEditCourt={(category) => setEditing({ fixture: f, mode: "court", category })}
             onEditVenue={() => setEditing({ fixture: f, mode: "venue" })}
             onEditTimeslot={() => setEditing({ fixture: f, mode: "timeslot" })}
@@ -279,7 +381,12 @@ export function FixturesDashboard({
         )}
       </div>
 
-      <EditDialog editing={editing} clubs={clubs} onClose={() => setEditing(null)} />
+      <EditDialog
+        editing={editing}
+        clubs={clubs}
+        freeCourtsFor={freeCourtsFor}
+        onClose={() => setEditing(null)}
+      />
     </div>
   )
 }
@@ -456,10 +563,12 @@ function FixtureRow({
 function EditDialog({
   editing,
   clubs,
+  freeCourtsFor,
   onClose,
 }: {
   editing: EditState | null
   clubs: HostClub[]
+  freeCourtsFor: (fixture: DashboardFixture, venueClubId: number, courts: number, timeslot: string) => number
   onClose: () => void
 }) {
   const [pending, start] = useTransition()
@@ -555,12 +664,24 @@ function EditDialog({
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">No time set</option>
-              {FIXTURE_TIMESLOTS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              {FIXTURE_TIMESLOTS.map((t) => {
+                const venueId = editing.fixture.venueClubId
+                const courts = editing.fixture.venueCourts ?? 0
+                // How many courts remain free in this slot at the fixture's
+                // venue, ignoring the fixture itself. Below 4 = no room.
+                const free = venueId != null ? freeCourtsFor(editing.fixture, venueId, courts, t) : COURTS_PER_FIXTURE
+                const full = venueId != null && free < COURTS_PER_FIXTURE
+                return (
+                  <option key={t} value={t} disabled={full}>
+                    {t}
+                    {full ? " — full (no courts free)" : ""}
+                  </option>
+                )
+              })}
             </select>
+            {editing.fixture.venueClubId == null && (
+              <p className="text-xs text-muted-foreground">Set a venue first to check court availability.</p>
+            )}
             <DialogFooter>
               <Button variant="ghost" onClick={onClose} disabled={pending}>
                 Cancel
@@ -581,11 +702,21 @@ function EditDialog({
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">No venue (TBD)</option>
-              {clubs.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {clubs.map((c) => {
+                const courts = c.courts ?? 0
+                const slot = editing?.fixture.timeslot ?? null
+                // When the fixture has a timeslot, show remaining capacity at
+                // each venue for that slot so admins don't move into a full one.
+                const free = slot && editing ? freeCourtsFor(editing.fixture, c.id, courts, slot) : null
+                const full = free != null && free < COURTS_PER_FIXTURE
+                return (
+                  <option key={c.id} value={c.id} disabled={full}>
+                    {c.name}
+                    {courts ? ` (${courts} courts)` : ""}
+                    {full ? ` — full at ${slot}` : ""}
+                  </option>
+                )
+              })}
             </select>
             <DialogFooter>
               <Button variant="ghost" onClick={onClose} disabled={pending}>

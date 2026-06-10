@@ -13,10 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { invitePlayerByEmail, setPairingSlot, cancelInvite } from "@/lib/actions/pairings"
-import { PAIRING_LAYOUT } from "@/lib/constants"
+import { PAIRING_LAYOUT, CATEGORY_RULES } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
+import { AlertTriangle, DollarSign, Mail, Mars, UserPlus, Venus, X } from "lucide-react"
 import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
 type Invite = { id: number; email: string; category: string | null }
@@ -43,6 +43,18 @@ export function PairingsBoard({
   const [email, setEmail] = useState("")
 
   const catByName = new Map(categories.map((c) => [c.category, c]))
+  const ruleByName = new Map(CATEGORY_RULES.map((r) => [r.name, r]))
+
+  // Every player already placed in ANY category's slot — a player may occupy
+  // only one slot across the whole lineup, so these are excluded everywhere.
+  const placedIds = new Set<number>()
+  categories.forEach((c) =>
+    c.pairs.forEach((pair) =>
+      pair.forEach((s) => {
+        if (s.player) placedIds.add(s.player.playerId)
+      }),
+    ),
+  )
 
   function assign(category: string, pairIndex: number, slotIndex: number, playerId: number | null) {
     start(async () => {
@@ -92,16 +104,9 @@ export function PairingsBoard({
     return <Mars className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-label="Male" />
   }
 
-  // Players not yet placed in any slot of this category can be assigned.
-  function availableFor(cat: PairingCategory | undefined): PairingPlayer[] {
-    if (!cat) return roster
-    const used = new Set<number>()
-    cat.pairs.forEach((pair) =>
-      pair.forEach((s) => {
-        if (s.player) used.add(s.player.playerId)
-      }),
-    )
-    return roster.filter((p) => !used.has(p.playerId))
+  // Players not yet placed in ANY category can be assigned to an open slot.
+  function availableFor(_cat: PairingCategory | undefined): PairingPlayer[] {
+    return roster.filter((p) => !placedIds.has(p.playerId))
   }
 
   // Render one category's single pair (2 slots).
@@ -125,6 +130,13 @@ export function PairingsBoard({
     const complete = filled === 2
     const isLadies = /^Ladies/.test(categoryName)
     const shortName = categoryName.replace(/^(Ladies|Mens)\s/, "")
+
+    // Warn when a complete pair's average LI exceeds the category's cap. A cap
+    // at/above the max LI (Open categories) means "no cap" — never warns.
+    const rule = ruleByName.get(categoryName)
+    const cap = rule?.avgTeamMaxLi ?? null
+    const pairAvg = complete ? pair.reduce((sum, s) => sum + (s.player?.li ?? 0), 0) / 2 : null
+    const overCap = pairAvg != null && cap != null && cap < 7 && pairAvg > cap
 
     return (
       <div
@@ -240,6 +252,17 @@ export function PairingsBoard({
               )}
             </div>
           ))}
+
+          {overCap && cap != null && pairAvg != null && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Pair average LI is{" "}
+                <strong className="tabular-nums">{pairAvg.toFixed(2)}</strong>, above the {shortName} cap of{" "}
+                <strong className="tabular-nums">{cap.toFixed(1)}</strong>. This pairing may be ineligible.
+              </span>
+            </div>
+          )}
 
           {catInvites.length > 0 && (
             <div className="space-y-1.5 pt-0.5">

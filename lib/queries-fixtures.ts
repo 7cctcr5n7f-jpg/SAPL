@@ -38,7 +38,7 @@ export type DashboardFixture = {
 
 export type FixtureScope = "all" | "club" | "team" | "none"
 
-export type HostClub = { id: number; name: string }
+export type HostClub = { id: number; name: string; courts: number | null }
 
 export type DashboardFixturesResult = {
   seasonName: string | null
@@ -105,7 +105,7 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
 
   if (access.isLeagueAdmin) {
     const hostClubs = await db
-      .select({ id: clubs.id, name: clubs.name })
+      .select({ id: clubs.id, name: clubs.name, courts: clubs.courts })
       .from(clubs)
       .orderBy(asc(clubs.name))
     return {

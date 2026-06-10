@@ -48,6 +48,23 @@ export async function setPairingSlot(input: {
   const team = await canManageTeam(me, input.teamId)
   if (!team) return { error: "You cannot manage this team." }
 
+  // A player may only occupy ONE pairing slot across the whole team lineup.
+  // Block assigning someone who is already placed in another slot/category.
+  if (input.playerId != null) {
+    const placed = await db
+      .select({ category: teamPairings.category, slotIndex: teamPairings.slotIndex })
+      .from(teamPairings)
+      .where(and(eq(teamPairings.teamId, input.teamId), eq(teamPairings.playerId, input.playerId)))
+    const elsewhere = placed.find(
+      (p) => !(p.category === input.category && p.slotIndex === input.slotIndex),
+    )
+    if (elsewhere) {
+      const [p] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+      const who = p ? `${p.firstName} ${p.lastName}` : "That player"
+      return { error: `${who} is already assigned to ${elsewhere.category}. Clear that slot first.` }
+    }
+  }
+
   const [existing] = await db
     .select()
     .from(teamPairings)

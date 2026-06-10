@@ -240,6 +240,78 @@ export async function getPlayerTeamFees(playerId: number): Promise<PlayerTeamFee
   return result
 }
 
+export type PlayerOverviewTeam = {
+  membershipId: number
+  teamId: number
+  teamName: string
+  role: string
+  clubName: string | null
+  divisionName: string
+  regionName: string | null
+  clubPaysFees: boolean
+  // League standing for the current season (null until matches are played).
+  position: number | null
+  wins: number
+  losses: number
+  played: number
+}
+
+/**
+ * Compact summary of the player's primary active team for the Overview match
+ * centre: club, division, region, fee responsibility and league position.
+ * Returns null when the player isn't on an active team.
+ */
+export async function getPlayerOverviewTeam(playerId: number): Promise<PlayerOverviewTeam | null> {
+  const [row] = await db
+    .select({
+      membershipId: teamMembers.id,
+      role: teamMembers.role,
+      teamId: teams.id,
+      teamName: teams.name,
+      clubPaysFees: teams.clubPaysFees,
+      divisionName: divisions.name,
+      seasonId: teams.seasonId,
+      regionName: regions.name,
+      clubName: clubs.name,
+    })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
+    .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
+    .orderBy(desc(teamMembers.updatedAt))
+    .limit(1)
+
+  if (!row) return null
+
+  const [standing] = await db
+    .select({
+      rank: standings.rank,
+      wins: standings.wins,
+      losses: standings.losses,
+      played: standings.played,
+    })
+    .from(standings)
+    .where(and(eq(standings.teamId, row.teamId)))
+    .limit(1)
+
+  return {
+    membershipId: row.membershipId,
+    teamId: row.teamId,
+    teamName: row.teamName,
+    role: row.role,
+    clubName: row.clubName,
+    divisionName: row.divisionName ?? "Unassigned",
+    regionName: row.regionName,
+    clubPaysFees: row.clubPaysFees,
+    position: standing?.rank ?? null,
+    wins: standing?.wins ?? 0,
+    losses: standing?.losses ?? 0,
+    played: standing?.played ?? 0,
+  }
+}
+
 export type OutstandingFee = {
   // "player" = an individual who must pay their own fee. "team" = a team whose
   // owner/manager agreed to fund the whole squad's fees.

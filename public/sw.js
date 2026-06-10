@@ -8,7 +8,7 @@
  *    so every Vercel deployment refreshes the installed PWA automatically.
  */
 
-const VERSION = "v2"
+const VERSION = "v3"
 const STATIC_CACHE = `sapl-static-${VERSION}`
 const RUNTIME_CACHE = `sapl-runtime-${VERSION}`
 const OFFLINE_URL = "/offline"
@@ -74,18 +74,16 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // App shell navigations: network-first with offline fallback.
+  // App shell navigations: network-first. Only fall back to the offline page
+  // when the network is genuinely unreachable. We intentionally do NOT replay a
+  // cached HTML document, because a stale shell references old /_next/static
+  // chunk hashes that 404 after a redeploy, producing a blank screen.
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
         try {
-          const fresh = await fetch(request)
-          const cache = await caches.open(RUNTIME_CACHE)
-          cache.put(request, fresh.clone())
-          return fresh
+          return await fetch(request)
         } catch {
-          const cached = await caches.match(request)
-          if (cached) return cached
           const offline = await caches.match(OFFLINE_URL)
           return offline || Response.error()
         }

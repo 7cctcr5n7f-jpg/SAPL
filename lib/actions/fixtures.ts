@@ -2,11 +2,41 @@
 
 import { db } from "@/lib/db"
 import { fixtures, clubs } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { and, eq, ne } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { notifyTeam } from "@/lib/notify"
+import { CATEGORY_RULES } from "@/lib/constants"
+
+// Courts a single fixture (tie) consumes — one per category.
+const COURTS_PER_FIXTURE = CATEGORY_RULES.length
+
+/**
+ * Free courts at `venueClubId` for `week`+`timeslot`, excluding `fixtureId`
+ * itself. Returns null when capacity can't be determined (no venue/timeslot).
+ */
+async function freeCourtsAt(
+  fixtureId: number,
+  venueClubId: number,
+  week: number,
+  timeslot: string,
+): Promise<number | null> {
+  const [club] = await db.select({ courts: clubs.courts }).from(clubs).where(eq(clubs.id, venueClubId)).limit(1)
+  const courts = club?.courts ?? 0
+  const others = await db
+    .select({ id: fixtures.id })
+    .from(fixtures)
+    .where(
+      and(
+        eq(fixtures.venueClubId, venueClubId),
+        eq(fixtures.week, week),
+        eq(fixtures.timeslot, timeslot),
+        ne(fixtures.id, fixtureId),
+      ),
+    )
+  return courts - others.length * COURTS_PER_FIXTURE
+}
 
 /**
  * Notify both teams in a fixture about a scheduling change. No-ops for template
@@ -119,6 +149,22 @@ export async function setFixtureTimeslot(fixtureId: number, timeslot: string | n
   const user = await requireUser()
   if (!isLeagueAdmin(user.realRole)) return { ok: false, error: "League admin access required" }
   const value = timeslot && /^\d{1,2}:\d{2}$/.test(timeslot) ? timeslot : null
+
+  // Block moving a fixture into a timeslot that has no free courts at its venue.
+  if (value) {
+    const [fx] = await db
+      .select({ venueClubId: fixtures.venueClubId, week: fixtures.week })
+      .from(fixtures)
+      .where(eq(fixtures.id, fixtureId))
+      .limit(1)
+    if (fx?.venueClubId != null) {
+      const free = await freeCourtsAt(fixtureId, fx.venueClubId, fx.week, value)
+      if (free != null && free < COURTS_PER_FIXTURE) {
+        return { ok: false, error: `No free courts at this venue for ${value}. Choose another time or venue.` }
+      }
+    }
+  }
+
   await db.update(fixtures).set({ timeslot: value, updatedAt: new Date() }).where(eq(fixtures.id, fixtureId))
   await notifyFixtureTeams(
     fixtureId,
@@ -140,6 +186,19 @@ export async function setFixtureVenue(fixtureId: number, venueClubId: number | n
   if (venueClubId != null) {
     const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, venueClubId)).limit(1)
     venue = club?.name ?? null
+
+    // Block moving a fixture to a venue that has no free courts in its timeslot.
+    const [fx] = await db
+      .select({ week: fixtures.week, timeslot: fixtures.timeslot })
+      .from(fixtures)
+      .where(eq(fixtures.id, fixtureId))
+      .limit(1)
+    if (fx?.timeslot) {
+      const free = await freeCourtsAt(fixtureId, venueClubId, fx.week, fx.timeslot)
+      if (free != null && free < COURTS_PER_FIXTURE) {
+        return { ok: false, error: `${venue ?? "That venue"} has no free courts at ${fx.timeslot}. Pick another venue or change the time.` }
+      }
+    }
   }
 
   await db
