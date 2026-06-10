@@ -250,11 +250,13 @@ export function MatchCentre({
   const awaiting = sorted.filter((m) => groupOf(m) === "awaiting")
   const completed = sorted.filter((m) => groupOf(m) === "completed").reverse()
 
-  // To Do: every non-completed match with at least one court booking link.
+  // To Do: every non-completed match the player still needs to join. We always
+  // surface these (even before a booking link exists) so the player knows a
+  // match is coming; the row shows a Join button once a court link is set, or a
+  // "link coming soon" hint until then.
   const joinActions = sorted
     .filter((m) => groupOf(m) !== "completed")
     .map((m) => ({ fixture: m, url: primaryJoinLink(m, details[m.id]) }))
-    .filter((x): x is { fixture: DashboardFixture; url: string } => !!x.url)
   const scoreActions = isCaptain ? awaiting : []
   const hasActions = joinActions.length > 0 || scoreActions.length > 0
 
@@ -292,7 +294,16 @@ export function MatchCentre({
                 key={`join-${f.id}`}
                 title="Join Match"
                 detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtDate(f.matchDate)}`}
-                action={<JoinButton url={url} />}
+                action={
+                  url ? (
+                    <JoinButton url={url} />
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
+                      <Clock className="h-3 w-3" />
+                      Link soon
+                    </span>
+                  )
+                }
               />
             ))}
           </div>

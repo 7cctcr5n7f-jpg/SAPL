@@ -1,7 +1,21 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { players, teamMembers, teams, notifications, payments, user, userMeta } from "@/lib/db/schema"
+import {
+  players,
+  teamMembers,
+  teamPairings,
+  teamInvites,
+  fixtureUnavailable,
+  feeNotes,
+  teams,
+  notifications,
+  payments,
+  user,
+  userMeta,
+  account,
+  session,
+} from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
 import { eq, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -393,4 +407,92 @@ export async function adminCreatePlayerProfile(input: {
   revalidatePath("/admin/players")
   revalidatePath("/dashboard")
   return { ok: true, playerId: created.id }
+}
+
+/**
+ * Permanently delete a user and every trace of them: player profile, roster
+ * memberships, pairing slots, fixture-unavailability rows, fee notes, payments,
+ * notifications, and the Better Auth account/session/user rows. League/super
+ * admins only. Demo accounts (@demo.sapl.co.za) can never be deleted, and the
+ * actor cannot delete themselves. Returns the count of removed users.
+ *
+ * Pass `userId` to delete one account, or `all: true` to wipe every non-demo,
+ * non-admin user — used for starting a season with a clean sheet.
+ */
+export async function adminDeleteUsers(input: { userId?: string; all?: boolean }) {
+  const me = await getCurrentUser()
+  if (!me || (me.role !== "league_admin" && me.role !== "super_admin")) {
+    return { ok: false, error: "Not authorised" }
+  }
+
+  // Resolve the target accounts.
+  let accounts: { id: string; email: string }[]
+  if (input.all) {
+    accounts = await db.select({ id: user.id, email: user.email }).from(user)
+  } else if (input.userId) {
+    accounts = await db
+      .select({ id: user.id, email: user.email })
+      .from(user)
+      .where(eq(user.id, input.userId))
+      .limit(1)
+  } else {
+    return { ok: false, error: "Nothing to delete." }
+  }
+
+  // Never delete demo accounts or the acting admin.
+  const targets = accounts.filter(
+    (a) => !a.email.toLowerCase().endsWith("@demo.sapl.co.za") && a.id !== me.id,
+  )
+  if (targets.length === 0) return { ok: false, error: "No deletable users matched." }
+
+  const userIds = targets.map((t) => t.id)
+
+  // Map user ids -> player ids so we can clean player-scoped tables.
+  const playerRows = await db
+    .select({ id: players.id, userId: players.userId })
+    .from(players)
+    .where(inArray(players.userId, userIds))
+  const playerIds = playerRows.map((p) => p.id)
+  const affectedTeamIds = new Set<number>()
+
+  if (playerIds.length > 0) {
+    // Track teams these players were on so we can refresh roster counts after.
+    const memberRows = await db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(inArray(teamMembers.playerId, playerIds))
+    memberRows.forEach((m) => affectedTeamIds.add(m.teamId))
+
+    await db.delete(teamMembers).where(inArray(teamMembers.playerId, playerIds))
+    await db.delete(teamPairings).where(inArray(teamPairings.playerId, playerIds))
+    await db.delete(fixtureUnavailable).where(inArray(fixtureUnavailable.playerId, playerIds))
+    await db.delete(feeNotes).where(inArray(feeNotes.playerId, playerIds))
+    await db.delete(payments).where(inArray(payments.playerId, playerIds))
+    await db.delete(players).where(inArray(players.id, playerIds))
+  }
+
+  // User-scoped rows.
+  await db.delete(payments).where(inArray(payments.payerUserId, userIds))
+  await db.delete(notifications).where(inArray(notifications.userId, userIds))
+  await db.delete(teamInvites).where(inArray(teamInvites.invitedByUserId, userIds))
+  await db.delete(userMeta).where(inArray(userMeta.userId, userIds))
+
+  // Better Auth rows (no cascade in this schema's public tables).
+  await db.delete(session).where(inArray(session.userId, userIds))
+  await db.delete(account).where(inArray(account.userId, userIds))
+  await db.delete(user).where(inArray(user.id, userIds))
+
+  // Recompute team aggregates for any team that lost members.
+  for (const teamId of affectedTeamIds) {
+    try {
+      await recomputeTeamStats(teamId)
+    } catch {
+      // Non-fatal: stats will be recomputed on the next roster mutation.
+    }
+  }
+
+  revalidatePath("/admin/players")
+  revalidatePath("/dashboard")
+  revalidatePath("/marketplace")
+  return { ok: true, deleted: targets.length }
 }
