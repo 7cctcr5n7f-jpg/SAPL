@@ -6,15 +6,19 @@ import {
   getPlayerPayments,
   getPlayerTeamFees,
   getPlayerOverviewTeam,
+  getFixtureDetails,
+  type FixtureDetail,
 } from "@/lib/queries-dashboard"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { PlayerSummary } from "@/components/dashboard/player-summary"
 import { MatchCentre } from "@/components/dashboard/match-centre"
+import { MoreInformation } from "@/components/dashboard/more-information"
 import { MyTeamCard } from "@/components/dashboard/my-team-card"
 import { PlayerSelfService } from "@/components/dashboard/player-self-service"
 import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
 import { getLeagueCentreData } from "@/lib/queries-league-centre"
+import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { fmtZAR } from "@/lib/format"
@@ -30,6 +34,15 @@ export default async function DashboardOverview() {
   const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
   // Reuse the League Centre payload for the player's personalised fixtures.
   const myMatches = player ? (await getLeagueCentreData(me)).myMatches : []
+  // Per-category detail (partner / opponents / court / result) for each fixture.
+  const detailMap =
+    player && myMatches.length
+      ? await getFixtureDetails(
+          myMatches.map((m) => m.id),
+          player.id,
+        )
+      : new Map<number, FixtureDetail>()
+  const fixtureDetails = Object.fromEntries(detailMap)
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
@@ -84,7 +97,7 @@ export default async function DashboardOverview() {
       />
 
       {/* SECTIONS 2-4 — Actions required, next match, and the fixtures list. */}
-      <MatchCentre matches={myMatches} isCaptain={isCaptain} />
+      <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
 
       {/* SECTION 5 — compact team record (only when on an active team). */}
       {overviewTeam && (
@@ -92,6 +105,17 @@ export default async function DashboardOverview() {
           <MyTeamCard team={overviewTeam} />
         </div>
       )}
+
+      {/* SECONDARY — collapsible "More Information" (ratings, eligibility, marketplace). */}
+      <div className="mt-6">
+        <MoreInformation
+          playtomicRating={player.playtomicRating}
+          leagueIndex={player.currentLi}
+          highestLi={player.highestLi}
+          lookingForTeam={!!player.lookingForTeam}
+          eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
+        />
+      </div>
 
       {/* Fees — kept on the page, anchored so the summary "Fees due" chip links here. */}
       {teamFees.some((f) => f.status === "due") && (
