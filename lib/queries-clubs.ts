@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, players } from "@/lib/db/schema"
+import { clubs, organisations, teams, players, teamMembers } from "@/lib/db/schema"
 import { asc, eq, inArray, sql, and } from "drizzle-orm"
 
 export type PlayerOption = {
@@ -7,6 +7,8 @@ export type PlayerOption = {
   name: string
   currentLi: number
   lookingForTeam: boolean
+  /** Id of the team this player is on an active roster of, or null if free. */
+  activeTeamId: number | null
 }
 
 /** Lightweight player list for captain pickers (only players with an account). */
@@ -24,11 +26,25 @@ export async function getPlayerOptions(): Promise<PlayerOption[]> {
     .where(sql`${players.userId} is not null`)
     .orderBy(asc(players.firstName), asc(players.lastName))
     .limit(2000)
+
+  // Map each player to the team they're actively rostered on (if any), so the
+  // captain picker can offer only genuinely available players plus the team's
+  // own current captain.
+  const activeMembers = await db
+    .select({ playerId: teamMembers.playerId, teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(eq(teamMembers.status, "active"))
+  const activeTeamByPlayer = new Map<number, number>()
+  for (const m of activeMembers) {
+    if (!activeTeamByPlayer.has(m.playerId)) activeTeamByPlayer.set(m.playerId, m.teamId)
+  }
+
   return rows.map((p) => ({
     id: p.id,
     name: `${p.firstName} ${p.lastName}`.trim(),
     currentLi: p.currentLi ?? 0,
     lookingForTeam: !!p.lookingForTeam,
+    activeTeamId: activeTeamByPlayer.get(p.id) ?? null,
   }))
 }
 

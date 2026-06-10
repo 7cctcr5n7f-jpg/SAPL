@@ -587,7 +587,7 @@ function CaptainRow({
               <SelectValue placeholder="Select captain" />
             </SelectTrigger>
             <SelectContent>
-              {players.map((p) => (
+              {availableCaptainOptions(players, team).map((p) => (
                 <SelectItem key={p.id} value={String(p.id)}>
                   {p.name} {p.lookingForTeam ? "· free agent" : ""}
                 </SelectItem>
@@ -621,6 +621,18 @@ function currentCaptainPlayerId(players: PlayerOption[], team: ClubRow["clubTeam
   if (!team.captainName) return null
   const match = players.find((p) => p.name === team.captainName)
   return match?.id ?? null
+}
+
+// Captain candidates for a Club Team: only players who are NOT already on
+// another team's active roster (free players), plus this team's current captain
+// so the existing selection stays visible. A player committed elsewhere can't be
+// poached as captain without first being removed from their other team.
+function availableCaptainOptions(
+  players: PlayerOption[],
+  team: ClubRow["clubTeams"][number],
+): PlayerOption[] {
+  const currentId = currentCaptainPlayerId(players, team)
+  return players.filter((p) => p.activeTeamId == null || p.activeTeamId === team.teamId || p.id === currentId)
 }
 
 function FilterChip({
