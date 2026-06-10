@@ -31,7 +31,7 @@ type RosterMember = {
   status: string
   role: string
 }
-type FreeAgent = { playerId: number; name: string; li: number; city: string | null }
+type FreeAgent = { playerId: number; name: string; li: number; city: string | null; email: string | null }
 type FixtureLite = {
   id: number
   week: number
@@ -98,9 +98,10 @@ export function CaptainHub({
   const metaById = new Map(team.pairingRoster.map((p) => [p.playerId, p]))
 
   const rosterPlayerIds = new Set(team.roster.map((r) => r.playerId))
+  const q = search.trim().toLowerCase()
   const filteredAgents = freeAgents
     .filter((a) => !rosterPlayerIds.has(a.playerId))
-    .filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+    .filter((a) => !q || a.name.toLowerCase().includes(q) || (a.email ?? "").toLowerCase().includes(q))
     .slice(0, 30)
 
   function invite(playerId: number) {
@@ -170,13 +171,15 @@ export function CaptainHub({
                   <DialogTitle>Add a Player</DialogTitle>
                 </DialogHeader>
                 <Input
-                  placeholder="Search free agents..."
+                  placeholder="Search by name or email..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
                 <div className="max-h-80 space-y-2 overflow-y-auto">
                   {filteredAgents.length === 0 && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">No matching free agents.</p>
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      {q ? "No players match that name or email." : "Start typing to search players."}
+                    </p>
                   )}
                   {filteredAgents.map((a) => (
                     <div
@@ -187,10 +190,10 @@ export function CaptainHub({
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="text-xs">{a.name.slice(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-sm font-medium">{a.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            LI {a.li.toFixed(1)} · {a.city ?? "—"}
+                          <p className="truncate text-xs text-muted-foreground">
+                            {a.email ?? `LI ${a.li.toFixed(1)} · ${a.city ?? "—"}`}
                           </p>
                         </div>
                       </div>

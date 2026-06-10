@@ -1,7 +1,7 @@
 import {
   getTeamRoster,
   getTeamFixtures,
-  getFreeAgents,
+  getAddablePlayers,
   getCategories,
   getFixtureScores,
   getTeamPairingData,
@@ -108,12 +108,15 @@ export default async function CaptainPage() {
     })
   }
 
-  const freeAgentsRaw = await getFreeAgents(40)
-  const freeAgents = freeAgentsRaw.map((p) => ({
+  // Every existing player can be searched (by name or email) and added — not
+  // just free agents — so captains can find anyone already on the platform.
+  const addableRaw = await getAddablePlayers()
+  const freeAgents = addableRaw.map((p) => ({
     playerId: p.id,
     name: `${p.firstName} ${p.lastName}`,
     li: p.currentLi,
     city: p.city,
+    email: p.email,
   }))
 
   const playerFee = await getPlayerFee()

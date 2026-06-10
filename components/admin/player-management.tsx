@@ -4,13 +4,22 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { ManagedPlayer } from "@/lib/queries-dashboard"
-import { adminUpdatePlayerRatings } from "@/lib/actions/player"
+import { adminUpdatePlayer } from "@/lib/actions/player"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, Loader2, Pencil, Check, X, Mars, Venus } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus } from "lucide-react"
 
 const ALL_CATEGORIES = CATEGORY_RULES.map((c) => c.name)
 
@@ -31,6 +40,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
   const [division, setDivision] = useState("all")
   const [gender, setGender] = useState("all")
   const [category, setCategory] = useState("all")
+  const [editing, setEditing] = useState<ManagedPlayer | null>(null)
 
   const teamOptions = useMemo(() => {
     const s = new Set<string>()
@@ -81,7 +91,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
       {/* Mobile cards */}
       <div className="flex flex-col gap-3 lg:hidden">
         {filtered.map((p) => (
-          <PlayerCard key={p.playerId} player={p} onSaved={() => router.refresh()} />
+          <PlayerCard key={p.playerId} player={p} onEdit={() => setEditing(p)} />
         ))}
         {filtered.length === 0 ? (
           <p className="rounded-lg border border-border bg-card px-4 py-10 text-center text-muted-foreground">
@@ -107,7 +117,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
           </thead>
           <tbody>
             {filtered.map((p) => (
-              <PlayerRow key={p.playerId} player={p} onSaved={() => router.refresh()} />
+              <PlayerRow key={p.playerId} player={p} onEdit={() => setEditing(p)} />
             ))}
             {filtered.length === 0 ? (
               <tr>
@@ -119,6 +129,15 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
           </tbody>
         </table>
       </div>
+
+      <EditPlayerDialog
+        player={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null)
+          router.refresh()
+        }}
+      />
     </div>
   )
 }
@@ -151,45 +170,6 @@ function FilterSelect({
   )
 }
 
-function useRatingEditor(player: ManagedPlayer, onSaved: () => void) {
-  const [editing, setEditing] = useState(false)
-  const [rating, setRating] = useState(player.playtomicRating != null ? String(player.playtomicRating) : "")
-  const [li, setLi] = useState(String(player.currentLi))
-  const [url, setUrl] = useState(player.playtomicUrl ?? "")
-  const [pending, startTransition] = useTransition()
-
-  function save() {
-    const parsedRating = rating.trim() === "" ? null : Number(rating)
-    const parsedLi = Number(li)
-    if (parsedRating != null && Number.isNaN(parsedRating)) return toast.error("Rating must be a number.")
-    if (Number.isNaN(parsedLi)) return toast.error("LI must be a number.")
-    startTransition(async () => {
-      const res = await adminUpdatePlayerRatings({
-        playerId: player.playerId,
-        playtomicRating: parsedRating,
-        currentLi: parsedLi,
-        playtomicUrl: url.trim() || null,
-      })
-      if (res.ok) {
-        toast.success(`Updated ${player.name}`)
-        setEditing(false)
-        onSaved()
-      } else {
-        toast.error(res.error ?? "Could not update player")
-      }
-    })
-  }
-
-  function cancel() {
-    setRating(player.playtomicRating != null ? String(player.playtomicRating) : "")
-    setLi(String(player.currentLi))
-    setUrl(player.playtomicUrl ?? "")
-    setEditing(false)
-  }
-
-  return { editing, setEditing, rating, setRating, li, setLi, url, setUrl, pending, save, cancel }
-}
-
 function PrimaryCategory({ player }: { player: ManagedPlayer }) {
   const cats = categoriesFor(player)
   if (cats.length === 0) return <span className="text-xs text-muted-foreground">—</span>
@@ -203,8 +183,7 @@ function PrimaryCategory({ player }: { player: ManagedPlayer }) {
   )
 }
 
-function PlayerRow({ player, onSaved }: { player: ManagedPlayer; onSaved: () => void }) {
-  const ed = useRatingEditor(player, onSaved)
+function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => void }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-secondary/20">
       <td className="px-3 py-2">
@@ -226,42 +205,25 @@ function PlayerRow({ player, onSaved }: { player: ManagedPlayer; onSaved: () => 
         ) : (
           <span>
             {player.teams[0].teamName}
-            {player.teams[0].divisionName ? <span className="text-muted-foreground/70"> · {player.teams[0].divisionName}</span> : null}
-            {player.teams.length > 1 ? <span className="text-muted-foreground/70"> +{player.teams.length - 1}</span> : null}
+            {player.teams[0].divisionName ? (
+              <span className="text-muted-foreground/70"> · {player.teams[0].divisionName}</span>
+            ) : null}
+            {player.teams.length > 1 ? (
+              <span className="text-muted-foreground/70"> +{player.teams.length - 1}</span>
+            ) : null}
           </span>
         )}
       </td>
       <td className="px-3 py-2">
-        {ed.editing ? (
-          <Input
-            value={ed.rating}
-            onChange={(e) => ed.setRating(e.target.value)}
-            placeholder="—"
-            inputMode="decimal"
-            className="h-8 w-16"
-          />
-        ) : (
-          <span className="font-medium tabular-nums">
-            {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
-          </span>
-        )}
+        <span className="font-medium tabular-nums">
+          {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
+        </span>
       </td>
       <td className="px-3 py-2">
-        {ed.editing ? (
-          <Input value={ed.li} onChange={(e) => ed.setLi(e.target.value)} inputMode="decimal" className="h-8 w-16" />
-        ) : (
-          <span className="font-medium tabular-nums">{player.currentLi.toFixed(2)}</span>
-        )}
+        <span className="font-medium tabular-nums">{player.currentLi.toFixed(2)}</span>
       </td>
       <td className="px-3 py-2">
-        {ed.editing ? (
-          <Input
-            value={ed.url}
-            onChange={(e) => ed.setUrl(e.target.value)}
-            placeholder="https://playtomic.io/..."
-            className="h-8 w-44"
-          />
-        ) : player.playtomicUrl ? (
+        {player.playtomicUrl ? (
           <a
             href={player.playtomicUrl}
             target="_blank"
@@ -275,37 +237,18 @@ function PlayerRow({ player, onSaved }: { player: ManagedPlayer; onSaved: () => 
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center justify-end gap-1.5">
-          {ed.editing ? (
-            <>
-              <Button type="button" size="sm" aria-label="Save" disabled={ed.pending} onClick={ed.save}>
-                {ed.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                aria-label="Cancel editing"
-                variant="outline"
-                disabled={ed.pending}
-                onClick={ed.cancel}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </>
-          ) : (
-            <Button type="button" size="sm" variant="outline" onClick={() => ed.setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />
-              <span className="ml-1.5">Edit</span>
-            </Button>
-          )}
+        <div className="flex items-center justify-end">
+          <Button type="button" size="sm" variant="outline" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="ml-1.5">Edit</span>
+          </Button>
         </div>
       </td>
     </tr>
   )
 }
 
-function PlayerCard({ player, onSaved }: { player: ManagedPlayer; onSaved: () => void }) {
-  const ed = useRatingEditor(player, onSaved)
+function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => void }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -328,75 +271,200 @@ function PlayerCard({ player, onSaved }: { player: ManagedPlayer; onSaved: () =>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Playtomic rating</label>
-          {ed.editing ? (
-            <Input value={ed.rating} onChange={(e) => ed.setRating(e.target.value)} inputMode="decimal" className="h-9" />
-          ) : (
-            <span className="text-sm font-medium">
-              {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
-            </span>
-          )}
+          <span className="block text-xs font-medium text-muted-foreground">Playtomic rating</span>
+          <span className="font-medium">
+            {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
+          </span>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">LI</label>
-          {ed.editing ? (
-            <Input value={ed.li} onChange={(e) => ed.setLi(e.target.value)} inputMode="decimal" className="h-9" />
-          ) : (
-            <span className="text-sm font-medium">{player.currentLi.toFixed(2)}</span>
-          )}
+          <span className="block text-xs font-medium text-muted-foreground">LI</span>
+          <span className="font-medium">{player.currentLi.toFixed(2)}</span>
         </div>
       </div>
 
       <div className="mt-3">
-        <label className="mb-1 block text-xs font-medium text-muted-foreground">Playtomic URL</label>
-        {ed.editing ? (
-          <Input
-            value={ed.url}
-            onChange={(e) => ed.setUrl(e.target.value)}
-            placeholder="https://playtomic.io/..."
-            className="h-9"
-          />
-        ) : player.playtomicUrl ? (
-          <a
-            href={player.playtomicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-          >
-            <ExternalLink className="h-3.5 w-3.5" /> View profile
-          </a>
-        ) : (
-          <span className="text-sm text-muted-foreground">None</span>
-        )}
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        {ed.editing ? (
-          <>
-            <Button type="button" size="sm" className="flex-1" disabled={ed.pending} onClick={ed.save}>
-              {ed.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              <span className="ml-1.5">Save</span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              aria-label="Cancel editing"
-              variant="outline"
-              disabled={ed.pending}
-              onClick={ed.cancel}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </>
-        ) : (
-          <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => ed.setEditing(true)}>
-            <Pencil className="h-3.5 w-3.5" />
-            <span className="ml-1.5">Edit player</span>
-          </Button>
-        )}
+        <Button type="button" size="sm" variant="outline" className="w-full" onClick={onEdit}>
+          <Pencil className="h-3.5 w-3.5" />
+          <span className="ml-1.5">Edit player</span>
+        </Button>
       </div>
     </div>
+  )
+}
+
+function EditPlayerDialog({
+  player,
+  onClose,
+  onSaved,
+}: {
+  player: ManagedPlayer | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  return (
+    <Dialog open={!!player} onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        {player ? <EditPlayerForm player={player} onSaved={onSaved} /> : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: () => void }) {
+  const [firstName, setFirstName] = useState(player.firstName)
+  const [lastName, setLastName] = useState(player.lastName)
+  const [phone, setPhone] = useState(player.phone ?? "")
+  const [genderVal, setGenderVal] = useState<"male" | "female">(player.gender)
+  const [rating, setRating] = useState(player.playtomicRating != null ? String(player.playtomicRating) : "")
+  const [li, setLi] = useState(String(player.currentLi))
+  const [url, setUrl] = useState(player.playtomicUrl ?? "")
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!firstName.trim() || !lastName.trim()) return toast.error("First and last name are required.")
+    const parsedRating = rating.trim() === "" ? null : Number(rating)
+    const parsedLi = Number(li)
+    if (parsedRating != null && Number.isNaN(parsedRating)) return toast.error("Rating must be a number.")
+    if (Number.isNaN(parsedLi)) return toast.error("LI must be a number.")
+    startTransition(async () => {
+      const res = await adminUpdatePlayer({
+        playerId: player.playerId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || null,
+        gender: genderVal,
+        playtomicRating: parsedRating,
+        currentLi: parsedLi,
+        playtomicUrl: url.trim() || null,
+      })
+      if (res.ok) {
+        toast.success(`Updated ${firstName} ${lastName}`)
+        onSaved()
+      } else {
+        toast.error(res.error ?? "Could not update player")
+      }
+    })
+  }
+
+  function leaveTeam(teamId: number, teamName: string) {
+    startTransition(async () => {
+      const res = await adminUpdatePlayer({ playerId: player.playerId, removeFromTeamId: teamId })
+      if (res.ok) {
+        toast.success(`Removed from ${teamName}`)
+        onSaved()
+      } else {
+        toast.error(res.error ?? "Could not remove from team")
+      }
+    })
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Edit player</DialogTitle>
+        <DialogDescription>Update profile details, rating, and team membership.</DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 py-2">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="firstName">First name</Label>
+            <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lastName">Last name</Label>
+            <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">Contact number</Label>
+            <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gender">Gender</Label>
+            <select
+              id="gender"
+              value={genderVal}
+              onChange={(e) => setGenderVal(e.target.value as "male" | "female")}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="rating">Playtomic rating</Label>
+            <Input
+              id="rating"
+              value={rating}
+              onChange={(e) => setRating(e.target.value)}
+              inputMode="decimal"
+              placeholder="—"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="li">League Index</Label>
+            <Input id="li" value={li} onChange={(e) => setLi(e.target.value)} inputMode="decimal" />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="url">Playtomic URL</Label>
+          <Input
+            id="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://playtomic.io/..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Teams</Label>
+          {player.teams.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Not on any team.</p>
+          ) : (
+            <ul className="space-y-2">
+              {player.teams.map((t) => (
+                <li
+                  key={t.teamId}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                >
+                  <div className="min-w-0 text-sm">
+                    <span className="font-medium">{t.teamName}</span>
+                    {t.divisionName ? (
+                      <span className="text-muted-foreground"> · {t.divisionName}</span>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => leaveTeam(t.teamId, t.teamName)}
+                  >
+                    <UserMinus className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">Remove</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" disabled={pending} onClick={submit}>
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          <span className={pending ? "ml-2" : ""}>Save changes</span>
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
