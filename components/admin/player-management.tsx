@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { ManagedPlayer } from "@/lib/queries-dashboard"
-import { adminUpdatePlayer, adminCreatePlayerProfile } from "@/lib/actions/player"
+import { adminUpdatePlayer, adminCreatePlayerProfile, adminDeleteUsers } from "@/lib/actions/player"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus, UserPlus } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus, UserPlus, Trash2 } from "lucide-react"
 
 const ALL_CATEGORIES = CATEGORY_RULES.map((c) => c.name)
 
@@ -33,7 +33,7 @@ function GenderIcon({ gender, className = "" }: { gender: "male" | "female"; cla
   return <Mars className={`h-4 w-4 text-blue-500 ${className}`} aria-label="Male" role="img" />
 }
 
-export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
+export function PlayerManagement({ players, canDelete = false }: { players: ManagedPlayer[]; canDelete?: boolean }) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [team, setTeam] = useState("all")
@@ -41,6 +41,7 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
   const [gender, setGender] = useState("all")
   const [category, setCategory] = useState("all")
   const [editing, setEditing] = useState<ManagedPlayer | null>(null)
+  const [deleting, setDeleting] = useState<ManagedPlayer | null>(null)
 
   const teamOptions = useMemo(() => {
     const s = new Set<string>()
@@ -91,7 +92,13 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
       {/* Mobile cards */}
       <div className="flex flex-col gap-3 lg:hidden">
         {filtered.map((p) => (
-          <PlayerCard key={p.userId} player={p} onEdit={() => setEditing(p)} />
+          <PlayerCard
+            key={p.userId}
+            player={p}
+            onEdit={() => setEditing(p)}
+            canDelete={canDelete}
+            onDelete={() => setDeleting(p)}
+          />
         ))}
         {filtered.length === 0 ? (
           <p className="rounded-lg border border-border bg-card px-4 py-10 text-center text-muted-foreground">
@@ -112,12 +119,18 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
               <th className="px-3 py-2 font-semibold">Rating</th>
               <th className="px-3 py-2 font-semibold">LI</th>
               <th className="px-3 py-2 font-semibold">Playtomic</th>
-              <th className="px-3 py-2 text-right font-semibold">Edit</th>
+              <th className="px-3 py-2 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((p) => (
-              <PlayerRow key={p.userId} player={p} onEdit={() => setEditing(p)} />
+              <PlayerRow
+                key={p.userId}
+                player={p}
+                onEdit={() => setEditing(p)}
+                canDelete={canDelete}
+                onDelete={() => setDeleting(p)}
+              />
             ))}
             {filtered.length === 0 ? (
               <tr>
@@ -135,6 +148,15 @@ export function PlayerManagement({ players }: { players: ManagedPlayer[] }) {
         onClose={() => setEditing(null)}
         onSaved={() => {
           setEditing(null)
+          router.refresh()
+        }}
+      />
+
+      <DeletePlayerDialog
+        player={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={() => {
+          setDeleting(null)
           router.refresh()
         }}
       />
@@ -183,7 +205,17 @@ function PrimaryCategory({ player }: { player: ManagedPlayer }) {
   )
 }
 
-function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => void }) {
+function PlayerRow({
+  player,
+  onEdit,
+  canDelete,
+  onDelete,
+}: {
+  player: ManagedPlayer
+  onEdit: () => void
+  canDelete: boolean
+  onDelete: () => void
+}) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-secondary/20">
       <td className="px-3 py-2">
@@ -242,7 +274,7 @@ function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => vo
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-1.5">
           <Button type="button" size="sm" variant="outline" onClick={onEdit}>
             {player.playerId == null ? (
               <>
@@ -256,13 +288,35 @@ function PlayerRow({ player, onEdit }: { player: ManagedPlayer; onEdit: () => vo
               </>
             )}
           </Button>
+          {canDelete ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onDelete}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label={`Delete ${player.name}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
       </td>
     </tr>
   )
 }
 
-function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => void }) {
+function PlayerCard({
+  player,
+  onEdit,
+  canDelete,
+  onDelete,
+}: {
+  player: ManagedPlayer
+  onEdit: () => void
+  canDelete: boolean
+  onDelete: () => void
+}) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -303,8 +357,8 @@ function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => v
         </div>
       </div>
 
-      <div className="mt-3">
-        <Button type="button" size="sm" variant="outline" className="w-full" onClick={onEdit}>
+      <div className="mt-3 flex items-center gap-2">
+        <Button type="button" size="sm" variant="outline" className="flex-1" onClick={onEdit}>
           {player.playerId == null ? (
             <>
               <UserPlus className="h-3.5 w-3.5" />
@@ -317,8 +371,73 @@ function PlayerCard({ player, onEdit }: { player: ManagedPlayer; onEdit: () => v
             </>
           )}
         </Button>
+        {canDelete ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onDelete}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            aria-label={`Delete ${player.name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
     </div>
+  )
+}
+
+function DeletePlayerDialog({
+  player,
+  onClose,
+  onDeleted,
+}: {
+  player: ManagedPlayer | null
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [pending, startTransition] = useTransition()
+
+  function confirm() {
+    if (!player) return
+    startTransition(async () => {
+      const res = await adminDeleteUsers({ userId: player.userId })
+      if (res.ok) {
+        toast.success(`Deleted ${player.name}`)
+        onDeleted()
+      } else {
+        toast.error(res.error ?? "Could not delete user")
+      }
+    })
+  }
+
+  return (
+    <Dialog open={!!player} onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete {player?.name}?</DialogTitle>
+          <DialogDescription>
+            This permanently removes the user account and every trace of them — profile, team
+            memberships, pairings, payments and notifications. This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={confirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            <span className="ml-2">Delete user</span>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
