@@ -332,3 +332,65 @@ export async function adminUpdatePlayer(input: {
   revalidatePath("/marketplace")
   return { ok: true }
 }
+
+/**
+ * Create a minimal player profile for an existing user account that doesn't
+ * have one yet (e.g. an admin account, or someone who never onboarded). Only
+ * league admins may do this. The profile seeds from the account's display name
+ * so the user immediately becomes a manageable, assignable player everywhere.
+ */
+export async function adminCreatePlayerProfile(input: {
+  userId: string
+  firstName?: string
+  lastName?: string
+  gender?: "male" | "female"
+}) {
+  const me = await getCurrentUser()
+  if (!me) return { ok: false, error: "Not authorised" }
+
+  const access = await getAccessContext(me)
+  if (!access.isLeagueAdmin) return { ok: false, error: "Only league admins can create player profiles." }
+
+  const [account] = await db.select().from(user).where(eq(user.id, input.userId)).limit(1)
+  if (!account) return { ok: false, error: "User account not found." }
+
+  // Guard against duplicates — one profile per user.
+  const [existing] = await db.select({ id: players.id }).from(players).where(eq(players.userId, input.userId)).limit(1)
+  if (existing) return { ok: false, error: "This user already has a player profile.", playerId: existing.id }
+
+  const [nameFirst, ...nameRest] = (account.name ?? "").trim().split(/\s+/)
+  const firstName = (input.firstName?.trim() || nameFirst || "Player").trim()
+  const lastName = (input.lastName?.trim() || nameRest.join(" ") || "").trim()
+
+  const [created] = await db
+    .insert(players)
+    .values({
+      userId: input.userId,
+      firstName,
+      lastName,
+      gender: input.gender ?? "male",
+      province: "Gauteng",
+      city: null,
+      currentLi: 0,
+      highestLi: 0,
+      liDate: new Date(),
+      currentTpr: 1000,
+      highestTpr: 1000,
+      playtomicUrl: null,
+      preferredFormats: [],
+      preferredClubIds: [],
+      anyClub: true,
+      lookingForTeam: false,
+      availability: "unavailable",
+      updatedAt: new Date(),
+    })
+    .returning({ id: players.id })
+
+  // Ensure a userMeta row exists so contact details can be edited later.
+  const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, input.userId)).limit(1)
+  if (!meta) await db.insert(userMeta).values({ userId: input.userId, role: "player" })
+
+  revalidatePath("/admin/players")
+  revalidatePath("/dashboard")
+  return { ok: true, playerId: created.id }
+}
