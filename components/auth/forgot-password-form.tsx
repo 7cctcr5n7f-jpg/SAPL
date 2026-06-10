@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { forgetPassword } from "@/lib/auth-client"
+import { requestPasswordReset } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,7 +20,7 @@ export function ForgotPasswordForm() {
     setLoading(true)
     try {
       // redirectTo is where the email link lands (carrying the reset token).
-      const { error } = await forgetPassword({ email, redirectTo: "/reset-password" })
+      const { error } = await requestPasswordReset({ email, redirectTo: "/reset-password" })
       if (error) throw new Error(error.message || "Could not send reset email")
       setSent(true)
     } catch (err) {

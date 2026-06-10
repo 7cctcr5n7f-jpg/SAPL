@@ -312,6 +312,152 @@ export async function getPlayerOverviewTeam(playerId: number): Promise<PlayerOve
   }
 }
 
+// One category rubber within a fixture, from the perspective of a given player.
+export type FixtureCategoryDetail = {
+  category: string
+  isFeatureCourt: boolean
+  // Per-category Playtomic booking link (from fixtures.courtLinks), if set.
+  courtLink: string | null
+  homePlayers: string[]
+  awayPlayers: string[]
+  // Result fields (only present once the rubber is played).
+  scoreDetail: string | null
+  homeSetsWon: number | null
+  awaySetsWon: number | null
+  winnerTeamId: number | null
+  // Player perspective: is this the category the player is lined up for?
+  isMine: boolean
+  partner: string | null
+  opponents: string[]
+}
+
+export type FixtureDetail = {
+  fixtureId: number
+  myCategory: string | null
+  categories: FixtureCategoryDetail[]
+}
+
+/**
+ * For each fixture, assembles per-category detail (lineup, partner, opponents,
+ * court booking link, and result) from the player's perspective. Lineups come
+ * from team pairings; results from played matches. Degrades gracefully — when a
+ * captain hasn't set the lineup yet, player lists are simply empty.
+ */
+export async function getFixtureDetails(
+  fixtureIds: number[],
+  playerId: number,
+): Promise<Map<number, FixtureDetail>> {
+  const out = new Map<number, FixtureDetail>()
+  if (fixtureIds.length === 0) return out
+
+  const fixtureRows = await db
+    .select({
+      id: fixtures.id,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      courtLinks: fixtures.courtLinks,
+    })
+    .from(fixtures)
+    .where(inArray(fixtures.id, fixtureIds))
+
+  const teamIds = new Set<number>()
+  for (const f of fixtureRows) {
+    if (f.homeTeamId) teamIds.add(f.homeTeamId)
+    if (f.awayTeamId) teamIds.add(f.awayTeamId)
+  }
+  const teamIdList = [...teamIds]
+
+  // Played rubbers for these fixtures (carry score + per-match player ids).
+  const matchRows = fixtureIds.length
+    ? await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
+    : []
+
+  // Planned lineups for every involved team.
+  const pairingRows = teamIdList.length
+    ? await db.select().from(teamPairings).where(inArray(teamPairings.teamId, teamIdList))
+    : []
+
+  // Resolve player ids → display names (roster + any ids referenced in matches).
+  const extraIds = new Set<number>()
+  for (const p of pairingRows) if (p.playerId) extraIds.add(p.playerId)
+  for (const m of matchRows) {
+    for (const arr of [m.homePlayerIds, m.awayPlayerIds]) {
+      if (Array.isArray(arr)) for (const id of arr as number[]) if (typeof id === "number") extraIds.add(id)
+    }
+  }
+  const nameRows = extraIds.size
+    ? await db
+        .select({ id: players.id, firstName: players.firstName, lastName: players.lastName })
+        .from(players)
+        .where(inArray(players.id, [...extraIds]))
+    : []
+  const nameById = new Map(nameRows.map((r) => [r.id, `${r.firstName} ${r.lastName}`]))
+
+  // team|category → ordered player ids (from pairings).
+  const lineupByTeamCat = new Map<string, number[]>()
+  for (const p of pairingRows) {
+    if (!p.playerId) continue
+    const key = `${p.teamId}|${p.category}`
+    const list = lineupByTeamCat.get(key) ?? []
+    list.push(p.playerId)
+    lineupByTeamCat.set(key, list)
+  }
+  const namesFor = (ids: number[]) => ids.map((id) => nameById.get(id)).filter((n): n is string => !!n)
+
+  for (const f of fixtureRows) {
+    const courtLinks = (f.courtLinks ?? {}) as Record<string, string>
+    const fxMatches = matchRows.filter((m) => m.fixtureId === f.id)
+
+    // Categories present: union of played rubbers and any lineup entries.
+    const catNames = new Set<string>()
+    for (const m of fxMatches) catNames.add(m.category)
+    for (const key of lineupByTeamCat.keys()) {
+      const [tid, cat] = key.split("|")
+      if (Number(tid) === f.homeTeamId || Number(tid) === f.awayTeamId) catNames.add(cat)
+    }
+
+    let myCategory: string | null = null
+    const categories: FixtureCategoryDetail[] = [...catNames].map((category) => {
+      const m = fxMatches.find((x) => x.category === category)
+      const homeFromMatch = Array.isArray(m?.homePlayerIds) ? (m!.homePlayerIds as number[]) : []
+      const awayFromMatch = Array.isArray(m?.awayPlayerIds) ? (m!.awayPlayerIds as number[]) : []
+      const homeIds = homeFromMatch.length ? homeFromMatch : (lineupByTeamCat.get(`${f.homeTeamId}|${category}`) ?? [])
+      const awayIds = awayFromMatch.length ? awayFromMatch : (lineupByTeamCat.get(`${f.awayTeamId}|${category}`) ?? [])
+
+      const iAmHome = homeIds.includes(playerId)
+      const iAmAway = awayIds.includes(playerId)
+      const isMine = iAmHome || iAmAway
+      if (isMine) myCategory = category
+
+      const myIds = iAmHome ? homeIds : iAmAway ? awayIds : []
+      const oppIds = iAmHome ? awayIds : iAmAway ? homeIds : []
+      const partnerId = myIds.find((id) => id !== playerId) ?? null
+
+      return {
+        category,
+        isFeatureCourt: m?.isFeatureCourt ?? false,
+        courtLink: courtLinks[category] ?? null,
+        homePlayers: namesFor(homeIds),
+        awayPlayers: namesFor(awayIds),
+        scoreDetail: m?.scoreDetail ?? null,
+        homeSetsWon: m ? m.homeSetsWon : null,
+        awaySetsWon: m ? m.awaySetsWon : null,
+        winnerTeamId: m?.winnerTeamId ?? null,
+        isMine,
+        partner: partnerId != null ? (nameById.get(partnerId) ?? null) : null,
+        opponents: namesFor(oppIds),
+      }
+    })
+
+    // Stable order: feature court first, then alphabetical.
+    categories.sort((a, b) => Number(b.isFeatureCourt) - Number(a.isFeatureCourt) || a.category.localeCompare(b.category))
+
+    out.set(f.id, { fixtureId: f.id, myCategory, categories })
+  }
+
+  return out
+}
+
 export type OutstandingFee = {
   // "player" = an individual who must pay their own fee. "team" = a team whose
   // owner/manager agreed to fund the whole squad's fees.
