@@ -6,6 +6,7 @@ import {
   getStandingForTeam,
   getTeamPairingData,
   getCategories,
+  getUnassignedPlayers,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
 import { organisations, players, user as authUser, userMeta, payments } from "@/lib/db/schema"
@@ -163,13 +164,11 @@ export default async function OrgPage() {
     })
   }
 
-  // Free agents
-  const freeAgentsRaw = await db.select().from(players).where(eq(players.lookingForTeam, true)).limit(60)
-  const freeAgents = freeAgentsRaw.map((p) => ({
-    playerId: p.id,
-    name: `${p.firstName} ${p.lastName}`,
-    li: p.currentLi,
-  }))
+  // Captain candidates: every player NOT already committed to another team's
+  // active roster. The Assign-Captain picker also folds in the selected team's
+  // own squad, so admins can promote a squad member OR recruit any available
+  // player — not just those who flagged themselves "looking for a team".
+  const freeAgents = await getUnassignedPlayers()
 
   // Home-club options with hosting usage. Only venues that still host on
   // Thursday nights AND have remaining capacity are selectable, so a venue can

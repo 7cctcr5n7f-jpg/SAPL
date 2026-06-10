@@ -47,6 +47,7 @@ async function checkVenueCapacity(clubId: number, excludeTeamId?: number): Promi
   return null
 }
 import { getCurrentUser } from "@/lib/session"
+import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { notify } from "@/lib/notify"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -210,7 +211,15 @@ export async function assignCaptain(formData: FormData) {
   const playerId = Number(formData.get("playerId"))
   const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
-  await requireOrgOwner(team.organisationId)
+  // Authorise via the access context so org owners, league admins AND club/team
+  // managers who have this team in their scope can assign a captain. (Using
+  // requireOrgOwner here would reject club managers and throw.)
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: "Not authenticated" }
+  const access = await getAccessContext(user)
+  if (!access.can("team_management") || !access.canManageTeam(teamId)) {
+    return { ok: false, error: "You cannot manage this team." }
+  }
 
   const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
   if (!player?.userId) return { ok: false, error: "Player has no linked account" }
