@@ -136,6 +136,7 @@ export default async function OrgPage() {
       homeClubId: row.team.homeClubId ?? null,
       homeClubName: club?.name ?? null,
       homeClubLogoUrl: club?.logoUrl ?? null,
+      homeClubContactEmail: club?.contactEmail ?? null,
       ownerEmail: row.team.ownerEmail ?? null,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
