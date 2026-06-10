@@ -655,6 +655,24 @@ export async function getAllTeamsForAdmin() {
   return rows
 }
 
+// Teams a club manager may manage in Team Admin: every team within their access
+// scope (assigned teams via owner email / captaincy / manual, UNION every team
+// homed at one of their assigned clubs). Returns the same { team, division }
+// shape as getOrgTeams so the Team Admin page can render it the same way.
+export async function getScopedTeamRows(access: AccessContext) {
+  const scopedTeamIds = await getScopedTeamIds(access)
+  // null means "no restriction" (league admin) — callers handle that separately.
+  if (scopedTeamIds === null) return getAllTeamsForAdmin()
+  if (scopedTeamIds.length === 0) return []
+  const rows = await db
+    .select({ team: teams, division: divisions })
+    .from(teams)
+    .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .where(inArray(teams.id, scopedTeamIds))
+    .orderBy(teams.name)
+  return rows
+}
+
 export async function getStandingForTeam(teamId: number) {
   const [s] = await db.select().from(standings).where(eq(standings.teamId, teamId)).limit(1)
   return s ?? null
