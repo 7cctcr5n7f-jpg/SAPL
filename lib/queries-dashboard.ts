@@ -520,6 +520,8 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
       p = {
         playerId: r.playerId,
         name: `${r.firstName} ${r.lastName}`.trim(),
+        firstName: r.firstName,
+        lastName: r.lastName,
         gender: r.gender as "male" | "female",
         currentLi: r.currentLi,
         playtomicRating: r.playtomicRating,
