@@ -10,6 +10,8 @@ import {
   teamEntries,
   teamMembers,
   matches,
+  teamPairings,
+  players,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
@@ -87,6 +89,9 @@ export type LCFixture = {
   // Only populated for logged-in players eligible to play this fixture.
   joinUrl: string | null
   mine: boolean
+  // Player names per team, keyed by category (e.g. "Mens Open" → ["John Smith", "Peter Jones"])
+  homePlayers: Record<string, string[]>
+  awayPlayers: Record<string, string[]>
 }
 
 export type LCRanking = {
@@ -312,6 +317,38 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
 
   const myTeamIds = user ? await getMyTeamIds(user) : new Set<number>()
 
+  // Fetch team pairings with player names for all teams in these fixtures so
+  // cards can display "Player 1 / Player 2" per category inline.
+  const allTeamIds = Array.from(
+    new Set(
+      fixtureRows.flatMap((f) => [f.homeTeamId, f.awayTeamId].filter((id): id is number => id != null)),
+    ),
+  )
+  type PairingRow = { teamId: number; category: string; firstName: string; lastName: string }
+  const pairingRows: PairingRow[] = allTeamIds.length
+    ? await db
+        .select({
+          teamId: teamPairings.teamId,
+          category: teamPairings.category,
+          firstName: players.firstName,
+          lastName: players.lastName,
+        })
+        .from(teamPairings)
+        .innerJoin(players, eq(teamPairings.playerId, players.id))
+        .where(inArray(teamPairings.teamId, allTeamIds))
+    : []
+
+  // Build a map: teamId → category → ["First Last", ...]
+  const teamPlayerMap = new Map<number, Record<string, string[]>>()
+  for (const row of pairingRows) {
+    let catMap = teamPlayerMap.get(row.teamId)
+    if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
+    const arr = catMap[row.category] ?? []
+    const name = `${row.firstName} ${row.lastName}`.trim()
+    if (!arr.includes(name)) arr.push(name)
+    catMap[row.category] = arr
+  }
+
   const fixturesOut: LCFixture[] = fixtureRows
     .filter((f) => entryByDivision.has(f.divisionId))
     .map((f) => {
@@ -345,6 +382,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         // Never expose booking links publicly — only to eligible logged-in players.
         joinUrl: mine && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
         mine,
+        homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
+        awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
       }
     })
 

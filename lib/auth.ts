@@ -46,6 +46,11 @@ export const auth = betterAuth({
   },
   trustedOrigins: [
     "http://localhost:3000",
+    "http://localhost:3001",
+    // Wildcard for all v0 preview URLs (*.vusercontent.net) — Better Auth
+    // supports glob patterns via wildcardMatch so this covers every dynamic
+    // preview URL without needing to hardcode individual hostnames.
+    "https://*.vusercontent.net",
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_PROJECT_PRODUCTION_URL ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`] : []),

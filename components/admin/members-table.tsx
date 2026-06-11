@@ -8,6 +8,7 @@ import {
   sendMemberResetEmail,
   setMemberTempPassword,
   createMember,
+  updateMemberDetails,
   type MemberRow,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
@@ -22,7 +23,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Mail, KeyRound, Loader2, Copy, Check, X, UserPlus, ChevronDown, SlidersHorizontal } from "lucide-react"
+import { Mail, KeyRound, Loader2, Copy, Check, X, UserPlus, ChevronDown, SlidersHorizontal, Pencil } from "lucide-react"
 import { MemberDetailPanel } from "@/components/admin/member-detail-panel"
 
 type Role = MemberRow["role"]
@@ -54,6 +55,7 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingMember, setEditingMember] = useState<MemberRow | null>(null)
   const [, startTransition] = useTransition()
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
 
@@ -112,6 +114,10 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
         <AddMemberDialog onCreated={(data) => setPwModal(data)} />
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        {filtered.length} {filtered.length === 1 ? "member" : "members"}
+      </p>
+
       {/* Mobile / tablet: stacked cards */}
       <div className="flex flex-col gap-3 lg:hidden">
         {filtered.map((m) => {
@@ -126,11 +132,17 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
                     {isSelf ? <span className="ml-2 text-xs text-muted-foreground">(you)</span> : null}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{m.email}</div>
+                  {m.phone ? <div className="text-xs text-muted-foreground">{m.phone}</div> : null}
                   {m.playerName && m.playerName !== m.name ? (
                     <div className="truncate text-xs text-muted-foreground">Player: {m.playerName}</div>
                   ) : null}
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(m.createdAt)}</span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">{fmtDate(m.createdAt)}</span>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingMember(m)} aria-label="Edit details">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
 
               <div className="mt-3">
@@ -205,7 +217,7 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
               <th className="px-4 py-3 font-semibold">Member</th>
               <th className="px-4 py-3 font-semibold">Role</th>
               <th className="px-4 py-3 font-semibold">Joined</th>
-              <th className="px-4 py-3 text-right font-semibold">Password</th>
+              <th className="px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -215,73 +227,77 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
               const expanded = expandedId === m.id
               return (
                 <Fragment key={m.id}>
-                <tr className="border-b border-border last:border-0 data-[expanded=true]:border-0" data-expanded={expanded}>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">
-                      {m.name}
-                      {isSelf ? <span className="ml-2 text-xs text-muted-foreground">(you)</span> : null}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{m.email}</div>
-                    {m.playerName && m.playerName !== m.name ? (
-                      <div className="text-xs text-muted-foreground">Player: {m.playerName}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    {isSelf ? (
-                      <span
-                        className={cn(
-                          "inline-block rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
-                          ROLE_BADGE[m.role],
-                        )}
-                      >
-                        {roleLabel(m.role)}
-                      </span>
-                    ) : (
-                      <select
-                        value={m.role}
-                        disabled={busy}
-                        onChange={(e) => changeRole(m, e.target.value as Role)}
-                        className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r.value} value={r.value}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{fmtDate(m.createdAt)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => emailReset(m)}>
-                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                        <span className="ml-1.5">Email reset</span>
-                      </Button>
-                      <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => tempPassword(m)}>
-                        <KeyRound className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">Temp password</span>
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={expanded ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => setExpandedId(expanded ? null : m.id)}
-                        aria-label="Permissions and assignments"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5" />
-                        <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-                {expanded ? (
-                  <tr className="border-b border-border last:border-0">
-                    <td colSpan={4} className="p-0">
-                      <MemberDetailPanel userId={m.id} isSelf={isSelf} />
+                  <tr className="border-b border-border last:border-0 data-[expanded=true]:border-0" data-expanded={expanded}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-foreground">
+                        {m.name}
+                        {isSelf ? <span className="ml-2 text-xs text-muted-foreground">(you)</span> : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{m.email}</div>
+                      {m.phone ? <div className="text-xs text-muted-foreground">{m.phone}</div> : null}
+                      {m.playerName && m.playerName !== m.name ? (
+                        <div className="text-xs text-muted-foreground">Player: {m.playerName}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      {isSelf ? (
+                        <span
+                          className={cn(
+                            "inline-block rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
+                            ROLE_BADGE[m.role],
+                          )}
+                        >
+                          {roleLabel(m.role)}
+                        </span>
+                      ) : (
+                        <select
+                          value={m.role}
+                          disabled={busy}
+                          onChange={(e) => changeRole(m, e.target.value as Role)}
+                          className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r.value} value={r.value}>
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(m.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMember(m)} aria-label="Edit details">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => emailReset(m)}>
+                          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                          <span className="ml-1.5">Email reset</span>
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => tempPassword(m)}>
+                          <KeyRound className="h-3.5 w-3.5" />
+                          <span className="ml-1.5">Temp password</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={expanded ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => setExpandedId(expanded ? null : m.id)}
+                          aria-label="Permissions and assignments"
+                        >
+                          <SlidersHorizontal className="h-3.5 w-3.5" />
+                          <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
-                ) : null}
+                  {expanded ? (
+                    <tr className="border-b border-border last:border-0">
+                      <td colSpan={4} className="p-0">
+                        <MemberDetailPanel userId={m.id} isSelf={isSelf} />
+                      </td>
+                    </tr>
+                  ) : null}
                 </Fragment>
               )
             })}
@@ -296,8 +312,75 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
         </table>
       </div>
 
+      {editingMember ? (
+        <EditMemberDialog
+          member={editingMember}
+          onClose={() => setEditingMember(null)}
+          onSaved={() => { setEditingMember(null); router.refresh() }}
+        />
+      ) : null}
+
       {pwModal ? <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} /> : null}
     </div>
+  )
+}
+
+function EditMemberDialog({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: MemberRow
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(member.name)
+  const [phone, setPhone] = useState(member.phone ?? "")
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!name.trim()) return toast.error("Name is required.")
+    startTransition(async () => {
+      const res = await updateMemberDetails(member.id, { name, phone: phone || null })
+      if (res.ok) {
+        toast.success("Details updated")
+        onSaved()
+      } else {
+        toast.error(res.error ?? "Could not update details")
+      }
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit member details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-name">Full name</Label>
+            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-email">Email</Label>
+            <Input id="edit-email" value={member.email} disabled className="opacity-60" />
+            <p className="text-xs text-muted-foreground">Email cannot be changed here.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-phone">Contact number</Label>
+            <Input id="edit-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>Cancel</Button>
+          <Button type="button" disabled={pending} onClick={submit}>
+            {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -15,8 +15,8 @@ export default async function AdminPlayersPage() {
   const canDelete = access.user.role === "league_admin" || access.user.role === "super_admin"
 
   const subtitle = access.isLeagueAdmin
-    ? "Every registered player with their team, ratings and Playtomic profile. Edit inline."
-    : "Players on the teams and clubs assigned to you. Edit ratings and Playtomic links inline."
+    ? "Every registered player with their team, LI and Playtomic rating. Edit LI and rating inline. Use Members & Roles to update personal details."
+    : "Players on the teams and clubs assigned to you. Edit LI and Playtomic rating inline."
 
   return (
     <div className="flex flex-col gap-6">
