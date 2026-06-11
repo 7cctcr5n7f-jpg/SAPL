@@ -18,5 +18,7 @@ jobs:
           VERCEL_ORG_ID: team_KPJQJCwQ4XDOrazDie0EHCt9
           VERCEL_PROJECT_ID: prj_Kt6LkDIWL7SRQHYQr0Qn5vyvkLWV
         run: |
-          npm install -g vercel
-          vercel deploy --prod --yes --token=$VERCEL_TOKEN
+          npm install -g vercel@latest
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          vercel build --prod --token=$VERCEL_TOKEN
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
