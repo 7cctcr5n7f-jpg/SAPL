@@ -2,7 +2,6 @@ import { getCurrentUser } from "@/lib/session"
 import { getLeagueCentreData } from "@/lib/queries-league-centre"
 import { getMainSponsor, getPrizePool } from "@/lib/queries"
 import { LeagueCentreExperience } from "@/components/league-centre/league-centre-experience"
-import { MatchCentreSports } from "@/components/league-centre/match-centre-sports"
 import { LiveExperienceShowcase } from "@/components/league-centre/league-centre-experience"
 import { PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
 
@@ -41,15 +40,12 @@ export default async function LeagueCentrePage() {
         </div>
       </header>
 
-      {/* 1) Match Centre with sports-site aesthetic */}
-      <MatchCentreSports data={data} user={user} />
-
-      {/* 2) Core league data: standings, rankings (classic League Centre view) */}
+      {/* Core league data: region/division selection + 3 tabs with sports aesthetic */}
       <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-6">
         <LeagueCentreExperience data={data} />
       </div>
 
-      {/* 3) Secondary content: prize pool + promo below the league information */}
+      {/* Secondary content: prize pool + promo below the league information */}
       <PrizeCallout prizePool={prizePool} sponsor={sponsor} />
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
         <LiveExperienceShowcase />
@@ -66,4 +62,5 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
     </div>
   )
 }
+
 
