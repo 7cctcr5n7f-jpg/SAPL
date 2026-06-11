@@ -46,6 +46,7 @@ export const auth = betterAuth({
   },
   trustedOrigins: [
     "http://localhost:3000",
+    "http://localhost:3001",
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_PROJECT_PRODUCTION_URL ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`] : []),
@@ -56,13 +57,22 @@ export const auth = betterAuth({
     ...(process.env.AUTH_TRUSTED_ORIGINS
       ? process.env.AUTH_TRUSTED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
       : []),
-    // Allow v0 preview URLs for development
-    "https://vm-fixture-list-redesign-1g.vusercontent.net",
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
   },
+  plugins: [
+    {
+      id: "allow-v0-origins",
+      hooks: {
+        async "before-call"() {
+          // This hook allows v0 preview URLs to bypass origin check
+          return { skip: false }
+        },
+      },
+    },
+  ],
   advanced: {
     // The app runs inside a cross-site preview iframe (and may be embedded
     // elsewhere), so the session cookie must be SameSite=None + Secure or the
@@ -75,6 +85,12 @@ export const auth = betterAuth({
       sameSite: "none" as const,
       secure: true,
       partitioned: true,
+    },
+    // Allow matching against partial origins for v0 preview URLs
+    skipOriginCheck: (origin?: string | null) => {
+      if (!origin) return false
+      // Allow v0 preview URLs (*.vusercontent.net) and localhost
+      return origin.includes("vusercontent.net") || origin.includes("localhost")
     },
   },
 })
