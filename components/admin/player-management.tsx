@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { ManagedPlayer } from "@/lib/queries-dashboard"
-import { adminUpdatePlayer, adminCreatePlayerProfile, adminDeleteUsers } from "@/lib/actions/player"
+import { adminUpdatePlayer, adminDeleteUsers } from "@/lib/actions/player"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ExternalLink, Loader2, Pencil, Mars, Venus, UserMinus, UserPlus, Trash2 } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Mars, Venus, Trash2 } from "lucide-react"
 
 const ALL_CATEGORIES = CATEGORY_RULES.map((c) => c.name)
 
@@ -276,17 +276,8 @@ function PlayerRow({
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-1.5">
           <Button type="button" size="sm" variant="outline" onClick={onEdit}>
-            {player.playerId == null ? (
-              <>
-                <UserPlus className="h-3.5 w-3.5" />
-                <span className="ml-1.5">Create profile</span>
-              </>
-            ) : (
-              <>
-                <Pencil className="h-3.5 w-3.5" />
-                <span className="ml-1.5">Edit</span>
-              </>
-            )}
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="ml-1.5">{player.playerId == null ? "No profile" : "Edit"}</span>
           </Button>
           {canDelete ? (
             <Button
@@ -359,17 +350,8 @@ function PlayerCard({
 
       <div className="mt-3 flex items-center gap-2">
         <Button type="button" size="sm" variant="outline" className="flex-1" onClick={onEdit}>
-          {player.playerId == null ? (
-            <>
-              <UserPlus className="h-3.5 w-3.5" />
-              <span className="ml-1.5">Create profile</span>
-            </>
-          ) : (
-            <>
-              <Pencil className="h-3.5 w-3.5" />
-              <span className="ml-1.5">Edit player</span>
-            </>
-          )}
+          <Pencil className="h-3.5 w-3.5" />
+          <span className="ml-1.5">{player.playerId == null ? "No profile" : "Edit"}</span>
         </Button>
         {canDelete ? (
           <Button
@@ -461,37 +443,16 @@ function EditPlayerDialog({
 
 function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: () => void }) {
   const isCreate = player.playerId == null
-  const [firstName, setFirstName] = useState(player.firstName)
-  const [lastName, setLastName] = useState(player.lastName)
-  const [phone, setPhone] = useState(player.phone ?? "")
-  const [genderVal, setGenderVal] = useState<"male" | "female">(player.gender)
   const [rating, setRating] = useState(player.playtomicRating != null ? String(player.playtomicRating) : "")
   const [li, setLi] = useState(String(player.currentLi))
   const [url, setUrl] = useState(player.playtomicUrl ?? "")
   const [pending, startTransition] = useTransition()
 
   function submit() {
-    if (!firstName.trim() || !lastName.trim()) return toast.error("First and last name are required.")
-
-    // No profile yet: create one first, then the admin can edit it fully.
     if (isCreate) {
-      startTransition(async () => {
-        const res = await adminCreatePlayerProfile({
-          userId: player.userId,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          gender: genderVal,
-        })
-        if (res.ok) {
-          toast.success(`Created profile for ${firstName} ${lastName}`)
-          onSaved()
-        } else {
-          toast.error(res.error ?? "Could not create profile")
-        }
-      })
+      // Nothing to do — create requires name/gender which live in Members & Roles.
       return
     }
-
     const parsedRating = rating.trim() === "" ? null : Number(rating)
     const parsedLi = Number(li)
     if (parsedRating != null && Number.isNaN(parsedRating)) return toast.error("Rating must be a number.")
@@ -499,16 +460,16 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
     startTransition(async () => {
       const res = await adminUpdatePlayer({
         playerId: player.playerId as number,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim() || null,
-        gender: genderVal,
+        firstName: player.firstName,
+        lastName: player.lastName,
+        phone: player.phone ?? null,
+        gender: player.gender,
         playtomicRating: parsedRating,
         currentLi: parsedLi,
         playtomicUrl: url.trim() || null,
       })
       if (res.ok) {
-        toast.success(`Updated ${firstName} ${lastName}`)
+        toast.success(`Updated ${player.name}`)
         onSaved()
       } else {
         toast.error(res.error ?? "Could not update player")
@@ -516,132 +477,57 @@ function EditPlayerForm({ player, onSaved }: { player: ManagedPlayer; onSaved: (
     })
   }
 
-  function leaveTeam(teamId: number, teamName: string) {
-    startTransition(async () => {
-      const res = await adminUpdatePlayer({ playerId: player.playerId as number, removeFromTeamId: teamId })
-      if (res.ok) {
-        toast.success(`Removed from ${teamName}`)
-        onSaved()
-      } else {
-        toast.error(res.error ?? "Could not remove from team")
-      }
-    })
-  }
-
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{isCreate ? "Create player profile" : "Edit player"}</DialogTitle>
+        <DialogTitle>{isCreate ? "No player profile" : `Edit ${player.name}`}</DialogTitle>
         <DialogDescription>
           {isCreate
-            ? `Create a player profile for ${player.email ?? "this account"} so they can be managed and assigned to teams.`
-            : "Update profile details, rating, and team membership."}
+            ? `This account has no player profile yet. Go to Members & Roles to set up their core details first.`
+            : "Adjust LI, Playtomic rating and profile link. To edit name, contact or gender go to Members & Roles."}
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4 py-2">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="firstName">First name</Label>
-            <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="lastName">Last name</Label>
-            <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {!isCreate ? (
+      {!isCreate ? (
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="phone">Contact number</Label>
-              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
-            </div>
-          ) : null}
-          <div className="space-y-1.5">
-            <Label htmlFor="gender">Gender</Label>
-            <select
-              id="gender"
-              value={genderVal}
-              onChange={(e) => setGenderVal(e.target.value as "male" | "female")}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </div>
-        </div>
-
-        {!isCreate ? (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="rating">Playtomic rating</Label>
-                <Input
-                  id="rating"
-                  value={rating}
-                  onChange={(e) => setRating(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="—"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="li">League Index</Label>
-                <Input id="li" value={li} onChange={(e) => setLi(e.target.value)} inputMode="decimal" />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="url">Playtomic URL</Label>
+              <Label htmlFor="rating">Playtomic rating</Label>
               <Input
-                id="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://playtomic.io/..."
+                id="rating"
+                value={rating}
+                onChange={(e) => setRating(e.target.value)}
+                inputMode="decimal"
+                placeholder="—"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label>Teams</Label>
-              {player.teams.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Not on any team.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {player.teams.map((t) => (
-                    <li
-                      key={t.teamId}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
-                    >
-                      <div className="min-w-0 text-sm">
-                        <span className="font-medium">{t.teamName}</span>
-                        {t.divisionName ? (
-                          <span className="text-muted-foreground"> · {t.divisionName}</span>
-                        ) : null}
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => leaveTeam(t.teamId, t.teamName)}
-                      >
-                        <UserMinus className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">Remove</span>
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div className="space-y-1.5">
+              <Label htmlFor="li">League Index (LI)</Label>
+              <Input id="li" value={li} onChange={(e) => setLi(e.target.value)} inputMode="decimal" />
             </div>
-          </>
-        ) : null}
-      </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="url">Playtomic URL</Label>
+            <Input
+              id="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://playtomic.io/..."
+            />
+          </div>
+        </div>
+      ) : null}
 
       <DialogFooter>
-        <Button type="button" disabled={pending} onClick={submit}>
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          <span className={pending ? "ml-2" : ""}>{isCreate ? "Create profile" : "Save changes"}</span>
-        </Button>
+        {isCreate ? (
+          <Button type="button" variant="outline" onClick={onSaved}>Close</Button>
+        ) : (
+          <Button type="button" disabled={pending} onClick={submit}>
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            <span className={pending ? "ml-2" : ""}>Save changes</span>
+          </Button>
+        )}
       </DialogFooter>
     </>
   )

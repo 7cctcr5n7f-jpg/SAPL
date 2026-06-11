@@ -42,6 +42,7 @@ export type MemberRow = {
   id: string
   name: string
   email: string
+  phone: string | null
   role: Role
   playerName: string | null
   createdAt: string
@@ -51,11 +52,13 @@ export type MemberRow = {
 
 export async function listMembers(): Promise<MemberRow[]> {
   await requireMemberManager()
+  // LEFT JOIN userMeta so users who registered but never got a meta row still appear.
   const rows = await db
     .select({
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: userMeta.phone,
       role: userMeta.role,
       permissions: userMeta.permissions,
       firstName: players.firstName,
@@ -71,6 +74,7 @@ export async function listMembers(): Promise<MemberRow[]> {
     id: r.id,
     name: r.name,
     email: r.email,
+    phone: r.phone ?? null,
     role: (r.role as Role) ?? "player",
     playerName: r.firstName ? `${r.firstName} ${r.lastName ?? ""}`.trim() : null,
     createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
@@ -99,6 +103,22 @@ export async function setMemberRole(userId: string, role: Role) {
   } else {
     await db.insert(userMeta).values({ userId, role })
   }
+
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Update a member's core details: name (on the auth user row) and phone (on userMeta). */
+export async function updateMemberDetails(
+  userId: string,
+  input: { name: string; phone?: string | null },
+) {
+  const { me } = await requireMemberManager()
+  const name = input.name.trim()
+  if (!name) return { ok: false, error: "Name is required." }
+
+  await db.update(user).set({ name }).where(eq(user.id, userId))
+  await upsertMeta(userId, { phone: input.phone?.trim() || null })
 
   revalidatePath("/admin/members")
   return { ok: true }

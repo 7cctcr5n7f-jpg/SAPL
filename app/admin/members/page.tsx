@@ -16,7 +16,7 @@ export default async function AdminMembersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Members & Roles"
-        subtitle="Assign roles, send password reset links, or set a temporary password for any member."
+        subtitle="All registered accounts. Edit names, contact details, assign roles and permissions, or reset passwords."
       />
       <MembersTable members={members} currentUserId={me.id} />
     </div>
