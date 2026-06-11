@@ -98,9 +98,9 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
 
   if (!data.regions.length) {
     return (
-      <div className="rounded-2xl border border-border bg-white px-6 py-20 text-center shadow-sm">
-        <h2 className="text-2xl font-bold text-foreground">No live regions yet</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+      <div className="rounded-2xl border border-slate-100 bg-white px-6 py-20 text-center shadow-sm">
+        <h2 className="text-2xl font-bold text-slate-900">No live regions yet</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
           Regions appear here as soon as a season goes live. Check back once the schedule has been generated.
         </p>
       </div>
@@ -132,14 +132,14 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                     "rounded-2xl border px-5 py-3 text-left transition-all",
                     active
                       ? "border-red-600 bg-red-600 text-white shadow-md"
-                      : "border-slate-200 bg-white text-foreground shadow-sm hover:border-red-300 hover:shadow-md",
+                      : "border-slate-200 bg-white text-slate-800 shadow-sm hover:border-red-300 hover:shadow-md",
                   )}
                 >
                   <span className="block text-sm font-bold">{r.name}</span>
                   <span
                     className={cn(
                       "block text-[11px] tabular-nums",
-                      active ? "text-red-100" : "text-muted-foreground",
+                      active ? "text-red-100" : "text-slate-500",
                     )}
                   >
                     {r.teamCount} teams &middot; {r.clubCount} clubs
@@ -165,14 +165,14 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                       "rounded-xl border px-4 py-2 text-sm font-semibold transition-all",
                       active
                         ? "border-red-600 bg-red-600 text-white shadow-sm"
-                        : "border-slate-200 bg-white text-muted-foreground shadow-sm hover:border-red-300 hover:text-foreground",
+                        : "border-slate-200 bg-white text-slate-500 shadow-sm hover:border-red-300 hover:text-slate-800",
                     )}
                   >
                     {d.name}
                     <span
                       className={cn(
                         "ml-2 rounded-md px-1.5 py-0.5 text-[10px] tabular-nums",
-                        active ? "bg-red-500 text-white" : "bg-slate-100 text-muted-foreground",
+                        active ? "bg-red-500 text-white" : "bg-slate-100 text-slate-500",
                       )}
                     >
                       {d.teamCount}
@@ -202,7 +202,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                     "flex-1 py-3.5 text-sm font-semibold tracking-wide transition-colors",
                     tab === t
                       ? "border-b-2 border-red-600 text-red-600"
-                      : "text-muted-foreground hover:text-foreground",
+                      : "text-slate-500 hover:text-slate-800",
                   )}
                 >
                   {labels[t]}
@@ -254,7 +254,7 @@ function WeekSelector({
         }}
         disabled={activeWeek === weeks[0]}
         aria-label="Previous week"
-        className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-muted-foreground transition-colors hover:border-slate-300 disabled:opacity-40"
+        className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition-colors hover:border-slate-300 disabled:opacity-40"
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
@@ -268,7 +268,7 @@ function WeekSelector({
               "shrink-0 rounded-xl px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition-all",
               w === activeWeek
                 ? "bg-red-600 text-white shadow-sm"
-                : "bg-slate-50 text-muted-foreground hover:bg-slate-100 hover:text-foreground",
+                : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800",
             )}
           >
             Week {w}
@@ -283,7 +283,7 @@ function WeekSelector({
         }}
         disabled={activeWeek === weeks[weeks.length - 1]}
         aria-label="Next week"
-        className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-muted-foreground transition-colors hover:border-slate-300 disabled:opacity-40"
+        className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition-colors hover:border-slate-300 disabled:opacity-40"
       >
         <ChevronRight className="h-4 w-4" />
       </button>
@@ -325,7 +325,7 @@ function FixturesByCategory({
 
   if (fixtures.length === 0) {
     return (
-      <div className="py-16 text-center text-sm text-muted-foreground">
+      <div className="py-16 text-center text-sm text-slate-400">
         {isResults ? "No results recorded for this week yet." : "No fixtures scheduled for this week."}
       </div>
     )
@@ -354,7 +354,7 @@ function CategorySection({
       {/* Category header */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
         <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-600">{category}</span>
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">
           {fixtures.length}
         </span>
       </div>
@@ -385,7 +385,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
   return (
     <div className="px-4 py-5 md:px-6 transition-colors hover:bg-slate-50/60">
       {/* Date / Venue row */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
         {fixture.matchDate && (
           <span className="inline-flex items-center gap-1 font-medium">
             <CalendarDays className="h-3 w-3" />
@@ -421,7 +421,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
             <span
               className={cn(
                 "text-sm font-bold leading-tight md:text-base",
-                hasScore && awayWon ? "text-muted-foreground" : "text-foreground",
+                hasScore && awayWon ? "text-slate-400" : "text-slate-900",
               )}
             >
               {fixture.homeName ?? "TBD"}
@@ -430,7 +430,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
           {homePlayers.length > 0 && (
             <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
               {homePlayers.map((p) => (
-                <p key={p} className="text-[11px] text-muted-foreground">
+                <p key={p} className="text-[11px] text-slate-500">
                   {p}
                 </p>
               ))}
@@ -443,19 +443,19 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
           {hasScore ? (
             <div className="flex items-center gap-2 tabular-nums">
               <span
-                className={cn(
-                  "text-3xl font-extrabold leading-none",
-                  homeWon ? "text-red-600" : "text-foreground",
-                )}
+              className={cn(
+                "text-3xl font-extrabold leading-none",
+                homeWon ? "text-red-600" : "text-slate-900",
+              )}
               >
                 {fixture.homePoints ?? 0}
               </span>
               <span className="text-lg font-bold text-slate-300">-</span>
               <span
-                className={cn(
-                  "text-3xl font-extrabold leading-none",
-                  awayWon ? "text-red-600" : "text-foreground",
-                )}
+              className={cn(
+                "text-3xl font-extrabold leading-none",
+                awayWon ? "text-red-600" : "text-slate-900",
+              )}
               >
                 {fixture.awayPoints ?? 0}
               </span>
@@ -464,7 +464,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
             <span className="text-xl font-bold text-slate-300">VS</span>
           )}
           {!hasScore && fixture.timeslot && (
-            <span className="text-xs font-semibold tabular-nums text-muted-foreground">{fixture.timeslot}</span>
+            <span className="text-xs font-semibold tabular-nums text-slate-500">{fixture.timeslot}</span>
           )}
         </div>
 
@@ -475,7 +475,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
             <span
               className={cn(
                 "text-right text-sm font-bold leading-tight md:text-base",
-                hasScore && homeWon ? "text-muted-foreground" : "text-foreground",
+                hasScore && homeWon ? "text-slate-400" : "text-slate-900",
               )}
             >
               {fixture.awayName ?? "TBD"}
@@ -484,7 +484,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
           {awayPlayers.length > 0 && (
             <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
               {awayPlayers.map((p) => (
-                <p key={p} className="text-[11px] text-muted-foreground">
+                <p key={p} className="text-[11px] text-slate-500">
                   {p}
                 </p>
               ))}
@@ -509,7 +509,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
           ) : (
             <button
               disabled
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-muted-foreground shadow-sm"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 shadow-sm"
             >
               <Clock className="h-4 w-4" />
               Link Coming Soon
@@ -529,7 +529,7 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
         <div className="mt-3 flex items-center justify-between">
           <Link
             href={`/league-centre/match/${fixture.id}`}
-            className="text-xs font-semibold text-muted-foreground transition-colors hover:text-red-600"
+            className="text-xs font-semibold text-slate-500 transition-colors hover:text-red-600"
           >
             View match details &rarr;
           </Link>
@@ -564,18 +564,18 @@ function MyMatchRow({ fixture }: { fixture: LCFixture }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <div className="w-14 shrink-0 text-center">
-        <p className="text-xs font-semibold tabular-nums text-foreground">
+        <p className="text-xs font-semibold tabular-nums text-slate-800">
           {timeLabel(fixture.matchDate, fixture.timeslot)}
         </p>
-        <p className="text-[10px] text-muted-foreground">{shortDate(fixture.matchDate) ?? "TBD"}</p>
+        <p className="text-[10px] text-slate-500">{shortDate(fixture.matchDate) ?? "TBD"}</p>
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="sm" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
           {fixture.homeName ?? "TBD"}
         </span>
-        <span className="text-xs font-bold text-muted-foreground">vs</span>
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-foreground">
+        <span className="text-xs font-bold text-slate-400">vs</span>
+        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-800">
           {fixture.awayName ?? "TBD"}
         </span>
         <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="sm" />

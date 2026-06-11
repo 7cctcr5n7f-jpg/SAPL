@@ -21,7 +21,7 @@ export default async function LeagueCentrePage() {
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-600">
                 {data.stats.seasonName ?? "SAPL Season"}
               </p>
-              <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-foreground md:text-4xl">
+              <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
                 Match Centre
               </h1>
             </div>
@@ -44,8 +44,8 @@ export default async function LeagueCentrePage() {
 function HeaderStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col items-center">
-      <dd className="text-xl font-extrabold text-foreground">{value}</dd>
-      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="text-xl font-extrabold text-slate-900">{value}</dd>
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
     </div>
   )
 }
