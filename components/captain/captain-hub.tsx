@@ -70,12 +70,14 @@ export function CaptainHub({
   categories,
   canEdit = false,
   playerFee,
+  isLeagueAdmin = false,
 }: {
   teams: CaptainTeam[]
   freeAgents: FreeAgent[]
   categories: Cat[]
   canEdit?: boolean
   playerFee: number
+  isLeagueAdmin?: boolean
 }) {
   const [activeId, setActiveId] = useState(teams[0]?.id ?? 0)
   const team = teams.find((t) => t.id === activeId) ?? teams[0]
@@ -121,210 +123,279 @@ export function CaptainHub({
 
   return (
     <div className="space-y-5">
-      {/* Captains can create a new player account and optionally drop them
-          straight onto one of their own teams. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Add a new player to your squad — they&apos;ll get a login and can be assigned to one of your teams.
-        </p>
-        <div className="shrink-0">
-          <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
-        </div>
-      </div>
+      {/* League admins only see the team selector and fixtures/scoring */}
+      {isLeagueAdmin ? (
+        <>
+          {teams.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {teams.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveId(t.id)}
+                  className={cn(
+                    "rounded-md border px-4 py-2 text-sm font-medium transition-colors",
+                    t.id === activeId
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
 
-      {teams.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {teams.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveId(t.id)}
-              className={cn(
-                "rounded-md border px-4 py-2 text-sm font-medium transition-colors",
-                t.id === activeId
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        {/* Roster */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base">{team.name} Roster</CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Fixtures • {team.name}</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {team.divisionName} · TPR {Math.round(team.tpr)}
               </p>
-            </div>
-            <Dialog>
-              <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <UserPlus className="mr-1.5 h-4 w-4" />
-                Add player
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Add a Player</DialogTitle>
-                </DialogHeader>
-                <Input
-                  placeholder="Search by name or email..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <div className="max-h-80 space-y-2 overflow-y-auto">
-                  {filteredAgents.length === 0 && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      {q ? "No players match that name or email." : "Start typing to search players."}
-                    </p>
-                  )}
-                  {filteredAgents.map((a) => (
-                    <div
-                      key={a.playerId}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs">{a.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{a.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {a.email ?? `LI ${a.li.toFixed(1)} · ${a.city ?? "—"}`}
-                          </p>
-                        </div>
-                      </div>
-                      <Button size="sm" disabled={pending} onClick={() => invite(a.playerId)}>
-                        Add
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </DialogContent>
-            </Dialog>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <FeeSummary team={team} metaById={metaById} playerFee={playerFee} />
-            {team.roster.length === 0 && (
-              <p className="text-sm text-muted-foreground">No players yet. Add free agents to build your squad.</p>
-            )}
-            {team.roster.map((m) => {
-              const meta = metaById.get(m.playerId)
-              const paid = meta?.paid ?? team.clubPaysFees
-              return (
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {team.fixtures.length === 0 && (
+                <p className="text-sm text-muted-foreground">No fixtures scheduled.</p>
+              )}
+              {team.fixtures.map((f) => (
                 <div
-                  key={m.membershipId}
+                  key={f.id}
                   className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1 truncate text-sm font-medium">
-                        {meta?.gender === "female" ? (
-                          <Venus className="h-3.5 w-3.5 shrink-0 text-pink-500" aria-label="Female" />
-                        ) : (
-                          <Mars className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-label="Male" />
-                        )}
-                        <span className="truncate">{m.name}</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">LI {m.li.toFixed(1)}</p>
-                    </div>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {f.homeName} <span className="text-muted-foreground">vs</span> {f.awayName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Week {f.week} · {fmtDate(f.matchDate)}
+                    </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        "inline-flex h-5 w-5 items-center justify-center rounded-full",
-                        paid ? "bg-green-100 text-green-600" : "bg-muted text-muted-foreground/40",
-                      )}
-                      title={paid ? (team.clubPaysFees ? "Covered by team" : "Paid") : "Fee outstanding"}
-                      aria-label={paid ? "Paid" : "Unpaid"}
-                    >
-                      <DollarSign className="h-3.5 w-3.5" />
-                    </span>
-                    {m.role === "captain" ? (
-                      <Badge>Captain</Badge>
-                    ) : m.status === "invited" ? (
-                      <Badge variant="secondary">Invited</Badge>
-                    ) : (
-                      <button
-                        onClick={() => remove(m.membershipId)}
-                        disabled={pending}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove ${m.name}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-
-        {/* Fixtures */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Fixtures</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {team.fixtures.length === 0 && (
-              <p className="text-sm text-muted-foreground">No fixtures scheduled.</p>
-            )}
-            {team.fixtures.map((f) => (
-              <div
-                key={f.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-              >
-                <div>
-                  <p className="text-sm font-medium">
-                    {f.homeName} <span className="text-muted-foreground">vs</span> {f.awayName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Week {f.week} · {fmtDate(f.matchDate)}
-                  </p>
-                </div>
-                {f.status === "completed" ? (
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-base font-bold tabular-nums">
-                      {f.homePoints ?? 0} <span className="text-muted-foreground">–</span> {f.awayPoints ?? 0}
-                    </span>
-                    {canEdit && (
+                  {f.status === "completed" ? (
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-base font-bold tabular-nums">
+                        {f.homePoints ?? 0} <span className="text-muted-foreground">–</span> {f.awayPoints ?? 0}
+                      </span>
                       <Button size="sm" variant="ghost" onClick={() => setResultFixture(f)}>
                         Edit
                       </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => setResultFixture(f)}>
+                      Enter Result
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <>
+          {/* Captains can create a new player account and optionally drop them
+              straight onto one of their own teams. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Add a new player to your squad — they&apos;ll get a login and can be assigned to one of your teams.
+            </p>
+            <div className="shrink-0">
+              <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+            </div>
+          </div>
+
+          {teams.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {teams.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveId(t.id)}
+                  className={cn(
+                    "rounded-md border px-4 py-2 text-sm font-medium transition-colors",
+                    t.id === activeId
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            {/* Roster */}
+            <Card>
+              <CardHeader className="flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">{team.name} Roster</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {team.divisionName} · TPR {Math.round(team.tpr)}
+                  </p>
+                </div>
+                <Dialog>
+                  <DialogTrigger render={<Button size="sm" variant="outline" />}>
+                    <UserPlus className="mr-1.5 h-4 w-4" />
+                    Add player
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Add a Player</DialogTitle>
+                    </DialogHeader>
+                    <Input
+                      placeholder="Search by name or email..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
+                      {filteredAgents.length === 0 && (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                          {q ? "No players match that name or email." : "Start typing to search players."}
+                        </p>
+                      )}
+                      {filteredAgents.map((a) => (
+                        <div
+                          key={a.playerId}
+                          className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">{a.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{a.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {a.email ?? `LI ${a.li.toFixed(1)} · ${a.city ?? "—"}`}
+                              </p>
+                            </div>
+                          </div>
+                          <Button size="sm" disabled={pending} onClick={() => invite(a.playerId)}>
+                            Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <FeeSummary team={team} metaById={metaById} playerFee={playerFee} />
+                {team.roster.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No players yet. Add free agents to build your squad.</p>
+                )}
+                {team.roster.map((m) => {
+                  const meta = metaById.get(m.playerId)
+                  const paid = meta?.paid ?? team.clubPaysFees
+                  return (
+                    <div
+                      key={m.membershipId}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1 truncate text-sm font-medium">
+                            {meta?.gender === "female" ? (
+                              <Venus className="h-3.5 w-3.5 shrink-0 text-pink-500" aria-label="Female" />
+                            ) : (
+                              <Mars className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-label="Male" />
+                            )}
+                            <span className="truncate">{m.name}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">LI {m.li.toFixed(1)}</p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex h-5 w-5 items-center justify-center rounded-full",
+                            paid ? "bg-green-100 text-green-600" : "bg-muted text-muted-foreground/40",
+                          )}
+                          title={paid ? (team.clubPaysFees ? "Covered by team" : "Paid") : "Fee outstanding"}
+                          aria-label={paid ? "Paid" : "Unpaid"}
+                        >
+                          <DollarSign className="h-3.5 w-3.5" />
+                        </span>
+                        {m.role === "captain" ? (
+                          <Badge>Captain</Badge>
+                        ) : m.status === "invited" ? (
+                          <Badge variant="secondary">Invited</Badge>
+                        ) : (
+                          <button
+                            onClick={() => remove(m.membershipId)}
+                            disabled={pending}
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label={`Remove ${m.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+
+            {/* Fixtures */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Fixtures</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {team.fixtures.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No fixtures scheduled.</p>
+                )}
+                {team.fixtures.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {f.homeName} <span className="text-muted-foreground">vs</span> {f.awayName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Week {f.week} · {fmtDate(f.matchDate)}
+                      </p>
+                    </div>
+                    {f.status === "completed" ? (
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-base font-bold tabular-nums">
+                          {f.homePoints ?? 0} <span className="text-muted-foreground">–</span> {f.awayPoints ?? 0}
+                        </span>
+                        {canEdit && (
+                          <Button size="sm" variant="ghost" onClick={() => setResultFixture(f)}>
+                            Edit
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => setResultFixture(f)}>
+                        Enter Result
+                      </Button>
                     )}
                   </div>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => setResultFixture(f)}>
-                    Enter Result
-                  </Button>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
 
-      <div>
-        <h2 className="mb-1 text-lg font-semibold">Team Pairings</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          One pair per category — a beginner and advanced pair for both ladies and mens (8 players).
-          Assign roster players or invite new ones by email to fill empty slots.
-        </p>
-        <PairingsBoard
-          teamId={team.id}
-          categories={team.pairingCategories}
-          roster={team.pairingRoster}
-          invites={team.pairingInvites}
-          clubPaysFees={team.clubPaysFees}
-        />
-      </div>
+          <div>
+            <h2 className="mb-1 text-lg font-semibold">Team Pairings</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              One pair per category — a beginner and advanced pair for both ladies and mens (8 players).
+              Assign roster players or invite new ones by email to fill empty slots.
+            </p>
+            <PairingsBoard
+              teamId={team.id}
+              categories={team.pairingCategories}
+              roster={team.pairingRoster}
+              invites={team.pairingInvites}
+              clubPaysFees={team.clubPaysFees}
+            />
+          </div>
+        </>
+      )}
 
       <Dialog open={!!resultFixture} onOpenChange={(open) => !open && setResultFixture(null)}>
         <DialogContent className="max-w-lg">
