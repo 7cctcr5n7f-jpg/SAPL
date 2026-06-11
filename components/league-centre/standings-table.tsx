@@ -12,8 +12,8 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
   }
   const total = rows.length
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="hidden grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] items-center gap-2 border-b border-border bg-secondary/50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid">
+    <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
+      <div className="hidden grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid">
         <span className="text-center">#</span>
         <span>Team</span>
         <span className="text-center">P</span>
@@ -37,7 +37,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-border px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
+                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
                 promo && "bg-primary/[0.06]",
                 releg && "bg-destructive/[0.06]",
               )}
@@ -83,7 +83,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
           )
         })}
       </ul>
-      <div className="flex flex-wrap items-center gap-4 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-primary" /> Promotion</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-foreground/40" /> Playoff</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-destructive" /> Relegation</span>
