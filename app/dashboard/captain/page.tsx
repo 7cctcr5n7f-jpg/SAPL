@@ -20,19 +20,21 @@ export default async function CaptainPage() {
   // Captains, team owners, and club/team managers all get the Captain Hub for
   // the teams in their scope.
   const access = await requireAccessContext()
-  if (!access.can("captain_hub") && !access.can("team_management")) redirect("/dashboard")
+  if (!access.can("captain_hub") && !access.can("team_management") && !access.isLeagueAdmin)
+    redirect("/dashboard")
 
-  // The captain hub shows every team the user captains OR owns (by owner email),
-  // resolved through the access context's team assignments.
-  let captainTeams =
-    access.teamIds.length > 0
-      ? await db.select().from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
-      : []
+  // League admins can select ANY team and enter scores
+  // Everyone else sees only their assigned teams
+  let captainTeams: typeof teams.$inferSelect[] = []
+  let isAdminSelectingTeams = false
 
-  // Super admins previewing the captain experience see sample teams.
-  const previewing = access.isLeagueAdmin && captainTeams.length === 0
-  if (previewing) {
-    captainTeams = await db.select().from(teams).orderBy(teams.name).limit(2)
+  if (access.isLeagueAdmin) {
+    // Admins can see and manage all teams
+    captainTeams = await db.select().from(teams).orderBy(teams.name)
+    isAdminSelectingTeams = true
+  } else if (access.teamIds.length > 0) {
+    // Non-admin captains/managers see only their assigned teams
+    captainTeams = await db.select().from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
   }
 
   if (captainTeams.length === 0) {
@@ -126,8 +128,8 @@ export default async function CaptainPage() {
       <PageHeader
         title="Captain Hub"
         subtitle={
-          previewing
-            ? "Preview mode — sample teams shown so you can see the captain experience"
+          isAdminSelectingTeams
+            ? "As league admin, you can manage scores for any team"
             : "Manage your roster, submit lineups, and enter results"
         }
       />
@@ -137,6 +139,7 @@ export default async function CaptainPage() {
         categories={catLite}
         canEdit={true}
         playerFee={playerFee}
+        isLeagueAdmin={access.isLeagueAdmin}
       />
     </div>
   )
