@@ -56,6 +56,8 @@ export const auth = betterAuth({
     ...(process.env.AUTH_TRUSTED_ORIGINS
       ? process.env.AUTH_TRUSTED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
       : []),
+    // Allow v0 preview URLs for development
+    "https://vm-fixture-list-redesign-1g.vusercontent.net",
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
