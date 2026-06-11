@@ -1,9 +1,6 @@
 import { getCurrentUser } from "@/lib/session"
 import { getLeagueCentreData } from "@/lib/queries-league-centre"
-import { getMainSponsor, getPrizePool } from "@/lib/queries"
 import { LeagueCentreExperience } from "@/components/league-centre/league-centre-experience"
-import { LiveExperienceShowcase } from "@/components/league-centre/league-centre-experience"
-import { PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
 
 export const metadata = {
   title: "League Centre | SAPL",
@@ -12,12 +9,7 @@ export const metadata = {
 
 export default async function LeagueCentrePage() {
   const user = await getCurrentUser()
-  const [data, mainSponsor, prizePool] = await Promise.all([
-    getLeagueCentreData(user),
-    getMainSponsor(),
-    getPrizePool(),
-  ])
-  const sponsor = mainSponsor as unknown as PublicSponsor | null
+  const data = await getLeagueCentreData(user)
 
   return (
     <div>
@@ -44,12 +36,6 @@ export default async function LeagueCentrePage() {
       <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-6">
         <LeagueCentreExperience data={data} />
       </div>
-
-      {/* Secondary content: prize pool + promo below the league information */}
-      <PrizeCallout prizePool={prizePool} sponsor={sponsor} />
-      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
-        <LiveExperienceShowcase />
-      </div>
     </div>
   )
 }
@@ -62,5 +48,6 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
     </div>
   )
 }
+
 
 
