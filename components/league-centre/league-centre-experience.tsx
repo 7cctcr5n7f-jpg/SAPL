@@ -199,7 +199,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
           <div className="flex border-b border-slate-100">
             {(["schedule", "standings"] as ContentTab[]).map((t) => {
               const labels: Record<ContentTab, string> = {
-                schedule: "Schedule",
+                schedule: "Matches",
                 standings: "Standings",
               }
               return (
