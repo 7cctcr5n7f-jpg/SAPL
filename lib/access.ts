@@ -103,14 +103,13 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   ].filter((c) => c.auto || !removeClubSet.has(c.clubId)) // manual removals only affect manual/non-auto
   const clubIds = [...new Set(clubAssignments.map((c) => c.clubId))]
 
-  // Being assigned a club — whether via the club's contact email (auto) or a
-  // manual assignment in Members & Roles — makes the user a club manager for
-  // that venue. Grant the club-scoped permissions so they can reach Fixture
-  // Management and edit booking links for fixtures hosted at their club(s), plus
-  // Team Management and the Captain Hub for teams homed at their club(s).
-  // These are scoped to `clubIds` / `teamIds` by the access layer, so they only
-  // ever affect the user's own venues and teams, never the whole league.
-  if (clubIds.length > 0 && !isLeagueAdmin) {
+  // Being assigned a club — via the club's contact email (auto) or a manual
+  // assignment — makes the user a club manager for that venue, but ONLY when
+  // their role is captain or above. Plain players should never receive
+  // management permissions, even if their email coincidentally matches a
+  // club's contact address.
+  const isElevatedRole = ["captain", "org_admin", "league_admin", "super_admin"].includes(user.role)
+  if (clubIds.length > 0 && !isLeagueAdmin && isElevatedRole) {
     permissions.add("club_management")
     permissions.add("fixture_management")
     permissions.add("player_management")
