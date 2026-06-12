@@ -4,17 +4,19 @@ import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
-import type { LeagueCentreData, LCFixture } from "@/lib/queries-league-centre"
+import type { LeagueCentreData, LCFixture, LCRubber } from "@/lib/queries-league-centre"
 import { CATEGORY_RULES } from "@/lib/constants"
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   Clock,
   MapPin,
   CalendarDays,
   ListOrdered,
   Radio,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -52,6 +54,11 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   const [divisionId, setDivisionId] = useState<number | null>(regionDivisions[0]?.id ?? null)
   const [tab, setTab] = useState<ContentTab>("fixtures")
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
+  const [expandedFixtureId, setExpandedFixtureId] = useState<number | null>(null)
+
+  function toggleFixture(id: number) {
+    setExpandedFixtureId((prev) => (prev === id ? null : id))
+  }
 
   function selectRegion(id: number) {
     setRegionId(id)
@@ -225,7 +232,12 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
             {tab === "standings" ? (
               <StandingsTable rows={divisionStandings} />
             ) : (
-              <FixturesByCategory fixtures={activeFixtures} isResults={tab === "results"} />
+              <FixturesByCategory
+                fixtures={activeFixtures}
+                isResults={tab === "results"}
+                expandedFixtureId={expandedFixtureId}
+                onToggleFixture={toggleFixture}
+              />
             )}
           </div>
         </div>
@@ -296,9 +308,13 @@ function WeekSelector({
 function FixturesByCategory({
   fixtures,
   isResults,
+  expandedFixtureId,
+  onToggleFixture,
 }: {
   fixtures: LCFixture[]
   isResults: boolean
+  expandedFixtureId: number | null
+  onToggleFixture: (id: number) => void
 }) {
   // Group by divisionName (the category for this division)
   // We use CATEGORY_RULES order but also capture any divisionName not in the list
@@ -334,7 +350,14 @@ function FixturesByCategory({
   return (
     <div className="space-y-6">
       {byCategory.map(([category, cats]) => (
-        <CategorySection key={category} category={category} fixtures={cats} isResults={isResults} />
+        <CategorySection
+          key={category}
+          category={category}
+          fixtures={cats}
+          isResults={isResults}
+          expandedFixtureId={expandedFixtureId}
+          onToggleFixture={onToggleFixture}
+        />
       ))}
     </div>
   )
@@ -344,10 +367,14 @@ function CategorySection({
   category,
   fixtures,
   isResults,
+  expandedFixtureId,
+  onToggleFixture,
 }: {
   category: string
   fixtures: LCFixture[]
   isResults: boolean
+  expandedFixtureId: number | null
+  onToggleFixture: (id: number) => void
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100" style={{ backgroundColor: "rgb(254,254,255)" }}>
@@ -361,7 +388,13 @@ function CategorySection({
       {/* Fixture cards */}
       <div className="divide-y divide-slate-50">
         {fixtures.map((f) => (
-          <FixtureCard key={f.id} fixture={f} isResults={isResults} />
+          <FixtureCard
+            key={f.id}
+            fixture={f}
+            isResults={isResults}
+            isExpanded={expandedFixtureId === f.id}
+            onToggle={() => onToggleFixture(f.id)}
+          />
         ))}
       </div>
     </div>
@@ -370,7 +403,17 @@ function CategorySection({
 
 // ─── Individual Fixture Card ──────────────────────────────────────────────────
 
-function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: boolean }) {
+function FixtureCard({
+  fixture,
+  isResults,
+  isExpanded,
+  onToggle,
+}: {
+  fixture: LCFixture
+  isResults: boolean
+  isExpanded: boolean
+  onToggle: () => void
+}) {
   const isCompleted = fixture.status === "completed"
   const isLive = fixture.status === "live"
   const homeWon = fixture.winnerTeamId != null && fixture.winnerTeamId === fixture.homeTeamId
@@ -535,6 +578,175 @@ function FixtureCard({ fixture, isResults }: { fixture: LCFixture; isResults: bo
           </Link>
         </div>
       )}
+
+      {/* Team vs Team breakdown toggle */}
+      <button
+        onClick={onToggle}
+        className={cn(
+          "mt-4 flex w-full items-center justify-between rounded-xl border px-4 py-2.5 text-left text-xs font-semibold transition-all",
+          isExpanded
+            ? "border-red-200 bg-red-50 text-red-700"
+            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-800",
+        )}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <Users className="h-3.5 w-3.5" />
+          {fixture.homeName ?? "Home"} vs {fixture.awayName ?? "Away"} — Individual Matches
+        </span>
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded && "rotate-180")}
+        />
+      </button>
+
+      {/* Expanded breakdown */}
+      {isExpanded && (
+        <FixtureBreakdown fixture={fixture} />
+      )}
+    </div>
+  )
+}
+
+// ─── Fixture Breakdown (team vs team, per category) ──────────────────────────
+
+const RUBBER_CATEGORY_ORDER = ["Mens Beginner", "Mens Intermediate", "Mens Open", "Ladies Open"]
+
+function FixtureBreakdown({ fixture }: { fixture: LCFixture }) {
+  const isCompleted = fixture.status === "completed"
+
+  // Build a map of existing rubbers by category
+  const rubberByCategory = new Map<string, LCRubber>()
+  for (const r of fixture.rubbers) {
+    rubberByCategory.set(r.category, r)
+  }
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+      {/* Header row */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          {fixture.homeName}
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</span>
+        <span className="text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          {fixture.awayName}
+        </span>
+      </div>
+
+      <div className="divide-y divide-slate-50">
+        {RUBBER_CATEGORY_ORDER.map((category) => {
+          const rubber = rubberByCategory.get(category)
+          const homePair = fixture.homePlayers?.[category] ?? []
+          const awayPair = fixture.awayPlayers?.[category] ?? []
+          const homeWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.homeTeamId
+          const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
+          const hasScore = !!rubber && isCompleted
+
+          return (
+            <div key={category} className="px-4 py-3">
+              {/* Category label */}
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                  {category}
+                </span>
+                {rubber?.scoreDetail && (
+                  <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
+                )}
+              </div>
+
+              {/* Players vs Score vs Players */}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                {/* Home pair */}
+                <div className="space-y-0.5">
+                  {homePair.length > 0 ? (
+                    homePair.map((name) => (
+                      <p
+                        key={name}
+                        className={cn(
+                          "text-xs font-semibold leading-tight",
+                          hasScore && awayWon ? "text-slate-400" : "text-slate-800",
+                          hasScore && homeWon && "text-red-600",
+                        )}
+                      >
+                        {name}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400">TBD</p>
+                  )}
+                </div>
+
+                {/* Score */}
+                <div className="flex items-center gap-1.5 tabular-nums">
+                  {hasScore ? (
+                    <>
+                      <span className={cn("text-lg font-extrabold", homeWon ? "text-red-600" : "text-slate-700")}>
+                        {rubber!.homeSetsWon}
+                      </span>
+                      <span className="text-sm text-slate-300">-</span>
+                      <span className={cn("text-lg font-extrabold", awayWon ? "text-red-600" : "text-slate-700")}>
+                        {rubber!.awaySetsWon}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-bold text-slate-300">vs</span>
+                  )}
+                </div>
+
+                {/* Away pair */}
+                <div className="space-y-0.5 text-right">
+                  {awayPair.length > 0 ? (
+                    awayPair.map((name) => (
+                      <p
+                        key={name}
+                        className={cn(
+                          "text-xs font-semibold leading-tight",
+                          hasScore && homeWon ? "text-slate-400" : "text-slate-800",
+                          hasScore && awayWon && "text-red-600",
+                        )}
+                      >
+                        {name}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-right text-xs text-slate-400">TBD</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons — only for logged-in players whose team is in this fixture */}
+              {fixture.mine && !isCompleted && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {fixture.joinUrl ? (
+                    <a
+                      href={fixture.joinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Join Now
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-400 shadow-sm"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      Link Coming Soon
+                    </button>
+                  )}
+                  <Link
+                    href={`/league-centre/match/${fixture.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
+                  >
+                    Enter Score
+                  </Link>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
