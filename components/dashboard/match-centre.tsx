@@ -8,6 +8,13 @@ import { Crest } from "@/components/league-centre/crest"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { fmtDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { ResultEntry } from "@/components/captain/result-entry"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   AlertTriangle,
   ArrowRight,
@@ -86,18 +93,6 @@ function JoinButton({ url }: { url: string }) {
       Join Match
       <ExternalLink className="h-3 w-3" />
     </a>
-  )
-}
-
-function ScoreButton({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
-    >
-      <ClipboardEdit className="h-3 w-3" />
-      {label}
-    </Link>
   )
 }
 
@@ -243,6 +238,8 @@ export function MatchCentre({
   isCaptain: boolean
   captainHref?: string
 }) {
+  const [scoreFixture, setScoreFixture] = useState<DashboardFixture | null>(null)
+
   const sorted = [...matches].sort((a, b) =>
     String(a.matchDate ?? "").localeCompare(String(b.matchDate ?? "")),
   )
@@ -250,15 +247,9 @@ export function MatchCentre({
   const awaiting = sorted.filter((m) => groupOf(m) === "awaiting")
   const completed = sorted.filter((m) => groupOf(m) === "completed").reverse()
 
-  // To Do: every non-completed match the player still needs to join. We always
-  // surface these (even before a booking link exists) so the player knows a
-  // match is coming; the row shows a Join button once a court link is set, or a
-  // "link coming soon" hint until then.
-  const joinActions = sorted
-    .filter((m) => groupOf(m) !== "completed")
-    .map((m) => ({ fixture: m, url: primaryJoinLink(m, details[m.id]) }))
-  const scoreActions = isCaptain ? awaiting : []
-  const hasActions = joinActions.length > 0 || scoreActions.length > 0
+  // To Do: every non-completed match gets both a Join and Enter Score action.
+  const toDoFixtures = sorted.filter((m) => groupOf(m) !== "completed")
+  const hasActions = toDoFixtures.length > 0
 
   if (matches.length === 0) {
     return (
@@ -271,78 +262,111 @@ export function MatchCentre({
     )
   }
 
+  const myCategory = scoreFixture ? details[scoreFixture.id]?.myCategory : null
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* SECTION 1 — To Do (actions required) */}
-      {hasActions && (
+    <>
+      <div className="flex flex-col gap-6">
+        {/* SECTION 1 — To Do */}
+        {hasActions && (
+          <section>
+            <h2 className="mb-2 inline-flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-amber-600 dark:text-amber-500">
+              <AlertTriangle className="h-4 w-4" />
+              To Do
+            </h2>
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/[0.03]">
+              {toDoFixtures.map((f) => {
+                const url = primaryJoinLink(f, details[f.id])
+                const isAwaiting = groupOf(f) === "awaiting"
+                return (
+                  <ActionItem
+                    key={f.id}
+                    title={isAwaiting ? "Score needed" : "Upcoming match"}
+                    detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtDate(f.matchDate)}`}
+                    action={
+                      <div className="flex items-center gap-2">
+                        {url ? (
+                          <JoinButton url={url} />
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
+                            <Clock className="h-3 w-3" />
+                            Link soon
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setScoreFixture(f)}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
+                        >
+                          <ClipboardEdit className="h-3 w-3" />
+                          Enter Score
+                        </button>
+                      </div>
+                    }
+                  />
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* SECTION 2 — Team Fixtures */}
         <section>
-          <h2 className="mb-2 inline-flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-amber-600 dark:text-amber-500">
-            <AlertTriangle className="h-4 w-4" />
-            To Do
-          </h2>
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/[0.03]">
-            {scoreActions.map((f) => (
-              <ActionItem
-                key={`score-${f.id}`}
-                title="Submit Score"
-                detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"}`}
-                action={<ScoreButton href={captainHref} label="Open" />}
-              />
-            ))}
-            {joinActions.map(({ fixture: f, url }) => (
-              <ActionItem
-                key={`join-${f.id}`}
-                title="Join Match"
-                detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtDate(f.matchDate)}`}
-                action={
-                  url ? (
-                    <JoinButton url={url} />
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
-                      <Clock className="h-3 w-3" />
-                      Link soon
-                    </span>
-                  )
-                }
-              />
-            ))}
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Team Fixtures</h2>
+            <Link href="/league-centre" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+              League Centre <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="flex flex-col gap-4">
+            {awaiting.length > 0 && (
+              <FixtureGroupList label="Awaiting Score" count={awaiting.length}>
+                {awaiting.map((f) => (
+                  <FixtureRow key={f.id} f={f} detail={details[f.id]} />
+                ))}
+              </FixtureGroupList>
+            )}
+            {upcoming.length > 0 && (
+              <FixtureGroupList label="Upcoming" count={upcoming.length}>
+                {upcoming.map((f) => (
+                  <FixtureRow key={f.id} f={f} detail={details[f.id]} />
+                ))}
+              </FixtureGroupList>
+            )}
+            {completed.length > 0 && (
+              <FixtureGroupList label="Completed" count={completed.length}>
+                {completed.slice(0, 6).map((f) => (
+                  <FixtureRow key={f.id} f={f} detail={details[f.id]} />
+                ))}
+              </FixtureGroupList>
+            )}
           </div>
         </section>
-      )}
+      </div>
 
-      {/* SECTION 2 — Team Fixtures (expandable, player-vs-player on expand) */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Team Fixtures</h2>
-          <Link href="/league-centre" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            League Centre <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-        <div className="flex flex-col gap-4">
-          {awaiting.length > 0 && (
-            <FixtureGroupList label="Awaiting Score" count={awaiting.length}>
-              {awaiting.map((f) => (
-                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
-              ))}
-            </FixtureGroupList>
+      {/* Inline score dialog */}
+      <Dialog open={!!scoreFixture} onOpenChange={(open) => !open && setScoreFixture(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Enter Score{myCategory ? ` · ${myCategory}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {scoreFixture && (
+            <ResultEntry
+              fixtureId={scoreFixture.id}
+              homeName={scoreFixture.homeName ?? "Home"}
+              awayName={scoreFixture.awayName ?? "Away"}
+              categories={
+                myCategory
+                  ? [{ category: myCategory, session: 1, isFeatureCourt: false }]
+                  : COURTS.map((c, i) => ({ category: c, session: i + 1, isFeatureCourt: false }))
+              }
+              onDone={() => setScoreFixture(null)}
+            />
           )}
-          {upcoming.length > 0 && (
-            <FixtureGroupList label="Upcoming" count={upcoming.length}>
-              {upcoming.map((f) => (
-                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
-              ))}
-            </FixtureGroupList>
-          )}
-          {completed.length > 0 && (
-            <FixtureGroupList label="Completed" count={completed.length}>
-              {completed.slice(0, 6).map((f) => (
-                <FixtureRow key={f.id} f={f} detail={details[f.id]} />
-              ))}
-            </FixtureGroupList>
-          )}
-        </div>
-      </section>
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
