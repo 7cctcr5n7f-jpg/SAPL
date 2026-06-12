@@ -42,10 +42,21 @@ export default async function CaptainPage() {
       <div className="space-y-6">
         <PageHeader title="Captain Hub" subtitle="Manage your roster, lineups, and results" />
         <div className="rounded-lg border border-border bg-card p-10 text-center">
-          <p className="text-lg font-semibold">You are not a team captain yet</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Captains are assigned by their organisation administrator. Once you captain a team it will appear here.
-          </p>
+          {access.isLeagueAdmin ? (
+            <>
+              <p className="text-lg font-semibold">No teams exist yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Create your first team in the Admin panel, then come back here to manage rosters, pairings, and results.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-semibold">You are not a team captain yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Captains are assigned by their organisation administrator. Once you captain a team it will appear here.
+              </p>
+            </>
+          )}
         </div>
       </div>
     )
