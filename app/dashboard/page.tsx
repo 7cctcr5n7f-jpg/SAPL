@@ -21,6 +21,7 @@ import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
+import { MyMatchCards } from "@/components/dashboard/my-match-cards"
 import { fmtZAR } from "@/lib/format"
 
 export default async function DashboardOverview() {
@@ -90,6 +91,9 @@ export default async function DashboardOverview() {
 
   return (
     <div>
+      {/* MY MATCHES — individual rubbers the player is assigned to, always on top */}
+      <MyMatchCards matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
+
       {/* SECTION 1 — compact player summary (team, division, region, LI, status). */}
       <PlayerSummary
         firstName={me.name.split(" ")[0]}
