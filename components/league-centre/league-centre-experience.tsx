@@ -471,6 +471,10 @@ function FixtureCard({
               {fixture.homeName ?? "TBD"}
             </span>
           </div>
+          <div className="ml-[2.75rem] flex items-center gap-2">
+            <LiBadge li={fixture.homeAvgLi} />
+            <FormDots form={fixture.homeForm} align="left" />
+          </div>
           {homePlayers.length > 0 && (
             <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
               {homePlayers.map((p) => (
@@ -525,6 +529,10 @@ function FixtureCard({
               {fixture.awayName ?? "TBD"}
             </span>
           </div>
+          <div className="mr-[2.75rem] flex items-center justify-end gap-2">
+            <FormDots form={fixture.awayForm} align="right" />
+            <LiBadge li={fixture.awayAvgLi} />
+          </div>
           {awayPlayers.length > 0 && (
             <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
               {awayPlayers.map((p) => (
@@ -578,6 +586,40 @@ function FixtureCard({
 
 // ─── Fixture Breakdown (team vs team, per category) ──────────────────────────
 
+/** Coloured dots showing recent form — W=green, L=red, up to 6 results */
+function FormDots({ form, align = "left" }: { form: string; align?: "left" | "right" }) {
+  if (!form) return null
+  return (
+    <div className={cn("flex items-center gap-0.5", align === "right" && "flex-row-reverse")}>
+      {form.split("").map((r, i) => (
+        <span
+          key={i}
+          title={r === "W" ? "Win" : "Loss"}
+          className={cn(
+            "h-2 w-2 rounded-full",
+            r === "W" ? "bg-emerald-500" : "bg-red-400",
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** Small grey pill showing average LI */
+function LiBadge({ li, align = "left" }: { li: number | null; align?: "left" | "right" }) {
+  if (li == null) return null
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500",
+      )}
+      title="Average League Index"
+    >
+      LI {li.toFixed(1)}
+    </span>
+  )
+}
+
 const RUBBER_CATEGORY_ORDER = ["Mens Beginner", "Mens Intermediate", "Mens Open", "Ladies Open"]
 
 function FixtureBreakdown({
@@ -599,18 +641,34 @@ function FixtureBreakdown({
   return (
     <>
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
-        {/* Header row */}
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {fixture.homeName}
-          </span>
+        {/* Header — team names with LI badge + form dots */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+          {/* Home side */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              {fixture.homeName}
+            </span>
+            <div className="flex items-center gap-2">
+              <LiBadge li={fixture.homeAvgLi} />
+              <FormDots form={fixture.homeForm} align="left" />
+            </div>
+          </div>
+
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</span>
-          <span className="text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {fixture.awayName}
-          </span>
+
+          {/* Away side */}
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              {fixture.awayName}
+            </span>
+            <div className="flex items-center justify-end gap-2">
+              <FormDots form={fixture.awayForm} align="right" />
+              <LiBadge li={fixture.awayAvgLi} />
+            </div>
+          </div>
         </div>
 
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-slate-100">
           {RUBBER_CATEGORY_ORDER.map((category) => {
             const rubber = rubberByCategory.get(category)
             const homePair = fixture.homePlayers?.[category] ?? []
@@ -619,26 +677,23 @@ function FixtureBreakdown({
             const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
             const hasScore = !!rubber && isCompleted
 
-            // Determine if the current player is assigned to this rubber.
-            // Primary: check rubber's playerIds (when pairings are set).
-            // Fallback: fixture.mine + player name appears in homePlayers/awayPlayers for this category.
-            const myIds = rubber
+            // iMyRubber: true when rubber has player assigned, OR when no pairings exist yet
+            // but the fixture belongs to the current player's team (fixture.mine).
+            const assignedIds = rubber
               ? [...(rubber.homePlayerIds ?? []), ...(rubber.awayPlayerIds ?? [])]
               : []
             const iMyRubber =
-              currentPlayerId != null &&
-              (myIds.includes(currentPlayerId) ||
-                (fixture.mine && (homePair.length > 0 || awayPair.length > 0)))
+              currentPlayerId != null
+                ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
+                : fixture.mine
 
-            // Join URL — only if player is in this rubber and match not yet completed
-            const showJoin = fixture.mine && !isCompleted && iMyRubber && !!fixture.joinUrl
-            // Enter Score — shown whenever the player is in this rubber (upcoming OR completed)
+            const showJoin = fixture.mine && !isCompleted && !!fixture.joinUrl
             const showScore = fixture.mine && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
-                {/* Category label */}
-                <div className="mb-2.5 flex items-center gap-2">
+                {/* Category badge + score detail */}
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
                     {category}
                   </span>
@@ -669,7 +724,7 @@ function FixtureBreakdown({
                     )}
                   </div>
 
-                  {/* Score */}
+                  {/* Score / vs */}
                   <div className="flex items-center gap-1.5 tabular-nums">
                     {hasScore ? (
                       <>
@@ -707,9 +762,37 @@ function FixtureBreakdown({
                   </div>
                 </div>
 
-                {/* Per-rubber action buttons — only for the player assigned to THIS rubber */}
+                {/* Action row — sits below the players grid, full-width, right-aligned */}
                 {(showJoin || showScore) && (
-                  <div className="mt-2.5 flex flex-wrap gap-2">
+                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-50 pt-2.5">
+                    {showScore && (
+                      <button
+                        onClick={() =>
+                          setScoreRubber(
+                            rubber ?? {
+                              id: 0,
+                              category,
+                              session: 1,
+                              isFeatureCourt: false,
+                              homeSetsWon: 0,
+                              awaySetsWon: 0,
+                              scoreDetail: null,
+                              winnerTeamId: null,
+                              homePlayerIds: [],
+                              awayPlayerIds: [],
+                            },
+                          )
+                        }
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                          isCompleted
+                            ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            : "border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50",
+                        )}
+                      >
+                        {isCompleted ? "Edit Score" : "Enter Score"}
+                      </button>
+                    )}
                     {showJoin && (
                       <a
                         href={fixture.joinUrl!}
@@ -718,38 +801,8 @@ function FixtureBreakdown({
                         className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Join Now
+                        Join Match
                       </a>
-                    )}
-                    {showScore && rubber && (
-                      <button
-                        onClick={() => setScoreRubber(rubber)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
-                      >
-                        {isCompleted ? "Edit Score" : "Enter Score"}
-                      </button>
-                    )}
-                    {showScore && !rubber && (
-                      <button
-                        onClick={() => {
-                          // No rubber row yet — create a placeholder to open the dialog
-                          setScoreRubber({
-                            id: 0,
-                            category,
-                            session: 1,
-                            isFeatureCourt: false,
-                            homeSetsWon: 0,
-                            awaySetsWon: 0,
-                            scoreDetail: null,
-                            winnerTeamId: null,
-                            homePlayerIds: [],
-                            awayPlayerIds: [],
-                          })
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
-                      >
-                        Enter Score
-                      </button>
                     )}
                   </div>
                 )}

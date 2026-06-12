@@ -86,6 +86,12 @@ export type LCFixture = {
   homeSetsWon: number | null
   awaySetsWon: number | null
   winnerTeamId: number | null
+  /** Average LI (league index) for all active players in each team */
+  homeAvgLi: number | null
+  awayAvgLi: number | null
+  /** Recent form string — up to last 6 results, e.g. "WWLWWL", newest last */
+  homeForm: string
+  awayForm: string
   // Only populated for logged-in players eligible to play this fixture.
   joinUrl: string | null
   mine: boolean
@@ -320,6 +326,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       homeSetsWon: fixtures.homeSetsWon,
       awaySetsWon: fixtures.awaySetsWon,
       winnerTeamId: fixtures.winnerTeamId,
+      homeAvgLi: home.avgLi,
+      awayAvgLi: away.avgLi,
     })
     .from(fixtures)
     .leftJoin(home, eq(fixtures.homeTeamId, home.id))
@@ -420,6 +428,25 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     rubbersByFixture.set(r.fixtureId, arr)
   }
 
+  // Build per-team form strings from completed fixtures in week order.
+  // W = win, L = loss, D = draw. Keep the last 6 results, oldest→newest.
+  const teamFormMap = new Map<number, string>()
+  const completedByWeek = [...fixtureRows]
+    .filter((f) => normaliseStatus(f.status) === "completed" && f.winnerTeamId != null)
+    .sort((a, b) => (a.week ?? 0) - (b.week ?? 0))
+  for (const f of completedByWeek) {
+    if (f.homeTeamId != null) {
+      const result = f.winnerTeamId === f.homeTeamId ? "W" : "L"
+      const prev = teamFormMap.get(f.homeTeamId) ?? ""
+      teamFormMap.set(f.homeTeamId, (prev + result).slice(-6))
+    }
+    if (f.awayTeamId != null) {
+      const result = f.winnerTeamId === f.awayTeamId ? "W" : "L"
+      const prev = teamFormMap.get(f.awayTeamId) ?? ""
+      teamFormMap.set(f.awayTeamId, (prev + result).slice(-6))
+    }
+  }
+
   const fixturesOut: LCFixture[] = fixtureRows
     .filter((f) => entryByDivision.has(f.divisionId))
     .map((f) => {
@@ -450,6 +477,10 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         homeSetsWon: f.homeSetsWon,
         awaySetsWon: f.awaySetsWon,
         winnerTeamId: f.winnerTeamId,
+        homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
+        awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
+        homeForm: f.homeTeamId != null ? (teamFormMap.get(f.homeTeamId) ?? "") : "",
+        awayForm: f.awayTeamId != null ? (teamFormMap.get(f.awayTeamId) ?? "") : "",
         // Never expose booking links publicly — only to eligible logged-in players.
         joinUrl: mine && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
         mine,
