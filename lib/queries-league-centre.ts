@@ -99,6 +99,8 @@ export type LCFixture = {
 export type LCRubber = {
   id: number
   category: string
+  session: number
+  isFeatureCourt: boolean
   homeSetsWon: number
   awaySetsWon: number
   scoreDetail: string | null
@@ -137,6 +139,7 @@ export type LeagueCentreData = {
   rankings: LCRanking[]
   myMatches: LCFixture[]
   authed: boolean
+  currentPlayerId: number | null
 }
 
 function normaliseStatus(status: string | null): LCStatus {
@@ -176,6 +179,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       rankings: [],
       myMatches: [],
       authed: !!user,
+      currentPlayerId: user?.playerId ?? null,
     }
   }
 
@@ -368,6 +372,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     id: number
     fixtureId: number
     category: string
+    session: number
+    isFeatureCourt: boolean
     homeSetsWon: number
     awaySetsWon: number
     scoreDetail: string | null
@@ -381,6 +387,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
           id: matches.id,
           fixtureId: matches.fixtureId,
           category: matches.category,
+          session: matches.session,
+          isFeatureCourt: matches.isFeatureCourt,
           homeSetsWon: matches.homeSetsWon,
           awaySetsWon: matches.awaySetsWon,
           scoreDetail: matches.scoreDetail,
@@ -400,6 +408,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     arr.push({
       id: r.id,
       category: r.category,
+      session: r.session ?? 1,
+      isFeatureCourt: r.isFeatureCourt ?? false,
       homeSetsWon: r.homeSetsWon ?? 0,
       awaySetsWon: r.awaySetsWon ?? 0,
       scoreDetail: r.scoreDetail,
@@ -512,6 +522,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     rankings: rankingsOut,
     myMatches,
     authed: !!user,
+    currentPlayerId: user?.playerId ?? null,
   }
 }
 
