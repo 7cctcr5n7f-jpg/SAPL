@@ -471,6 +471,10 @@ function FixtureCard({
               {fixture.homeName ?? "TBD"}
             </span>
           </div>
+          <div className="ml-[2.75rem] flex items-center gap-2">
+            <LiBadge li={fixture.homeAvgLi} />
+            <FormDots form={fixture.homeForm} align="left" />
+          </div>
           {homePlayers.length > 0 && (
             <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
               {homePlayers.map((p) => (
@@ -525,6 +529,10 @@ function FixtureCard({
               {fixture.awayName ?? "TBD"}
             </span>
           </div>
+          <div className="mr-[2.75rem] flex items-center justify-end gap-2">
+            <FormDots form={fixture.awayForm} align="right" />
+            <LiBadge li={fixture.awayAvgLi} />
+          </div>
           {awayPlayers.length > 0 && (
             <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
               {awayPlayers.map((p) => (
@@ -578,6 +586,40 @@ function FixtureCard({
 
 // ─── Fixture Breakdown (team vs team, per category) ──────────────────────────
 
+/** Coloured dots showing recent form — W=green, L=red, up to 6 results */
+function FormDots({ form, align = "left" }: { form: string; align?: "left" | "right" }) {
+  if (!form) return null
+  return (
+    <div className={cn("flex items-center gap-0.5", align === "right" && "flex-row-reverse")}>
+      {form.split("").map((r, i) => (
+        <span
+          key={i}
+          title={r === "W" ? "Win" : "Loss"}
+          className={cn(
+            "h-2 w-2 rounded-full",
+            r === "W" ? "bg-emerald-500" : "bg-red-400",
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** Small grey pill showing average LI */
+function LiBadge({ li, align = "left" }: { li: number | null; align?: "left" | "right" }) {
+  if (li == null) return null
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500",
+      )}
+      title="Average League Index"
+    >
+      LI {li.toFixed(1)}
+    </span>
+  )
+}
+
 const RUBBER_CATEGORY_ORDER = ["Mens Beginner", "Mens Intermediate", "Mens Open", "Ladies Open"]
 
 function FixtureBreakdown({
@@ -599,15 +641,31 @@ function FixtureBreakdown({
   return (
     <>
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
-        {/* Header row */}
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {fixture.homeName}
-          </span>
+        {/* Header — team names with LI badge + form dots */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+          {/* Home side */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              {fixture.homeName}
+            </span>
+            <div className="flex items-center gap-2">
+              <LiBadge li={fixture.homeAvgLi} />
+              <FormDots form={fixture.homeForm} align="left" />
+            </div>
+          </div>
+
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</span>
-          <span className="text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {fixture.awayName}
-          </span>
+
+          {/* Away side */}
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              {fixture.awayName}
+            </span>
+            <div className="flex items-center justify-end gap-2">
+              <FormDots form={fixture.awayForm} align="right" />
+              <LiBadge li={fixture.awayAvgLi} />
+            </div>
+          </div>
         </div>
 
         <div className="divide-y divide-slate-100">
