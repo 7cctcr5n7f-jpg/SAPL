@@ -120,11 +120,6 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     <div style={{ backgroundColor: "rgb(245,248,255)" }} className="min-h-screen pb-16">
       <div className="mx-auto max-w-5xl px-4 pt-6 md:px-6">
 
-        {/* ── My Matches rail ─────────────────────────────────────────── */}
-        {data.authed && data.myMatches.length > 0 && (
-          <MyMatchesRail matches={data.myMatches} />
-        )}
-
         {/* ── Region Selector ──────────────────────────────────────────── */}
         <section className="mb-6">
           <SectionLabel icon={<MapPin className="h-3.5 w-3.5" />} text="Region" />
@@ -747,61 +742,6 @@ function FixtureBreakdown({ fixture }: { fixture: LCFixture }) {
           )
         })}
       </div>
-    </div>
-  )
-}
-
-// ─── My Matches rail ─────────────────────────────────────────────────────────
-
-function MyMatchesRail({ matches }: { matches: LCFixture[] }) {
-  return (
-    <section className="mb-6 overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-red-50 bg-red-50/60 px-4 py-3">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
-        </span>
-        <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-600">My Upcoming Matches</span>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {matches.slice(0, 5).map((f) => (
-          <MyMatchRow key={f.id} fixture={f} />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function MyMatchRow({ fixture }: { fixture: LCFixture }) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <div className="w-14 shrink-0 text-center">
-        <p className="text-xs font-semibold tabular-nums text-slate-800">
-          {timeLabel(fixture.matchDate, fixture.timeslot)}
-        </p>
-        <p className="text-[10px] text-slate-500">{shortDate(fixture.matchDate) ?? "TBD"}</p>
-      </div>
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="sm" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
-          {fixture.homeName ?? "TBD"}
-        </span>
-        <span className="text-xs font-bold text-slate-400">vs</span>
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-800">
-          {fixture.awayName ?? "TBD"}
-        </span>
-        <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="sm" />
-      </div>
-      {fixture.joinUrl && (
-        <a
-          href={fixture.joinUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-red-700"
-        >
-          Join
-        </a>
-      )}
     </div>
   )
 }
