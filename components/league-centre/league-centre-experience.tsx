@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
-type ContentTab = "fixtures" | "results" | "standings"
+type ContentTab = "schedule" | "standings"
 
 const DIVISION_ORDER = ["Premier", "Championship", "Shield", "Challenge"]
 
@@ -59,7 +59,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   )
 
   const [divisionId, setDivisionId] = useState<number | null>(regionDivisions[0]?.id ?? null)
-  const [tab, setTab] = useState<ContentTab>("fixtures")
+  const [tab, setTab] = useState<ContentTab>("schedule")
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
   const [expandedFixtureId, setExpandedFixtureId] = useState<number | null>(null)
 
@@ -121,7 +121,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     )
   }
 
-  const activeFixtures = tab === "fixtures" ? upcomingFixtures : completedFixtures
+  const activeFixtures = weekFixtures
 
   return (
     <div style={{ backgroundColor: "rgb(245,248,255)" }} className="min-h-screen pb-16">
@@ -197,10 +197,9 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm border border-slate-100">
           {/* Tab strip */}
           <div className="flex border-b border-slate-100">
-            {(["fixtures", "results", "standings"] as ContentTab[]).map((t) => {
+            {(["schedule", "standings"] as ContentTab[]).map((t) => {
               const labels: Record<ContentTab, string> = {
-                fixtures: "Fixtures",
-                results: "Results",
+                schedule: "Schedule",
                 standings: "Standings",
               }
               return (
@@ -220,8 +219,8 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
             })}
           </div>
 
-          {/* Week Selector — Fixtures & Results */}
-          {tab !== "standings" && allWeeks.length > 0 && (
+          {/* Week Selector — Schedule only */}
+          {tab === "schedule" && allWeeks.length > 0 && (
             <WeekSelector
               weeks={allWeeks}
               activeWeek={activeWeek}
@@ -236,7 +235,6 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
             ) : (
               <FixturesByCategory
                 fixtures={activeFixtures}
-                isResults={tab === "results"}
                 expandedFixtureId={expandedFixtureId}
                 onToggleFixture={toggleFixture}
                 currentPlayerId={data.currentPlayerId}
@@ -310,13 +308,11 @@ function WeekSelector({
 
 function FixturesByCategory({
   fixtures,
-  isResults,
   expandedFixtureId,
   onToggleFixture,
   currentPlayerId,
 }: {
   fixtures: LCFixture[]
-  isResults: boolean
   expandedFixtureId: number | null
   onToggleFixture: (id: number) => void
   currentPlayerId: number | null
@@ -347,7 +343,7 @@ function FixturesByCategory({
   if (fixtures.length === 0) {
     return (
       <div className="py-16 text-center text-sm text-slate-400">
-        {isResults ? "No results recorded for this week yet." : "No fixtures scheduled for this week."}
+        {"No fixtures scheduled for this week."}
       </div>
     )
   }
@@ -359,7 +355,6 @@ function FixturesByCategory({
           key={category}
           category={category}
           fixtures={cats}
-          isResults={isResults}
           expandedFixtureId={expandedFixtureId}
           onToggleFixture={onToggleFixture}
           currentPlayerId={currentPlayerId}
@@ -372,14 +367,12 @@ function FixturesByCategory({
 function CategorySection({
   category,
   fixtures,
-  isResults,
   expandedFixtureId,
   onToggleFixture,
   currentPlayerId,
 }: {
   category: string
   fixtures: LCFixture[]
-  isResults: boolean
   expandedFixtureId: number | null
   onToggleFixture: (id: number) => void
   currentPlayerId: number | null
@@ -399,7 +392,6 @@ function CategorySection({
           <FixtureCard
             key={f.id}
             fixture={f}
-            isResults={isResults}
             isExpanded={expandedFixtureId === f.id}
             onToggle={() => onToggleFixture(f.id)}
             currentPlayerId={currentPlayerId}
@@ -414,13 +406,11 @@ function CategorySection({
 
 function FixtureCard({
   fixture,
-  isResults,
   isExpanded,
   onToggle,
   currentPlayerId,
 }: {
   fixture: LCFixture
-  isResults: boolean
   isExpanded: boolean
   onToggle: () => void
   currentPlayerId: number | null
