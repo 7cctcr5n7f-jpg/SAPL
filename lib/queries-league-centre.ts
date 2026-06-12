@@ -92,6 +92,19 @@ export type LCFixture = {
   // Player names per team, keyed by category (e.g. "Mens Open" → ["John Smith", "Peter Jones"])
   homePlayers: Record<string, string[]>
   awayPlayers: Record<string, string[]>
+  // Individual category rubbers for this fixture
+  rubbers: LCRubber[]
+}
+
+export type LCRubber = {
+  id: number
+  category: string
+  homeSetsWon: number
+  awaySetsWon: number
+  scoreDetail: string | null
+  winnerTeamId: number | null
+  homePlayerIds: number[]
+  awayPlayerIds: number[]
 }
 
 export type LCRanking = {
@@ -349,6 +362,54 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     catMap[row.category] = arr
   }
 
+  // Fetch rubbers (individual category matches) for all fixtures this season
+  const allFixtureIds = fixtureRows.map((f) => f.id)
+  type RubberRow = {
+    id: number
+    fixtureId: number
+    category: string
+    homeSetsWon: number
+    awaySetsWon: number
+    scoreDetail: string | null
+    winnerTeamId: number | null
+    homePlayerIds: number[]
+    awayPlayerIds: number[]
+  }
+  const rubberRows: RubberRow[] = allFixtureIds.length
+    ? await db
+        .select({
+          id: matches.id,
+          fixtureId: matches.fixtureId,
+          category: matches.category,
+          homeSetsWon: matches.homeSetsWon,
+          awaySetsWon: matches.awaySetsWon,
+          scoreDetail: matches.scoreDetail,
+          winnerTeamId: matches.winnerTeamId,
+          homePlayerIds: sql<number[]>`${matches.homePlayerIds}`,
+          awayPlayerIds: sql<number[]>`${matches.awayPlayerIds}`,
+        })
+        .from(matches)
+        .where(inArray(matches.fixtureId, allFixtureIds))
+        .orderBy(asc(matches.session), asc(matches.category))
+    : []
+
+  // Build a map: fixtureId → LCRubber[]
+  const rubbersByFixture = new Map<number, LCRubber[]>()
+  for (const r of rubberRows) {
+    const arr = rubbersByFixture.get(r.fixtureId) ?? []
+    arr.push({
+      id: r.id,
+      category: r.category,
+      homeSetsWon: r.homeSetsWon ?? 0,
+      awaySetsWon: r.awaySetsWon ?? 0,
+      scoreDetail: r.scoreDetail,
+      winnerTeamId: r.winnerTeamId,
+      homePlayerIds: Array.isArray(r.homePlayerIds) ? r.homePlayerIds : [],
+      awayPlayerIds: Array.isArray(r.awayPlayerIds) ? r.awayPlayerIds : [],
+    })
+    rubbersByFixture.set(r.fixtureId, arr)
+  }
+
   const fixturesOut: LCFixture[] = fixtureRows
     .filter((f) => entryByDivision.has(f.divisionId))
     .map((f) => {
@@ -384,6 +445,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         mine,
         homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
         awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
+        rubbers: rubbersByFixture.get(f.id) ?? [],
       }
     })
 
