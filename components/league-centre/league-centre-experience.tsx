@@ -610,7 +610,7 @@ function FixtureBreakdown({
           </span>
         </div>
 
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-slate-100">
           {RUBBER_CATEGORY_ORDER.map((category) => {
             const rubber = rubberByCategory.get(category)
             const homePair = fixture.homePlayers?.[category] ?? []
@@ -619,26 +619,23 @@ function FixtureBreakdown({
             const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
             const hasScore = !!rubber && isCompleted
 
-            // Determine if the current player is assigned to this rubber.
-            // Primary: check rubber's playerIds (when pairings are set).
-            // Fallback: fixture.mine + player name appears in homePlayers/awayPlayers for this category.
-            const myIds = rubber
+            // iMyRubber: true when rubber has player assigned, OR when no pairings exist yet
+            // but the fixture belongs to the current player's team (fixture.mine).
+            const assignedIds = rubber
               ? [...(rubber.homePlayerIds ?? []), ...(rubber.awayPlayerIds ?? [])]
               : []
             const iMyRubber =
-              currentPlayerId != null &&
-              (myIds.includes(currentPlayerId) ||
-                (fixture.mine && (homePair.length > 0 || awayPair.length > 0)))
+              currentPlayerId != null
+                ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
+                : fixture.mine
 
-            // Join URL — only if player is in this rubber and match not yet completed
-            const showJoin = fixture.mine && !isCompleted && iMyRubber && !!fixture.joinUrl
-            // Enter Score — shown whenever the player is in this rubber (upcoming OR completed)
+            const showJoin = fixture.mine && !isCompleted && !!fixture.joinUrl
             const showScore = fixture.mine && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
-                {/* Category label */}
-                <div className="mb-2.5 flex items-center gap-2">
+                {/* Category badge + score detail */}
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
                     {category}
                   </span>
@@ -669,7 +666,7 @@ function FixtureBreakdown({
                     )}
                   </div>
 
-                  {/* Score */}
+                  {/* Score / vs */}
                   <div className="flex items-center gap-1.5 tabular-nums">
                     {hasScore ? (
                       <>
@@ -707,9 +704,37 @@ function FixtureBreakdown({
                   </div>
                 </div>
 
-                {/* Per-rubber action buttons — only for the player assigned to THIS rubber */}
+                {/* Action row — sits below the players grid, full-width, right-aligned */}
                 {(showJoin || showScore) && (
-                  <div className="mt-2.5 flex flex-wrap gap-2">
+                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-50 pt-2.5">
+                    {showScore && (
+                      <button
+                        onClick={() =>
+                          setScoreRubber(
+                            rubber ?? {
+                              id: 0,
+                              category,
+                              session: 1,
+                              isFeatureCourt: false,
+                              homeSetsWon: 0,
+                              awaySetsWon: 0,
+                              scoreDetail: null,
+                              winnerTeamId: null,
+                              homePlayerIds: [],
+                              awayPlayerIds: [],
+                            },
+                          )
+                        }
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                          isCompleted
+                            ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            : "border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50",
+                        )}
+                      >
+                        {isCompleted ? "Edit Score" : "Enter Score"}
+                      </button>
+                    )}
                     {showJoin && (
                       <a
                         href={fixture.joinUrl!}
@@ -718,38 +743,8 @@ function FixtureBreakdown({
                         className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Join Now
+                        Join Match
                       </a>
-                    )}
-                    {showScore && rubber && (
-                      <button
-                        onClick={() => setScoreRubber(rubber)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
-                      >
-                        {isCompleted ? "Edit Score" : "Enter Score"}
-                      </button>
-                    )}
-                    {showScore && !rubber && (
-                      <button
-                        onClick={() => {
-                          // No rubber row yet — create a placeholder to open the dialog
-                          setScoreRubber({
-                            id: 0,
-                            category,
-                            session: 1,
-                            isFeatureCourt: false,
-                            homeSetsWon: 0,
-                            awaySetsWon: 0,
-                            scoreDetail: null,
-                            winnerTeamId: null,
-                            homePlayerIds: [],
-                            awayPlayerIds: [],
-                          })
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
-                      >
-                        Enter Score
-                      </button>
                     )}
                   </div>
                 )}
