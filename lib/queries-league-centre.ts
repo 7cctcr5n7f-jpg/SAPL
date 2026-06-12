@@ -63,6 +63,15 @@ export type LCStanding = {
   tpr: number | null
 }
 
+/** One result entry for the form tooltip — newest last */
+export type FormItem = {
+  result: "W" | "L"
+  opponentName: string
+  homeScore: number
+  awayScore: number
+  isHome: boolean
+}
+
 export type LCFixture = {
   id: number
   week: number
@@ -86,19 +95,19 @@ export type LCFixture = {
   homeSetsWon: number | null
   awaySetsWon: number | null
   winnerTeamId: number | null
-  /** Average LI (league index) for all active players in each team */
+  /** Average LI for all active players in each team */
   homeAvgLi: number | null
   awayAvgLi: number | null
-  /** Recent form string — up to last 6 results, e.g. "WWLWWL", newest last */
-  homeForm: string
-  awayForm: string
-  // Only populated for logged-in players eligible to play this fixture.
+  /** Average LI per category pair — keyed by category name */
+  homePairLi: Record<string, number | null>
+  awayPairLi: Record<string, number | null>
+  /** Recent form items — up to last 6, oldest first */
+  homeFormItems: FormItem[]
+  awayFormItems: FormItem[]
   joinUrl: string | null
   mine: boolean
-  // Player names per team, keyed by category (e.g. "Mens Open" → ["John Smith", "Peter Jones"])
   homePlayers: Record<string, string[]>
   awayPlayers: Record<string, string[]>
-  // Individual category rubbers for this fixture
   rubbers: LCRubber[]
 }
 
@@ -349,7 +358,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       fixtureRows.flatMap((f) => [f.homeTeamId, f.awayTeamId].filter((id): id is number => id != null)),
     ),
   )
-  type PairingRow = { teamId: number; category: string; firstName: string; lastName: string }
+  type PairingRow = { teamId: number; category: string; firstName: string; lastName: string; currentLi: number }
   const pairingRows: PairingRow[] = allTeamIds.length
     ? await db
         .select({
@@ -357,14 +366,18 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
           category: teamPairings.category,
           firstName: players.firstName,
           lastName: players.lastName,
+          currentLi: players.currentLi,
         })
         .from(teamPairings)
         .innerJoin(players, eq(teamPairings.playerId, players.id))
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
 
-  // Build a map: teamId → category → ["First Last", ...]
+  // Build maps:
+  //   teamPlayerMap: teamId → category → ["First Last", ...]
+  //   pairLiMap:     "teamId:category" → average LI of the pair
   const teamPlayerMap = new Map<number, Record<string, string[]>>()
+  const pairLiMap = new Map<string, { sum: number; count: number }>()
   for (const row of pairingRows) {
     let catMap = teamPlayerMap.get(row.teamId)
     if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
@@ -372,6 +385,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     const name = `${row.firstName} ${row.lastName}`.trim()
     if (!arr.includes(name)) arr.push(name)
     catMap[row.category] = arr
+
+    const key = `${row.teamId}:${row.category}`
+    const entry = pairLiMap.get(key) ?? { sum: 0, count: 0 }
+    entry.sum += row.currentLi ?? 0
+    entry.count += 1
+    pairLiMap.set(key, entry)
   }
 
   // Fetch rubbers (individual category matches) for all fixtures this season
@@ -428,22 +447,35 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     rubbersByFixture.set(r.fixtureId, arr)
   }
 
-  // Build per-team form strings from completed fixtures in week order.
-  // W = win, L = loss, D = draw. Keep the last 6 results, oldest→newest.
-  const teamFormMap = new Map<number, string>()
+  // Build per-team rich form items from completed fixtures in week order (oldest→newest, keep last 6).
+  const teamFormItemsMap = new Map<number, FormItem[]>()
   const completedByWeek = [...fixtureRows]
     .filter((f) => normaliseStatus(f.status) === "completed" && f.winnerTeamId != null)
     .sort((a, b) => (a.week ?? 0) - (b.week ?? 0))
   for (const f of completedByWeek) {
     if (f.homeTeamId != null) {
-      const result = f.winnerTeamId === f.homeTeamId ? "W" : "L"
-      const prev = teamFormMap.get(f.homeTeamId) ?? ""
-      teamFormMap.set(f.homeTeamId, (prev + result).slice(-6))
+      const isWin = f.winnerTeamId === f.homeTeamId
+      const item: FormItem = {
+        result: isWin ? "W" : "L",
+        opponentName: f.awayName ?? "Unknown",
+        homeScore: f.homePoints ?? 0,
+        awayScore: f.awayPoints ?? 0,
+        isHome: true,
+      }
+      const prev = teamFormItemsMap.get(f.homeTeamId) ?? []
+      teamFormItemsMap.set(f.homeTeamId, [...prev, item].slice(-6))
     }
     if (f.awayTeamId != null) {
-      const result = f.winnerTeamId === f.awayTeamId ? "W" : "L"
-      const prev = teamFormMap.get(f.awayTeamId) ?? ""
-      teamFormMap.set(f.awayTeamId, (prev + result).slice(-6))
+      const isWin = f.winnerTeamId === f.awayTeamId
+      const item: FormItem = {
+        result: isWin ? "W" : "L",
+        opponentName: f.homeName ?? "Unknown",
+        homeScore: f.homePoints ?? 0,
+        awayScore: f.awayPoints ?? 0,
+        isHome: false,
+      }
+      const prev = teamFormItemsMap.get(f.awayTeamId) ?? []
+      teamFormItemsMap.set(f.awayTeamId, [...prev, item].slice(-6))
     }
   }
 
@@ -479,8 +511,32 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         winnerTeamId: f.winnerTeamId,
         homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
         awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
-        homeForm: f.homeTeamId != null ? (teamFormMap.get(f.homeTeamId) ?? "") : "",
-        awayForm: f.awayTeamId != null ? (teamFormMap.get(f.awayTeamId) ?? "") : "",
+        homePairLi: (() => {
+          const out: Record<string, number | null> = {}
+          if (f.homeTeamId != null) {
+            for (const [key, entry] of pairLiMap.entries()) {
+              if (key.startsWith(`${f.homeTeamId}:`)) {
+                const cat = key.slice(String(f.homeTeamId).length + 1)
+                out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+              }
+            }
+          }
+          return out
+        })(),
+        awayPairLi: (() => {
+          const out: Record<string, number | null> = {}
+          if (f.awayTeamId != null) {
+            for (const [key, entry] of pairLiMap.entries()) {
+              if (key.startsWith(`${f.awayTeamId}:`)) {
+                const cat = key.slice(String(f.awayTeamId).length + 1)
+                out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+              }
+            }
+          }
+          return out
+        })(),
+        homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
+        awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
         // Never expose booking links publicly — only to eligible logged-in players.
         joinUrl: mine && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
         mine,
