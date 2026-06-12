@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { cn } from "@/lib/utils"
 import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
-import type { LeagueCentreData, LCFixture, LCRubber } from "@/lib/queries-league-centre"
+import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { ResultEntry } from "@/components/captain/result-entry"
 import {
@@ -462,25 +462,23 @@ function FixtureCard({
         <div className="flex flex-col items-start gap-1">
           <div className="flex items-center gap-2.5">
             <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="md" />
-            <span
-              className={cn(
-                "text-sm font-bold leading-tight md:text-base",
-                hasScore && awayWon ? "text-slate-400" : "text-slate-900",
-              )}
-            >
-              {fixture.homeName ?? "TBD"}
-            </span>
-          </div>
-          <div className="ml-[2.75rem] flex items-center gap-2">
-            <LiBadge li={fixture.homeAvgLi} />
-            <FormDots form={fixture.homeForm} align="left" />
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className={cn(
+                  "text-sm font-bold leading-tight md:text-base",
+                  hasScore && awayWon ? "text-slate-400" : "text-slate-900",
+                )}>
+                  {fixture.homeName ?? "TBD"}
+                </span>
+                <LiBadge li={fixture.homeAvgLi} />
+              </div>
+              <FormDots items={fixture.homeFormItems} align="left" />
+            </div>
           </div>
           {homePlayers.length > 0 && (
             <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
               {homePlayers.map((p) => (
-                <p key={p} className="text-[11px] text-slate-500">
-                  {p}
-                </p>
+                <p key={p} className="text-[11px] text-slate-500">{p}</p>
               ))}
             </div>
           )}
@@ -520,25 +518,23 @@ function FixtureCard({
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-row-reverse items-center gap-2.5">
             <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="md" />
-            <span
-              className={cn(
-                "text-right text-sm font-bold leading-tight md:text-base",
-                hasScore && homeWon ? "text-slate-400" : "text-slate-900",
-              )}
-            >
-              {fixture.awayName ?? "TBD"}
-            </span>
-          </div>
-          <div className="mr-[2.75rem] flex items-center justify-end gap-2">
-            <FormDots form={fixture.awayForm} align="right" />
-            <LiBadge li={fixture.awayAvgLi} />
+            <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <LiBadge li={fixture.awayAvgLi} />
+                <span className={cn(
+                  "text-right text-sm font-bold leading-tight md:text-base",
+                  hasScore && homeWon ? "text-slate-400" : "text-slate-900",
+                )}>
+                  {fixture.awayName ?? "TBD"}
+                </span>
+              </div>
+              <FormDots items={fixture.awayFormItems} align="right" />
+            </div>
           </div>
           {awayPlayers.length > 0 && (
             <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
               {awayPlayers.map((p) => (
-                <p key={p} className="text-[11px] text-slate-500">
-                  {p}
-                </p>
+                <p key={p} className="text-[11px] text-slate-500">{p}</p>
               ))}
             </div>
           )}
@@ -586,36 +582,62 @@ function FixtureCard({
 
 // ─── Fixture Breakdown (team vs team, per category) ──────────────────────────
 
-/** Coloured dots showing recent form — W=green, L=red, up to 6 results */
-function FormDots({ form, align = "left" }: { form: string; align?: "left" | "right" }) {
-  if (!form) return null
+/** Coloured dots showing recent form. Hover shows opponent + score. */
+function FormDots({
+  items,
+  align = "left",
+}: {
+  items: FormItem[]
+  align?: "left" | "right"
+}) {
+  if (!items.length) return null
   return (
-    <div className={cn("flex items-center gap-0.5", align === "right" && "flex-row-reverse")}>
-      {form.split("").map((r, i) => (
-        <span
-          key={i}
-          title={r === "W" ? "Win" : "Loss"}
-          className={cn(
-            "h-2 w-2 rounded-full",
-            r === "W" ? "bg-emerald-500" : "bg-red-400",
-          )}
-        />
-      ))}
+    <div className={cn("flex items-center gap-1", align === "right" && "flex-row-reverse")}>
+      {items.map((item, i) => {
+        const scoreLabel = item.isHome
+          ? `${item.homeScore}–${item.awayScore}`
+          : `${item.awayScore}–${item.homeScore}`
+        const tooltip = `${item.result === "W" ? "Won" : "Lost"} vs ${item.opponentName} (${scoreLabel})`
+        return (
+          <div key={i} className="group relative">
+            <span
+              className={cn(
+                "block h-2.5 w-2.5 rounded-full cursor-default transition-transform group-hover:scale-125",
+                item.result === "W" ? "bg-emerald-500" : "bg-red-400",
+              )}
+            />
+            {/* Tooltip */}
+            <div className={cn(
+              "pointer-events-none absolute bottom-full z-50 mb-1.5 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+              align === "right" ? "right-0" : "left-0",
+            )}>
+              <span className={cn("font-bold", item.result === "W" ? "text-emerald-400" : "text-red-400")}>
+                {item.result === "W" ? "W" : "L"}
+              </span>
+              {" · "}{item.opponentName}
+              <span className="ml-1.5 tabular-nums text-slate-300">{scoreLabel}</span>
+              {/* Caret */}
+              <span className={cn(
+                "absolute top-full h-0 w-0 border-x-4 border-t-4 border-x-transparent border-t-slate-900",
+                align === "right" ? "right-2" : "left-2",
+              )} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-/** Small grey pill showing average LI */
-function LiBadge({ li, align = "left" }: { li: number | null; align?: "left" | "right" }) {
-  if (li == null) return null
+/** Small LI pill — shown inline with team/player name */
+function LiBadge({ li }: { li: number | null }) {
+  if (li == null || li === 0) return null
   return (
     <span
-      className={cn(
-        "inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500",
-      )}
+      className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200"
       title="Average League Index"
     >
-      LI {li.toFixed(1)}
+      {li.toFixed(1)}
     </span>
   )
 }
@@ -644,27 +666,27 @@ function FixtureBreakdown({
         {/* Header — team names with LI badge + form dots */}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
           {/* Home side */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
-              {fixture.homeName}
-            </span>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
+                {fixture.homeName}
+              </span>
               <LiBadge li={fixture.homeAvgLi} />
-              <FormDots form={fixture.homeForm} align="left" />
             </div>
+            <FormDots items={fixture.homeFormItems} align="left" />
           </div>
 
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</span>
 
           {/* Away side */}
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
-              {fixture.awayName}
-            </span>
-            <div className="flex items-center justify-end gap-2">
-              <FormDots form={fixture.awayForm} align="right" />
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1.5">
               <LiBadge li={fixture.awayAvgLi} />
+              <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
+                {fixture.awayName}
+              </span>
             </div>
+            <FormDots items={fixture.awayFormItems} align="right" />
           </div>
         </div>
 
@@ -703,7 +725,7 @@ function FixtureBreakdown({
                 </div>
 
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
                   {/* Home pair */}
                   <div className="space-y-0.5">
                     {homePair.length > 0 ? (
@@ -722,6 +744,13 @@ function FixtureBreakdown({
                     ) : (
                       <p className="text-xs text-slate-400">TBD</p>
                     )}
+                    {/* Pair LI + team form for this category */}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      {fixture.homePairLi[category] != null && (
+                        <LiBadge li={fixture.homePairLi[category]!} />
+                      )}
+                      <FormDots items={fixture.homeFormItems} align="left" />
+                    </div>
                   </div>
 
                   {/* Score / vs */}
@@ -759,6 +788,13 @@ function FixtureBreakdown({
                     ) : (
                       <p className="text-right text-xs text-slate-400">TBD</p>
                     )}
+                    {/* Pair LI + team form for this category */}
+                    <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                      <FormDots items={fixture.awayFormItems} align="right" />
+                      {fixture.awayPairLi[category] != null && (
+                        <LiBadge li={fixture.awayPairLi[category]!} />
+                      )}
+                    </div>
                   </div>
                 </div>
 
