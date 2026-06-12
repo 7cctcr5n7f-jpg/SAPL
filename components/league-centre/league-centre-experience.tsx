@@ -619,15 +619,21 @@ function FixtureBreakdown({
             const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
             const hasScore = !!rubber && isCompleted
 
-            // Determine if the current player is assigned to this rubber
+            // Determine if the current player is assigned to this rubber.
+            // Primary: check rubber's playerIds (when pairings are set).
+            // Fallback: fixture.mine + player name appears in homePlayers/awayPlayers for this category.
             const myIds = rubber
               ? [...(rubber.homePlayerIds ?? []), ...(rubber.awayPlayerIds ?? [])]
               : []
-            const iMyRubber = currentPlayerId != null && myIds.includes(currentPlayerId)
+            const iMyRubber =
+              currentPlayerId != null &&
+              (myIds.includes(currentPlayerId) ||
+                (fixture.mine && (homePair.length > 0 || awayPair.length > 0)))
 
-            // Join URL is per-fixture, not per-rubber — show it only if player is in this rubber
+            // Join URL — only if player is in this rubber and match not yet completed
             const showJoin = fixture.mine && !isCompleted && iMyRubber && !!fixture.joinUrl
-            const showScore = fixture.mine && !isCompleted && iMyRubber
+            // Enter Score — shown whenever the player is in this rubber (upcoming OR completed)
+            const showScore = fixture.mine && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
@@ -720,16 +726,29 @@ function FixtureBreakdown({
                         onClick={() => setScoreRubber(rubber)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
                       >
-                        Enter Score
+                        {isCompleted ? "Edit Score" : "Enter Score"}
                       </button>
                     )}
                     {showScore && !rubber && (
                       <button
-                        disabled
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-400 shadow-sm"
+                        onClick={() => {
+                          // No rubber row yet — create a placeholder to open the dialog
+                          setScoreRubber({
+                            id: 0,
+                            category,
+                            session: 1,
+                            isFeatureCourt: false,
+                            homeSetsWon: 0,
+                            awaySetsWon: 0,
+                            scoreDetail: null,
+                            winnerTeamId: null,
+                            homePlayerIds: [],
+                            awayPlayerIds: [],
+                          })
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
                       >
-                        <Clock className="h-3.5 w-3.5" />
-                        Not scheduled yet
+                        Enter Score
                       </button>
                     )}
                   </div>
