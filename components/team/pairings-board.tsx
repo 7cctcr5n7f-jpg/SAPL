@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -35,6 +36,7 @@ export function PairingsBoard({
   clubPaysFees: boolean
 }) {
   const [pending, start] = useTransition()
+  const router = useRouter()
   const [inviteTarget, setInviteTarget] = useState<{
     category: string
     pairIndex: number
@@ -60,7 +62,10 @@ export function PairingsBoard({
     start(async () => {
       const res = await setPairingSlot({ teamId, category, pairIndex, slotIndex, playerId })
       if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Updated")
+      else {
+        toast.success(res?.success ?? "Updated")
+        router.refresh()
+      }
     })
   }
 
@@ -80,6 +85,7 @@ export function PairingsBoard({
         toast.success(res?.success ?? "Player added")
         setInviteTarget(null)
         setEmail("")
+        router.refresh()
       }
     })
   }
@@ -283,7 +289,10 @@ export function PairingsBoard({
                       start(async () => {
                         const res = await cancelInvite(inv.id)
                         if (res?.error) toast.error(res.error)
-                        else toast.success(res?.success ?? "Cancelled")
+                        else {
+                          toast.success(res?.success ?? "Cancelled")
+                          router.refresh()
+                        }
                       })
                     }
                     disabled={pending}
