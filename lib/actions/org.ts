@@ -225,8 +225,19 @@ export async function assignCaptain(formData: FormData) {
   if (!player?.userId) return { ok: false, error: "Player has no linked account" }
 
   await db.update(teams).set({ captainUserId: player.userId }).where(eq(teams.id, teamId))
-  // promote role
-  await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+  // Only elevate to "captain" if the user is currently a plain player (or has
+  // no meta row yet). Never downgrade league_admin / super_admin / org_admin.
+  const adminRoles = ["league_admin", "super_admin", "org_admin"]
+  const [existingMeta] = await db
+    .select({ role: userMeta.role })
+    .from(userMeta)
+    .where(eq(userMeta.userId, player.userId))
+    .limit(1)
+  if (!existingMeta) {
+    await db.insert(userMeta).values({ userId: player.userId, role: "captain" })
+  } else if (!adminRoles.includes(existingMeta.role ?? "")) {
+    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+  }
   // ensure roster membership
   const [m] = await db
     .select()
