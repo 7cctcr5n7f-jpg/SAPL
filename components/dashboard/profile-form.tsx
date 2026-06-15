@@ -1,11 +1,14 @@
 "use client"
 
 import { useActionState, useState } from "react"
+import Image from "next/image"
 import { updateProfile } from "@/lib/actions/player"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
+import { toast } from "sonner"
 
 type PlayerLike = {
   firstName: string
@@ -16,6 +19,7 @@ type PlayerLike = {
   preferredClubIds: number[] | null
   anyClub: boolean
   lookingForTeam: boolean
+  avatarUrl?: string | null
 }
 
 type Club = { id: number; name: string }
@@ -34,13 +38,35 @@ export function ProfileForm({
   const [state, action, pending] = useActionState(updateProfile, null)
   const [anyClub, setAnyClub] = useState(player.anyClub)
   const [selectedClubs, setSelectedClubs] = useState<number[]>(player.preferredClubIds ?? [])
+  const [avatarUrl, setAvatarUrl] = useState(player.avatarUrl || null)
 
   function toggleClub(id: number) {
     setSelectedClubs((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]))
   }
 
+  function handlePhotoChange(url: string) {
+    setAvatarUrl(url)
+    toast.success("Photo updated")
+  }
+
   return (
     <form action={action} className="space-y-5">
+      {/* Photo Upload */}
+      <div className="space-y-2">
+        <Label>Profile Photo</Label>
+        <div className="flex items-end gap-6">
+          <PlayerPhotoUploader
+            value={avatarUrl}
+            onChange={handlePhotoChange}
+          />
+          <div className="flex-1">
+            <p className="text-sm text-muted-foreground">
+              Upload a clear photo of yourself. This will appear on your player profile and marketplace listing.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Personal details */}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">

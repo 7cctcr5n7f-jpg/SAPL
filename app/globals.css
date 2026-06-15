@@ -118,6 +118,66 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Dashboard Light Theme — applied only to dashboard layout */
+.dashboard-light {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.1 0 0);
+  --muted: oklch(0.93 0 0);
+  --muted-foreground: oklch(0.15 0 0);
+  --border: oklch(0.88 0 0);
+  --input: oklch(0.96 0 0);
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.93 0 0);
+  --sidebar-accent-foreground: oklch(0.1 0 0);
+  --sidebar-border: oklch(0.88 0 0);
+}
+
+/* Ensure buttons and interactive elements are visible on light dashboard */
+.dashboard-light button {
+  border-color: oklch(0.85 0 0) !important;
+}
+
+.dashboard-light [role="button"] {
+  border-color: oklch(0.85 0 0) !important;
+}
+
+.dashboard-light button:hover,
+.dashboard-light [role="button"]:hover {
+  background-color: oklch(0.95 0 0) !important;
+}
+
+/* Force ALL text to be dark on dashboard light theme */
+.dashboard-light * {
+  color: oklch(0.12 0 0) !important;
+  --tw-text-opacity: 1 !important;
+}
+
+/* Except for primary accent text which should stay red */
+.dashboard-light .text-primary,
+.dashboard-light .text-red-600,
+.dashboard-light .text-destructive {
+  color: oklch(0.585 0.243 27.5) !important;
+}
+
+/* And white text on red buttons */
+.dashboard-light .bg-primary,
+.dashboard-light .bg-red-600,
+.dashboard-light .bg-destructive {
+  color: white !important;
+}
+
+/* Preserve inherited text colors for specific elements */
+.dashboard-light .text-muted-foreground {
+  color: oklch(0.12 0 0) !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

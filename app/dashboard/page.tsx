@@ -32,11 +32,7 @@ export default async function DashboardOverview() {
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
-  // Team fixtures (with per-court booking links) come from the same source the
-  // Fixtures management page uses, so links set there appear here too.
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
-  // Per-category detail (player pairings + result) keyed by fixture id, so the
-  // expanded rows can show player-vs-player like the management view.
   const detailMap =
     player && myMatches.length
       ? await getFixtureDetails(
@@ -51,22 +47,19 @@ export default async function DashboardOverview() {
   const outstanding =
     payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
   const feesPaid = outstanding <= 0
-
-  // The player can submit scores when they captain (or co-manage) their team.
   const isCaptain = overviewTeam?.role === "captain" || access.canCaptainHub
 
-  // Non-player members (admins-only / unassigned) keep the onboarding flow.
   if (!player) {
     return (
       <div>
         <PageHeader title={`Welcome, ${me.name.split(" ")[0]}`} subtitle="Your league command centre." />
         {!access.isLeagueAdmin && access.teamIds.length === 0 && (
           <section className="mb-8">
-            <h2 className="heading mb-3 text-lg">Get Started</h2>
+            <h2 className="text-lg font-bold mb-4">Get Started</h2>
             <TeamOwnerCta hasPlayerProfile={false} listedOnMarketplace={false} />
           </section>
         )}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4 mb-8">
           <Card>
             <CardContent className="flex items-center justify-between gap-2 px-4 py-3">
               <span className="text-xs font-medium text-muted-foreground">Active Teams</span>
@@ -80,8 +73,8 @@ export default async function DashboardOverview() {
             </CardContent>
           </Card>
         </div>
-        <section className="mt-8">
-          <h2 className="heading mb-3 text-lg">Player Tools</h2>
+        <section>
+          <h2 className="text-lg font-bold mb-4">Player Tools</h2>
           <PlayerSelfService hasPlayerProfile={false} listed={false} />
         </section>
       </div>
@@ -89,27 +82,37 @@ export default async function DashboardOverview() {
   }
 
   return (
-    <div>
-      {/* SECTION 1 — compact player summary (team, division, region, LI, status). */}
+    <div className="space-y-8">
       <PlayerSummary
         firstName={me.name.split(" ")[0]}
         leagueIndex={player.currentLi}
         team={overviewTeam}
         feesPaid={feesPaid}
+        playtomicRating={player.playtomicRating ? String(player.playtomicRating) : null}
+        eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
+        avatarUrl={player.avatarUrl as string | null}
       />
 
-      {/* SECTIONS 2-4 — Actions required, next match, and the fixtures list. */}
-      <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
-
-      {/* SECTION 5 — compact team record (only when on an active team). */}
-      {overviewTeam && (
-        <div className="mt-6">
-          <MyTeamCard team={overviewTeam} />
-        </div>
+      {teamFees.some((f) => f.status === "due") && (
+        <section id="fees">
+          <h2 className="text-2xl font-bold mb-6">League Fees</h2>
+          <TeamFees fees={teamFees} />
+        </section>
       )}
 
-      {/* SECONDARY — collapsible "More Information" (ratings, eligibility, marketplace). */}
-      <div className="mt-6">
+      <section>
+        <h2 className="text-2xl font-bold mb-6">Upcoming Matches</h2>
+        <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
+      </section>
+
+      {overviewTeam && (
+        <section>
+          <h2 className="text-2xl font-bold mb-6">My Team</h2>
+          <MyTeamCard team={overviewTeam} />
+        </section>
+      )}
+
+      <section className="pt-4">
         <MoreInformation
           playtomicRating={player.playtomicRating}
           leagueIndex={player.currentLi}
@@ -117,31 +120,14 @@ export default async function DashboardOverview() {
           lookingForTeam={!!player.lookingForTeam}
           eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
         />
-      </div>
+      </section>
 
-      {/* Fees — kept on the page, anchored so the summary "Fees due" chip links here. */}
-      {teamFees.some((f) => f.status === "due") && (
-        <section id="fees" className="mt-6 scroll-mt-20">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">League Fees</h2>
-          <TeamFees fees={teamFees} />
-        </section>
-      )}
-
-      {/* Marketplace / create-team tools live below the match centre now. */}
       {activeTeams.length === 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">Find a Team</h2>
+        <section className="pt-4">
+          <h2 className="text-2xl font-bold mb-6">Find a Team</h2>
           <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
         </section>
       )}
-
-      <p className="mt-6 text-center text-xs text-muted-foreground">
-        Looking for standings, rankings and league-wide fixtures?{" "}
-        <Link href="/league-centre" className="font-medium text-primary hover:underline">
-          Open the League Centre
-        </Link>
-        .
-      </p>
     </div>
   )
 }

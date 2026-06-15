@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const access = await getAccessContext(me)
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
+    <div className="dashboard-light flex h-dvh overflow-hidden bg-background">
       <div className="hidden lg:block">
         <DashboardNav
           role={me.role}
