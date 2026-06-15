@@ -17,11 +17,11 @@ import { Input } from "@/components/ui/input"
 import { ResultEntry } from "@/components/captain/result-entry"
 import { PairingsBoard } from "@/components/team/pairings-board"
 import { addPlayer, removeMember } from "@/lib/actions/captain"
-import { invitePlayerByEmail } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, cancelInvite } from "@/lib/actions/pairings"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check } from "lucide-react"
+import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check, Clock } from "lucide-react"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
 
 const PAYING_PLAYERS_COUNT = 8
@@ -142,6 +142,17 @@ export function CaptainHub({
         toast.success(res?.success ?? "Invite sent")
         setInviteEmail("")
         setInviteOpen(false)
+        router.refresh()
+      }
+    })
+  }
+
+  function cancelSquadInvite(inviteId: number) {
+    start(async () => {
+      const res = await cancelInvite(inviteId)
+      if (res?.error) toast.error(res.error)
+      else {
+        toast.success("Invite cancelled")
         router.refresh()
       }
     })
@@ -341,6 +352,7 @@ export function CaptainHub({
               playerFee={playerFee}
               pending={pending}
               onRemove={remove}
+              onCancelInvite={cancelSquadInvite}
               isLeagueAdmin={isLeagueAdmin}
             />
           </CardContent>
@@ -394,6 +406,7 @@ function SquadWithFees({
   playerFee,
   pending,
   onRemove,
+  onCancelInvite,
   isLeagueAdmin,
 }: {
   team: CaptainTeam
@@ -401,6 +414,7 @@ function SquadWithFees({
   playerFee: number
   pending: boolean
   onRemove: (membershipId: number) => void
+  onCancelInvite: (inviteId: number) => void
   isLeagueAdmin: boolean
 }) {
   const active = team.roster.filter((m) => m.status !== "invited")
@@ -538,6 +552,43 @@ function SquadWithFees({
           </div>
         )
       })}
+
+      {/* Pending email invites */}
+      {team.pairingInvites.length > 0 && (
+        <>
+          <p className="pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Pending invites
+          </p>
+          {team.pairingInvites.map((inv) => (
+            <div
+              key={inv.id}
+              className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{inv.email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Invite pending · awaiting sign-up
+                  </p>
+                </div>
+              </div>
+              {!isLeagueAdmin && (
+                <button
+                  onClick={() => onCancelInvite(inv.id)}
+                  disabled={pending}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label={`Cancel invite for ${inv.email}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
