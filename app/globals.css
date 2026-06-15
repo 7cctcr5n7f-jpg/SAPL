@@ -153,6 +153,18 @@
   background-color: oklch(0.95 0 0) !important;
 }
 
+/* Force text-muted-foreground to be dark enough on dashboard light theme */
+.dashboard-light .text-muted-foreground {
+  color: oklch(0.15 0 0) !important;
+}
+
+/* Ensure all text is readable on dashboard light theme */
+.dashboard-light span,
+.dashboard-light p,
+.dashboard-light label {
+  color: inherit;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
