@@ -128,12 +128,27 @@ export function verifyEmail(url: string) {
   return { subject, html, text }
 }
 
-/** Best-effort public base URL for building links inside emails. */
+/** Best-effort public base URL for building links inside emails.
+ *  Always returns a bare origin with no trailing slash or path segment.
+ */
 export function appBaseUrl(): string {
-  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return process.env.V0_RUNTIME_URL ?? "https://southafricapadelleague.co.za"
+  const raw =
+    process.env.BETTER_AUTH_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null) ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    process.env.V0_RUNTIME_URL ??
+    "https://southafricapadelleague.co.za"
+
+  // Strip any accidental trailing slash or path so callers can safely append
+  // their own paths (e.g. "/sign-up") without producing double segments.
+  try {
+    const url = new URL(raw)
+    return url.origin
+  } catch {
+    return raw.replace(/\/+$/, "")
+  }
 }
 
 /**
