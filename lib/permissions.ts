@@ -95,14 +95,15 @@ export function sanitizePermissions(values: string[] | null | undefined): Permis
  * @param role               The user's effective role (acting role when impersonating).
  * @param permissionsOverride The stored override list, or null to use role defaults.
  *
- * super_admin always receives every permission regardless of overrides so god
- * mode can never be locked out.
+ * super_admin and league_admin always receive every permission for their role
+ * regardless of overrides — a stored captain assignment must never be able to
+ * downgrade an admin's access.
  */
 export function getEffectivePermissions(
   role: Role,
   permissionsOverride: string[] | null | undefined,
 ): Set<Permission> {
-  if (role === "super_admin") return new Set(PERMISSIONS)
+  if (role === "super_admin" || role === "league_admin") return new Set(PERMISSIONS)
   if (permissionsOverride == null) return new Set(ROLE_DEFAULTS[role] ?? [])
   return new Set(sanitizePermissions(permissionsOverride))
 }
