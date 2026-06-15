@@ -13,20 +13,17 @@ export function PlayerSummary({
   leagueIndex,
   team,
   feesPaid,
+  playtomicRating,
+  eligibleCategories,
 }: {
   firstName: string
   leagueIndex: number | null
   team: PlayerOverviewTeam | null
-  // True when the player owes nothing (club pays, already paid, or no fees).
   feesPaid: boolean
+  playtomicRating: string | null
+  eligibleCategories: string[]
 }) {
-  const feeLabel = !team
-    ? null
-    : team.clubPaysFees
-      ? "Paid by Club"
-      : feesPaid
-        ? "Fees Paid"
-        : "Fees Due"
+  const primaryCategory = eligibleCategories?.[0] || null
 
   return (
     <section className="mb-8 overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-background to-background/50 p-6">
@@ -76,23 +73,21 @@ export function PlayerSummary({
           </div>
         )}
 
-        {/* Fees Status */}
-        {feeLabel && (
+        {/* Playtomic Rating */}
+        {playtomicRating && (
           <div className="text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Fees</p>
-            <p className={cn("text-sm font-semibold", feesPaid ? "text-emerald-600" : "text-amber-600")}>
-              {feeLabel}
-            </p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Playtomic</p>
+            <p className="text-sm font-semibold text-foreground">{playtomicRating}</p>
           </div>
         )}
 
-        {/* Teams */}
-        <div className="text-center">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Teams</p>
-          <p className="text-2xl font-bold text-foreground tabular-nums">
-            {team ? "1" : "0"}
-          </p>
-        </div>
+        {/* Eligible Category */}
+        {primaryCategory && (
+          <div className="text-center">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Category</p>
+            <p className="text-sm font-semibold text-foreground">{primaryCategory}</p>
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}
@@ -109,14 +104,6 @@ export function PlayerSummary({
             className="flex-1 flex items-center justify-center px-4 py-2 rounded-lg bg-primary text-background font-semibold text-sm hover:bg-primary/90 transition-colors"
           >
             View Team
-          </Link>
-        )}
-        {!feesPaid && team && (
-          <Link
-            href="#fees"
-            className="flex-1 flex items-center justify-center px-4 py-2 rounded-lg border-2 border-amber-600/50 text-amber-600 font-semibold text-sm hover:bg-amber-600/5 transition-colors"
-          >
-            Pay Fees
           </Link>
         )}
       </div>

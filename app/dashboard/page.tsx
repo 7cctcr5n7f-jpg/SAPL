@@ -88,16 +88,25 @@ export default async function DashboardOverview() {
         leagueIndex={player.currentLi}
         team={overviewTeam}
         feesPaid={feesPaid}
+        playtomicRating={player.playtomicRating}
+        eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
       />
 
+      {teamFees.some((f) => f.status === "due") && (
+        <section id="fees">
+          <h2 className="text-2xl font-bold mb-6">League Fees</h2>
+          <TeamFees fees={teamFees} />
+        </section>
+      )}
+
       <section>
-        <h2 className="text-2xl font-bold mb-6">Matches</h2>
+        <h2 className="text-2xl font-bold mb-6">Upcoming Matches</h2>
         <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
       </section>
 
       {overviewTeam && (
         <section>
-          <h2 className="text-2xl font-bold mb-6">Team</h2>
+          <h2 className="text-2xl font-bold mb-6">My Team</h2>
           <MyTeamCard team={overviewTeam} />
         </section>
       )}
@@ -111,13 +120,6 @@ export default async function DashboardOverview() {
           eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
         />
       </section>
-
-      {teamFees.some((f) => f.status === "due") && (
-        <section id="fees" className="scroll-mt-20 pt-4">
-          <h2 className="text-2xl font-bold mb-6">League Fees</h2>
-          <TeamFees fees={teamFees} />
-        </section>
-      )}
 
       {activeTeams.length === 0 && (
         <section className="pt-4">
