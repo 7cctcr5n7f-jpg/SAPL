@@ -5,6 +5,7 @@ import { userMeta } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { ProfileForm } from "@/components/dashboard/profile-form"
+import { ChangePasswordForm } from "@/components/dashboard/change-password-form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getClubOptions } from "@/lib/queries"
 import { NoProfile } from "@/components/dashboard/no-profile"
@@ -30,13 +31,22 @@ export default async function ProfilePage() {
     <div>
       <PageHeader title="Update Profile" subtitle="Manage your league identity and marketplace visibility." />
 
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-2xl space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Player Details</CardTitle>
           </CardHeader>
           <CardContent>
             <ProfileForm player={player} clubs={clubs} email={me.email} phone={meta?.phone ?? null} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Change Password</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChangePasswordForm />
           </CardContent>
         </Card>
       </div>
