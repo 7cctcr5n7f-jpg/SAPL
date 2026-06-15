@@ -24,7 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!ADMIN_AREA_PERMISSIONS.some((p) => access.permissions.has(p))) redirect("/dashboard")
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
+    <div className="dashboard-light flex h-dvh overflow-hidden bg-background">
       <div className="hidden lg:block">
         <DashboardNav
           role={me.role}
