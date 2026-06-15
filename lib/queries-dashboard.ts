@@ -84,6 +84,32 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId)
   }
 
+  // Collect any player IDs referenced in pairing slots that are NOT in the
+  // roster (e.g. a league admin assigned themselves directly via setPairingSlot
+  // without first being added to teamMembers). We need to fetch these so the
+  // board can show who is in the slot rather than silently rendering it empty.
+  const rosterPlayerIds = new Set(roster.map((p) => p.playerId))
+  const orphanIds = [...new Set(
+    slotRows.map((s) => s.playerId).filter((id): id is number => id != null && !rosterPlayerIds.has(id))
+  )]
+  if (orphanIds.length > 0) {
+    const orphanRows = await db
+      .select({ player: players })
+      .from(players)
+      .where(inArray(players.id, orphanIds))
+    for (const { player: p } of orphanRows) {
+      const entry: PairingPlayer = {
+        playerId: p.id,
+        name: `${p.firstName} ${p.lastName}`,
+        li: p.currentLi,
+        gender: p.gender,
+        paid: team.clubPaysFees || paidSet.has(p.id),
+      }
+      roster.push(entry)
+      rosterById.set(p.id, entry)
+    }
+  }
+
   // Build 1 pair x 2 slots per category (4 categories = 8 players).
   const categoryBoards: PairingCategory[] = categoryNames.map((category) => {
     const pairs: PairingSlot[][] = [1].map((pairIndex) =>
