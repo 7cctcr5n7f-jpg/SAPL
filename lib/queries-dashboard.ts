@@ -83,8 +83,6 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   for (const s of slotRows) {
     slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId)
   }
-  console.log("[v0] slotRows:", JSON.stringify(slotRows))
-  console.log("[v0] rosterById keys:", [...rosterById.keys()])
 
   // Collect any player IDs referenced in pairing slots that are NOT in the
   // roster (e.g. a league admin assigned themselves directly via setPairingSlot
@@ -117,11 +115,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     const pairs: PairingSlot[][] = [1].map((pairIndex) =>
       [1, 2].map((slotIndex) => {
         const pid = slotMap.get(`${category}|${pairIndex}|${slotIndex}`) ?? null
-        return {
-          pairIndex,
-          slotIndex,
-          player: pid != null ? (rosterById.get(pid) ?? null) : null,
-        }
+        return { pairIndex, slotIndex, player: pid != null ? (rosterById.get(pid) ?? null) : null }
       }),
     )
     return { category, pairs }
