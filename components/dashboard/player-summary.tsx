@@ -77,7 +77,7 @@ export function PlayerSummary({
         {playtomicRating && (
           <div className="text-center">
             <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Playtomic</p>
-            <p className="text-sm font-semibold text-foreground">{playtomicRating}</p>
+            <p className="text-2xl font-bold text-foreground">{playtomicRating}</p>
           </div>
         )}
 
@@ -85,7 +85,7 @@ export function PlayerSummary({
         {primaryCategory && (
           <div className="text-center">
             <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Category</p>
-            <p className="text-sm font-semibold text-foreground">{primaryCategory}</p>
+            <p className="text-2xl font-bold text-foreground">{primaryCategory}</p>
           </div>
         )}
       </div>
