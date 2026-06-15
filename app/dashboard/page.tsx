@@ -2,7 +2,6 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { getCurrentUser } from "@/lib/session"
 import { cn } from "@/lib/utils"
-import { Crest } from "@/components/league-centre/crest"
 import {
   getPlayerByUserId,
   getPlayerMemberships,
@@ -87,83 +86,163 @@ export default async function DashboardOverview() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* HERO SECTION — Player Profile with Stats */}
-      <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-background to-background border border-border/40">
-        <div className="p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
-            {/* Player Info */}
-            <div className="flex items-end gap-4">
-              {overviewTeam && (
-                <Crest name={overviewTeam.teamName} logoUrl={null} size="lg" />
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Welcome back</p>
-                <h1 className="text-3xl sm:text-4xl font-bold text-foreground">{me.name}</h1>
-                {overviewTeam && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {overviewTeam.teamName} · {overviewTeam.divisionName}
-                    {overviewTeam.role === "captain" && (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold uppercase text-primary">
-                        Captain
-                      </span>
-                    )}
-                  </p>
-                )}
+    <div className="space-y-12">
+      {/* HERO SECTION — Clean player profile with large stats */}
+      <section className="pt-4">
+        {/* Player Profile Header */}
+        <div className="flex flex-col sm:flex-row sm:items-start gap-8 mb-12">
+          {/* Photo + Info */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6 flex-1">
+            {/* Circular Photo with Border */}
+            <div className="w-32 h-32 sm:w-40 sm:h-40 flex-shrink-0 rounded-full border-4 border-primary/20 bg-muted overflow-hidden shadow-lg">
+              {/* Placeholder — replace with actual player photo when available */}
+              <div className="w-full h-full bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                <span className="text-5xl">👤</span>
               </div>
             </div>
 
-            {/* Key Stats */}
-            <div className="grid grid-cols-3 gap-4 sm:gap-6">
-              <StatWidget label="League Index" value={player.currentLi?.toFixed(2) ?? "—"} />
-              <StatWidget label="Status" value={feesPaid ? "Active" : "Fees Due"} highlight={!feesPaid} />
-              <StatWidget label="Next Match" value={myMatches.length > 0 ? "Scheduled" : "None"} />
+            {/* Name + Location */}
+            <div>
+              <h1 className="text-4xl sm:text-5xl font-bold text-foreground mb-2">{me.name}</h1>
+              <p className="text-lg text-muted-foreground">
+                {overviewTeam 
+                  ? `${overviewTeam.teamName} • ${overviewTeam.divisionName}`
+                  : "Ready to join a team"}
+              </p>
+              {overviewTeam?.role === "captain" && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5">
+                  <span className="text-sm font-semibold text-primary">Team Captain</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Big Stats Row */}
+        <div className="grid grid-cols-3 gap-8 mb-12 py-8 border-y border-border/50">
+          <div className="text-center">
+            <div className="text-5xl sm:text-6xl font-bold text-foreground mb-2 tabular-nums">
+              {memberships.length}
+            </div>
+            <p className="text-base text-muted-foreground font-medium">Teams</p>
+          </div>
+          <div className="text-center">
+            <div className="text-5xl sm:text-6xl font-bold text-foreground mb-2 tabular-nums">
+              {myMatches.length}
+            </div>
+            <p className="text-base text-muted-foreground font-medium">Matches</p>
+          </div>
+          <div className="text-center">
+            <div className="text-5xl sm:text-6xl font-bold text-foreground mb-2 tabular-nums">
+              {player.currentLi?.toFixed(2) ?? "—"}
+            </div>
+            <p className="text-base text-muted-foreground font-medium">League Index</p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
+          <Link
+            href="/dashboard/profile"
+            className="flex items-center justify-center px-6 py-4 rounded-full border-2 border-primary text-primary font-semibold text-lg hover:bg-primary/5 transition-colors"
+          >
+            Edit Profile
+          </Link>
+          <Link
+            href={`/dashboard${overviewTeam ? `/captain/${overviewTeam.teamId}` : ""}`}
+            className="flex items-center justify-center px-6 py-4 rounded-full bg-foreground text-background font-semibold text-lg hover:bg-foreground/90 transition-colors"
+          >
+            {overviewTeam ? "Go to Team" : "View Dashboard"}
+          </Link>
+        </div>
       </section>
 
-      {/* MATCHES SECTION — Upcoming Fixtures */}
-      <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
-
-      {/* QUICK LINKS GRID */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <QuickLinkCard 
-          title="My Team"
-          description={overviewTeam?.teamName || "Join a team"}
-          href={overviewTeam ? `/teams/${overviewTeam.teamId}` : "/dashboard"}
-          icon="⚽"
-        />
-        <QuickLinkCard 
-          title="League Centre"
-          description="Standings & fixtures"
-          href="/league-centre"
-          icon="📊"
-        />
-        <QuickLinkCard 
-          title="Find a Team"
-          description="Join the marketplace"
-          href="/marketplace"
-          icon="🔍"
-        />
-        <QuickLinkCard 
-          title="My Profile"
-          description="Update your info"
-          href="/dashboard/profile"
-          icon="👤"
-        />
+      {/* LEAGUE INDEX FEATURED CARD */}
+      <section className="rounded-3xl overflow-hidden bg-gradient-to-br from-foreground to-foreground/80 p-8 sm:p-12 text-background shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
+          <div className="flex-1">
+            <p className="text-background/80 text-sm font-medium uppercase tracking-wider mb-2">Your League Index</p>
+            <div className="flex items-baseline gap-2 mb-4">
+              <div className="text-6xl sm:text-7xl font-bold">
+                {player.currentLi?.toFixed(2) ?? "—"}
+              </div>
+              {player.highestLi && player.currentLi && (
+                <p className="text-background/70 text-lg">
+                  Peak: {player.highestLi.toFixed(2)}
+                </p>
+              )}
+            </div>
+            <p className="text-background/80 text-base">
+              {player.currentLi && player.currentLi >= 3.5
+                ? "Advanced player • Competing at the highest level"
+                : player.currentLi && player.currentLi >= 2.5
+                  ? "Intermediate player • Ready for competitive matches"
+                  : "Beginner player • Growing your skills"}
+            </p>
+          </div>
+          <Link
+            href="#"
+            className="flex-shrink-0 w-16 h-16 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors"
+          >
+            <ArrowRight className="w-8 h-8 text-background" />
+          </Link>
+        </div>
       </section>
 
-      {/* TEAM SECTION — Only when on active team */}
+      {/* MATCHES SECTION */}
+      {myMatches.length > 0 && (
+        <section>
+          <h2 className="text-3xl font-bold mb-6">Upcoming Matches</h2>
+          <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
+        </section>
+      )}
+
+      {/* QUICK NAVIGATION GRID */}
+      <section>
+        <h2 className="text-3xl font-bold mb-6">Quick Links</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {overviewTeam && (
+            <QuickNavCard 
+              title="My Team"
+              description={overviewTeam.teamName}
+              href={`/teams/${overviewTeam.teamId}`}
+              icon="⚽"
+            />
+          )}
+          <QuickNavCard 
+            title="League Centre"
+            description="View standings & fixtures"
+            href="/league-centre"
+            icon="📊"
+          />
+          <QuickNavCard 
+            title="Find a Team"
+            description="Join the marketplace"
+            href="/marketplace"
+            icon="🔍"
+          />
+          {feesDue > 0 && (
+            <QuickNavCard 
+              title="Pay Fees"
+              description={`${fmtZAR(feesDue)} outstanding`}
+              href="#fees"
+              icon="💳"
+              highlight
+            />
+          )}
+        </div>
+      </section>
+
+      {/* TEAM SECTION */}
       {overviewTeam && (
         <section>
-          <h2 className="text-2xl font-bold mb-4">My Team</h2>
+          <h2 className="text-3xl font-bold mb-6">My Team</h2>
           <MyTeamCard team={overviewTeam} />
         </section>
       )}
 
-      {/* ADDITIONAL INFO — collapsible */}
-      <div className="mt-8">
+      {/* MORE INFO — collapsible */}
+      <div>
         <MoreInformation
           playtomicRating={player.playtomicRating}
           leagueIndex={player.currentLi}
@@ -176,7 +255,7 @@ export default async function DashboardOverview() {
       {/* FEES SECTION */}
       {teamFees.some((f) => f.status === "due") && (
         <section id="fees" className="scroll-mt-20">
-          <h2 className="text-2xl font-bold mb-4">League Fees</h2>
+          <h2 className="text-3xl font-bold mb-6">League Fees</h2>
           <TeamFees fees={teamFees} />
         </section>
       )}
@@ -184,7 +263,7 @@ export default async function DashboardOverview() {
       {/* FIND TEAM SECTION */}
       {activeTeams.length === 0 && (
         <section>
-          <h2 className="text-2xl font-bold mb-4">Find a Team</h2>
+          <h2 className="text-3xl font-bold mb-6">Looking for a Team?</h2>
           <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
         </section>
       )}
@@ -192,38 +271,34 @@ export default async function DashboardOverview() {
   )
 }
 
-function StatWidget({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="text-center">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
-      <p className={cn("text-lg sm:text-2xl font-bold tabular-nums", highlight && "text-amber-600")}>
-        {value}
-      </p>
-    </div>
-  )
-}
-
-function QuickLinkCard({
+function QuickNavCard({
   title,
   description,
   href,
   icon,
+  highlight = false,
 }: {
   title: string
   description: string
   href: string
   icon: string
+  highlight?: boolean
 }) {
   return (
-    <Link href={href} className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/50 p-4 sm:p-6 transition-all hover:border-border hover:bg-card hover:shadow-md">
-      <div className="absolute top-0 right-0 text-3xl sm:text-4xl opacity-0 group-hover:opacity-10 transition-opacity">
-        {icon}
-      </div>
-      <h3 className="font-semibold text-foreground mb-1">{title}</h3>
-      <p className="text-xs sm:text-sm text-muted-foreground">{description}</p>
-      <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-        Visit <ArrowRight className="h-3 w-3" />
-      </div>
+    <Link
+      href={href}
+      className={cn(
+        "group block p-6 rounded-2xl border-2 transition-all duration-300",
+        highlight
+          ? "border-primary bg-primary/5 hover:bg-primary/10"
+          : "border-border/50 bg-card hover:border-border hover:bg-card/80 hover:shadow-md"
+      )}
+    >
+      <div className="text-4xl mb-3">{icon}</div>
+      <h3 className={cn("font-semibold mb-1", highlight ? "text-primary" : "text-foreground")}>
+        {title}
+      </h3>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </Link>
   )
 }
