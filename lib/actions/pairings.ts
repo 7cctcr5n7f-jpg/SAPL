@@ -227,7 +227,7 @@ export async function invitePlayerByEmail(input: {
 
   // Send an account-creation email so the invitee can claim their spot. The
   // registration page pre-fills the email; their membership resolves on signup.
-  const registerUrl = `${appBaseUrl()}/register?email=${encodeURIComponent(email)}`
+  const registerUrl = `${appBaseUrl()}/sign-up?email=${encodeURIComponent(email)}`
   const { subject, html, text } = teamAddInviteEmail({
     teamName: team.name,
     captainName: me.name,

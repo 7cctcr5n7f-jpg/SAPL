@@ -496,3 +496,45 @@ export async function adminDeleteUsers(input: { userId?: string; all?: boolean }
   revalidatePath("/marketplace")
   return { ok: true, deleted: targets.length }
 }
+
+// ---------------------------------------------------------------------------
+// Change own password
+// ---------------------------------------------------------------------------
+
+export async function changeOwnPassword(_prev: unknown, formData: FormData) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authenticated" }
+
+  const current = (formData.get("currentPassword") as string | null)?.trim() ?? ""
+  const next = (formData.get("newPassword") as string | null)?.trim() ?? ""
+  const confirm = (formData.get("confirmPassword") as string | null)?.trim() ?? ""
+
+  if (!current || !next || !confirm) return { error: "All fields are required." }
+  if (next.length < 8) return { error: "New password must be at least 8 characters." }
+  if (next !== confirm) return { error: "New passwords do not match." }
+
+  try {
+    const { auth } = await import("@/lib/auth")
+    const ctx = await auth.$context
+
+    // Verify the current password against the stored hash
+    const [acct] = await db
+      .select({ password: account.password })
+      .from(account)
+      .where(and(eq(account.userId, me.id), eq(account.providerId, "credential")))
+      .limit(1)
+
+    if (!acct?.password) return { error: "No password account found. Use Forgot Password to set one." }
+
+    const valid = await ctx.password.verify({ hash: acct.password, password: current })
+    if (!valid) return { error: "Current password is incorrect." }
+
+    const hashed = await ctx.password.hash(next)
+    await ctx.internalAdapter.updatePassword(me.id, hashed)
+
+    return { success: "Password updated successfully." }
+  } catch (err) {
+    console.error("[changeOwnPassword]", err)
+    return { error: "Failed to update password. Please try again." }
+  }
+}
