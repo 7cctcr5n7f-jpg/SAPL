@@ -88,8 +88,9 @@ export default async function DashboardOverview() {
         leagueIndex={player.currentLi}
         team={overviewTeam}
         feesPaid={feesPaid}
-        playtomicRating={player.playtomicRating}
+        playtomicRating={player.playtomicRating ? String(player.playtomicRating) : null}
         eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
+        avatarUrl={player.avatarUrl as string | null}
       />
 
       {teamFees.some((f) => f.status === "due") && (

@@ -1,12 +1,9 @@
+"use client"
+
 import Link from "next/link"
 import type { PlayerOverviewTeam } from "@/lib/queries-dashboard"
+import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
 import { cn } from "@/lib/utils"
-
-// ---------------------------------------------------------------------------
-// SECTION 1 — Player Summary. A single, compact bar that answers, at a glance:
-// who you play for, division, region, your LI, account standing and fee status.
-// Deliberately minimal — no large hero, no marketplace/TPR snapshot.
-// ---------------------------------------------------------------------------
 
 export function PlayerSummary({
   firstName,
@@ -15,6 +12,8 @@ export function PlayerSummary({
   feesPaid,
   playtomicRating,
   eligibleCategories,
+  avatarUrl,
+  onPhotoChange,
 }: {
   firstName: string
   leagueIndex: number | null
@@ -22,6 +21,8 @@ export function PlayerSummary({
   feesPaid: boolean
   playtomicRating: string | null
   eligibleCategories: string[]
+  avatarUrl?: string | null
+  onPhotoChange?: (url: string) => void
 }) {
   const primaryCategory = eligibleCategories?.[0] || null
 
@@ -30,11 +31,11 @@ export function PlayerSummary({
       {/* Hero Profile Section */}
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-8 mb-6">
         {/* Profile Photo */}
-        <div className="flex-shrink-0">
-          <div className="w-24 h-24 rounded-full border-4 border-primary/20 bg-secondary/20 flex items-center justify-center">
-            <div className="text-4xl">👤</div>
-          </div>
-        </div>
+        <PlayerPhotoUploader
+          value={avatarUrl}
+          onChange={onPhotoChange || (() => {})}
+          isCapitan={team?.role === "captain"}
+        />
 
         {/* Profile Info */}
         <div className="flex-1 min-w-0">
@@ -44,15 +45,9 @@ export function PlayerSummary({
               {team && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {team.teamName}
-                  {team.role === "captain" && " • Team Captain"}
                 </p>
               )}
             </div>
-            {team?.role === "captain" && (
-              <span className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary whitespace-nowrap">
-                Captain
-              </span>
-            )}
           </div>
           {team && (
             <p className="text-xs text-muted-foreground">
