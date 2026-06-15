@@ -575,16 +575,14 @@ function SquadWithFees({
                   </p>
                 </div>
               </div>
-              {!isLeagueAdmin && (
-                <button
-                  onClick={() => onCancelInvite(inv.id)}
-                  disabled={pending}
-                  className="text-muted-foreground hover:text-destructive"
-                  aria-label={`Cancel invite for ${inv.email}`}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+              <button
+                onClick={() => onCancelInvite(inv.id)}
+                disabled={pending}
+                className="text-muted-foreground hover:text-destructive"
+                aria-label={`Cancel invite for ${inv.email}`}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           ))}
         </>
