@@ -420,7 +420,7 @@ export function OrgHub({
                         <p className="text-[11px] text-muted-foreground">
                           {t.clubPaysFees
                             ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
-                            : `Players pay · ${t.paidCount}/${t.rosterCount} paid`}
+                            : `Players pay · ${t.paidCount}/${TEAM_SQUAD_SIZE} paid`}
                         </p>
                       </button>
                     </div>
