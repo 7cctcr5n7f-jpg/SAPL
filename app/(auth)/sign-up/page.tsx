@@ -4,9 +4,15 @@ import { getOptionalSession } from "@/lib/session"
 
 export const metadata = { title: "Join the League | SAPL" }
 
-export default async function SignUpPage() {
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>
+}) {
   const session = await getOptionalSession()
   if (session?.user) redirect("/dashboard")
+
+  const { email } = await searchParams
 
   return (
     <div className="flex flex-col gap-6">
@@ -14,7 +20,7 @@ export default async function SignUpPage() {
         <h1 className="heading text-3xl">Join the League</h1>
         <p className="mt-1 text-sm text-muted-foreground">Create your account to register as a player.</p>
       </div>
-      <AuthForm mode="sign-up" />
+      <AuthForm mode="sign-up" defaultEmail={email} />
     </div>
   )
 }
