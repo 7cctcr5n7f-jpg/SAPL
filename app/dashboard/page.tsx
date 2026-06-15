@@ -1,5 +1,8 @@
 import Link from "next/link"
+import { ArrowRight } from "lucide-react"
 import { getCurrentUser } from "@/lib/session"
+import { cn } from "@/lib/utils"
+import { Crest } from "@/components/league-centre/crest"
 import {
   getPlayerByUserId,
   getPlayerMemberships,
@@ -32,11 +35,7 @@ export default async function DashboardOverview() {
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
-  // Team fixtures (with per-court booking links) come from the same source the
-  // Fixtures management page uses, so links set there appear here too.
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
-  // Per-category detail (player pairings + result) keyed by fixture id, so the
-  // expanded rows can show player-vs-player like the management view.
   const detailMap =
     player && myMatches.length
       ? await getFixtureDetails(
@@ -52,7 +51,6 @@ export default async function DashboardOverview() {
     payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
   const feesPaid = outstanding <= 0
 
-  // The player can submit scores when they captain (or co-manage) their team.
   const isCaptain = overviewTeam?.role === "captain" || access.canCaptainHub
 
   // Non-player members (admins-only / unassigned) keep the onboarding flow.
@@ -89,27 +87,83 @@ export default async function DashboardOverview() {
   }
 
   return (
-    <div>
-      {/* SECTION 1 — compact player summary (team, division, region, LI, status). */}
-      <PlayerSummary
-        firstName={me.name.split(" ")[0]}
-        leagueIndex={player.currentLi}
-        team={overviewTeam}
-        feesPaid={feesPaid}
-      />
+    <div className="space-y-8">
+      {/* HERO SECTION — Player Profile with Stats */}
+      <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-background to-background border border-border/40">
+        <div className="p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
+            {/* Player Info */}
+            <div className="flex items-end gap-4">
+              {overviewTeam && (
+                <Crest name={overviewTeam.teamName} logoUrl={null} size="lg" />
+              )}
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Welcome back</p>
+                <h1 className="text-3xl sm:text-4xl font-bold text-foreground">{me.name}</h1>
+                {overviewTeam && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {overviewTeam.teamName} · {overviewTeam.divisionName}
+                    {overviewTeam.role === "captain" && (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold uppercase text-primary">
+                        Captain
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
 
-      {/* SECTIONS 2-4 — Actions required, next match, and the fixtures list. */}
+            {/* Key Stats */}
+            <div className="grid grid-cols-3 gap-4 sm:gap-6">
+              <StatWidget label="League Index" value={player.currentLi?.toFixed(2) ?? "—"} />
+              <StatWidget label="Status" value={feesPaid ? "Active" : "Fees Due"} highlight={!feesPaid} />
+              <StatWidget label="Next Match" value={myMatches.length > 0 ? "Scheduled" : "None"} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MATCHES SECTION — Upcoming Fixtures */}
       <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
 
-      {/* SECTION 5 — compact team record (only when on an active team). */}
+      {/* QUICK LINKS GRID */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <QuickLinkCard 
+          title="My Team"
+          description={overviewTeam?.teamName || "Join a team"}
+          href={overviewTeam ? `/teams/${overviewTeam.teamId}` : "/dashboard"}
+          icon="⚽"
+        />
+        <QuickLinkCard 
+          title="League Centre"
+          description="Standings & fixtures"
+          href="/league-centre"
+          icon="📊"
+        />
+        <QuickLinkCard 
+          title="Find a Team"
+          description="Join the marketplace"
+          href="/marketplace"
+          icon="🔍"
+        />
+        <QuickLinkCard 
+          title="My Profile"
+          description="Update your info"
+          href="/dashboard/profile"
+          icon="👤"
+        />
+      </section>
+
+      {/* TEAM SECTION — Only when on active team */}
       {overviewTeam && (
-        <div className="mt-6">
+        <section>
+          <h2 className="text-2xl font-bold mb-4">My Team</h2>
           <MyTeamCard team={overviewTeam} />
-        </div>
+        </section>
       )}
 
-      {/* SECONDARY — collapsible "More Information" (ratings, eligibility, marketplace). */}
-      <div className="mt-6">
+      {/* ADDITIONAL INFO — collapsible */}
+      <div className="mt-8">
         <MoreInformation
           playtomicRating={player.playtomicRating}
           leagueIndex={player.currentLi}
@@ -119,29 +173,57 @@ export default async function DashboardOverview() {
         />
       </div>
 
-      {/* Fees — kept on the page, anchored so the summary "Fees due" chip links here. */}
+      {/* FEES SECTION */}
       {teamFees.some((f) => f.status === "due") && (
-        <section id="fees" className="mt-6 scroll-mt-20">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">League Fees</h2>
+        <section id="fees" className="scroll-mt-20">
+          <h2 className="text-2xl font-bold mb-4">League Fees</h2>
           <TeamFees fees={teamFees} />
         </section>
       )}
 
-      {/* Marketplace / create-team tools live below the match centre now. */}
+      {/* FIND TEAM SECTION */}
       {activeTeams.length === 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">Find a Team</h2>
+        <section>
+          <h2 className="text-2xl font-bold mb-4">Find a Team</h2>
           <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
         </section>
       )}
+    </div>
+  )
+}
 
-      <p className="mt-6 text-center text-xs text-muted-foreground">
-        Looking for standings, rankings and league-wide fixtures?{" "}
-        <Link href="/league-centre" className="font-medium text-primary hover:underline">
-          Open the League Centre
-        </Link>
-        .
+function StatWidget({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="text-center">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
+      <p className={cn("text-lg sm:text-2xl font-bold tabular-nums", highlight && "text-amber-600")}>
+        {value}
       </p>
     </div>
+  )
+}
+
+function QuickLinkCard({
+  title,
+  description,
+  href,
+  icon,
+}: {
+  title: string
+  description: string
+  href: string
+  icon: string
+}) {
+  return (
+    <Link href={href} className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/50 p-4 sm:p-6 transition-all hover:border-border hover:bg-card hover:shadow-md">
+      <div className="absolute top-0 right-0 text-3xl sm:text-4xl opacity-0 group-hover:opacity-10 transition-opacity">
+        {icon}
+      </div>
+      <h3 className="font-semibold text-foreground mb-1">{title}</h3>
+      <p className="text-xs sm:text-sm text-muted-foreground">{description}</p>
+      <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+        Visit <ArrowRight className="h-3 w-3" />
+      </div>
+    </Link>
   )
 }
