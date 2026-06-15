@@ -27,9 +27,20 @@ export const auth = betterAuth({
       const { subject, html, text } = resetPasswordEmail(url)
       const { sent } = await sendEmail({ to: user.email, subject, html, text })
       if (!sent) {
-        // No email provider configured — surface the link so resets stay testable.
-        console.log(`[v0] Password reset link for ${user.email}: ${url}`)
+        console.log(`[auth] Password reset link for ${user.email}: ${url}`)
       }
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        // Auto-verify email on account creation while email verification is not
+        // enforced. This prevents users from being locked out if the flag is
+        // toggled on later without a backfill.
+        before: async (user) => {
+          return { data: { ...user, emailVerified: ENFORCE_EMAIL_VERIFICATION ? user.emailVerified : true } }
+        },
+      },
     },
   },
   emailVerification: {
