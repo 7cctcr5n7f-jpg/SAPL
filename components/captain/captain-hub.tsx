@@ -255,9 +255,11 @@ export function CaptainHub({
               <div className="flex items-center gap-2">
                 {/* Invite by email */}
                 <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-                  <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                    <Mail className="mr-1.5 h-4 w-4" />
-                    Invite
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Mail className="mr-1.5 h-4 w-4" />
+                      Invite
+                    </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-sm">
                     <DialogHeader>
@@ -282,9 +284,11 @@ export function CaptainHub({
 
                 {/* Assign existing free agent */}
                 <Dialog>
-                  <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                    <UserPlus className="mr-1.5 h-4 w-4" />
-                    Assign
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <UserPlus className="mr-1.5 h-4 w-4" />
+                      Assign
+                    </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
