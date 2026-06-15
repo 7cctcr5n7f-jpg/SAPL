@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,12 +16,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { ResultEntry } from "@/components/captain/result-entry"
 import { PairingsBoard } from "@/components/team/pairings-board"
-import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { addPlayer, removeMember } from "@/lib/actions/captain"
+import { invitePlayerByEmail } from "@/lib/actions/pairings"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check } from "lucide-react"
+import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check } from "lucide-react"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
 
 const PAYING_PLAYERS_COUNT = 8
@@ -84,7 +85,10 @@ export function CaptainHub({
   const [activeId, setActiveId] = useState(teams[0]?.id ?? 0)
   const team = teams.find((t) => t.id === activeId) ?? teams[0]
   const [pending, start] = useTransition()
+  const router = useRouter()
   const [search, setSearch] = useState("")
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [resultFixture, setResultFixture] = useState<FixtureLite | null>(null)
   const [activeTab, setActiveTab] = useState<"squad" | "fixtures" | "pairings">("fixtures")
 
@@ -113,14 +117,33 @@ export function CaptainHub({
     start(async () => {
       const res = await addPlayer(team.id, playerId)
       if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Player added")
+      else {
+        toast.success(res?.success ?? "Player added")
+        router.refresh()
+      }
     })
   }
   function remove(membershipId: number) {
     start(async () => {
       const res = await removeMember(team.id, membershipId)
       if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Removed")
+      else {
+        toast.success(res?.success ?? "Removed")
+        router.refresh()
+      }
+    })
+  }
+  function sendSquadInvite() {
+    if (!inviteEmail.trim()) return
+    start(async () => {
+      const res = await invitePlayerByEmail({ teamId: team.id, email: inviteEmail.trim() })
+      if (res?.error) toast.error(res.error)
+      else {
+        toast.success(res?.success ?? "Invite sent")
+        setInviteEmail("")
+        setInviteOpen(false)
+        router.refresh()
+      }
     })
   }
 
@@ -229,50 +252,80 @@ export function CaptainHub({
               </p>
             </div>
             {!isLeagueAdmin && (
-              <Dialog>
-                <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                  <UserPlus className="mr-1.5 h-4 w-4" />
-                  Add player
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Add a Player</DialogTitle>
-                  </DialogHeader>
-                  <Input
-                    placeholder="Search by name or email..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                  <div className="max-h-80 space-y-2 overflow-y-auto">
-                    {filteredAgents.length === 0 && (
-                      <p className="py-6 text-center text-sm text-muted-foreground">
-                        {q ? "No players match that name or email." : "Start typing to search players."}
-                      </p>
-                    )}
-                    {filteredAgents.map((a) => (
-                      <div
-                        key={a.playerId}
-                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs">{a.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{a.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {a.email ?? `LI ${a.li.toFixed(1)} · ${a.city ?? "—"}`}
-                            </p>
+              <div className="flex items-center gap-2">
+                {/* Invite by email */}
+                <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+                  <DialogTrigger render={<Button size="sm" variant="outline" />}>
+                    <Mail className="mr-1.5 h-4 w-4" />
+                    Invite
+                  </DialogTrigger>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Invite player by email</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                      Enter the player&apos;s email. If they already have an account they&apos;ll be added immediately;
+                      otherwise they&apos;ll receive a sign-up link and join automatically once registered.
+                    </p>
+                    <Input
+                      type="email"
+                      placeholder="player@email.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendSquadInvite()}
+                    />
+                    <Button onClick={sendSquadInvite} disabled={pending || !inviteEmail.trim()}>
+                      {pending ? "Sending..." : "Send invite"}
+                    </Button>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Assign existing free agent */}
+                <Dialog>
+                  <DialogTrigger render={<Button size="sm" variant="outline" />}>
+                    <UserPlus className="mr-1.5 h-4 w-4" />
+                    Assign
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Assign a player</DialogTitle>
+                    </DialogHeader>
+                    <Input
+                      placeholder="Search by name or email..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
+                      {filteredAgents.length === 0 && (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                          {search.trim() ? "No players match that name or email." : "Start typing to search players."}
+                        </p>
+                      )}
+                      {filteredAgents.map((a) => (
+                        <div
+                          key={a.playerId}
+                          className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">{a.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{a.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {a.email ?? `LI ${a.li.toFixed(1)} · ${a.city ?? "—"}`}
+                              </p>
+                            </div>
                           </div>
+                          <Button size="sm" disabled={pending} onClick={() => invite(a.playerId)}>
+                            Add
+                          </Button>
                         </div>
-                        <Button size="sm" disabled={pending} onClick={() => invite(a.playerId)}>
-                          Add
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </DialogContent>
-              </Dialog>
+                      ))}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             )}
           </CardHeader>
           <CardContent className="space-y-2">
@@ -302,18 +355,6 @@ export function CaptainHub({
             invites={team.pairingInvites}
             clubPaysFees={team.clubPaysFees}
           />
-        </div>
-      )}
-
-      {/* Add player shortcut for captains (above tabs) */}
-      {!isLeagueAdmin && activeTab === "squad" && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            Add a new player to your squad — they&apos;ll get a login and can be assigned to one of your teams.
-          </p>
-          <div className="shrink-0">
-            <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
-          </div>
         </div>
       )}
 
