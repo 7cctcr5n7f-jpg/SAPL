@@ -251,8 +251,7 @@ export function CaptainHub({
                 {team.divisionName} · TPR {Math.round(team.tpr)}
               </p>
             </div>
-            {!isLeagueAdmin && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
                 {/* Invite by email */}
                 <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
                   <DialogTrigger asChild>
@@ -330,7 +329,6 @@ export function CaptainHub({
                   </DialogContent>
                 </Dialog>
               </div>
-            )}
           </CardHeader>
           <CardContent className="space-y-2">
             <SquadWithFees
