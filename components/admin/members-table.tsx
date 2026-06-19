@@ -359,6 +359,7 @@ function EditMemberDialog({
           <div className="space-y-1.5">
             <Label htmlFor="edit-name">Full name</Label>
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <p className="text-xs text-muted-foreground">For player profiles, ensure names are formatted as "FirstName LastName"</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="edit-email">Email</Label>
@@ -368,6 +369,11 @@ function EditMemberDialog({
           <div className="space-y-1.5">
             <Label htmlFor="edit-phone">Contact number</Label>
             <Input id="edit-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+          </div>
+          <div className="rounded-md bg-blue-50 p-3 dark:bg-blue-950/20">
+            <p className="text-xs font-medium text-blue-900 dark:text-blue-200">
+              To complete a player profile with gender, LI, and other details, have the user complete onboarding at <code className="font-mono text-xs">/onboarding</code> or assign them the "Player" role to enable team membership.
+            </p>
           </div>
         </div>
         <DialogFooter>
