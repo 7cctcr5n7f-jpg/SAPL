@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
 
 type Captain = {
-  playerId: number
+  playerId: string
   name: string
   email: string | null
   phone: string | null
@@ -115,7 +115,7 @@ function PayDot({ state }: { state: "paid" | "partial" | "unpaid" }) {
         : "ring-red-500/20"
   return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2", color, ring)} aria-hidden />
 }
-type FreeAgent = { playerId: number; name: string; li: number }
+type FreeAgent = { playerId: string; name: string; li: number }
 type Venue = { id: number; name: string; remaining: number; hosts: boolean; available: boolean }
 
 /**
@@ -183,11 +183,11 @@ export function OrgHub({
     })
   }
 
-  function doAssign(playerId: number) {
+  function doAssign(playerId: string) {
     if (!assignFor) return
     const fd = new FormData()
     fd.set("teamId", String(assignFor.id))
-    fd.set("playerId", String(playerId))
+    fd.set("playerId", playerId)
     start(async () => {
       const res = await assignCaptain(fd)
       if (res.ok) {
@@ -201,7 +201,7 @@ export function OrgHub({
   // deduped, so admins can promote an existing roster member or recruit a free
   // agent. Roster members are flagged so the UI can show "On squad".
   const captainCandidates = (() => {
-    const onRoster = new Map<number, { playerId: number; name: string; li: number; onRoster: boolean }>()
+    const onRoster = new Map<string, { playerId: string; name: string; li: number; onRoster: boolean }>()
     if (assignFor) {
       for (const p of assignFor.pairingRoster) {
         onRoster.set(p.playerId, { playerId: p.playerId, name: p.name, li: p.li, onRoster: true })
