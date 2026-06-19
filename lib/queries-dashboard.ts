@@ -20,7 +20,7 @@ import {
   regions,
   clubs,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne, isNotNull, sql } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 
@@ -738,11 +738,14 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
 
   let whereCondition
   if (scopedTeamIds === null) {
-    // League admin: see all players
-    whereCondition = eq(user.isPlayer, true)
+    // League admin: see all players and admin users
+    whereCondition = sql`${user.isPlayer} = true OR ${user.role} IN ('super_admin', 'org_admin', 'league_admin')`
   } else {
-    // Scoped admin/captain: only players from their teams
-    whereCondition = and(eq(user.isPlayer, true), teams.id.inArray(scopedTeamIds))
+    // Scoped admin/captain: only players from their teams or admins on those teams
+    whereCondition = and(
+      sql`(${user.isPlayer} = true OR ${user.role} IN ('org_admin', 'captain'))`,
+      teams.id.inArray(scopedTeamIds)
+    )
   }
 
   const rows = await db
