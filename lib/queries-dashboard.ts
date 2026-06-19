@@ -55,9 +55,9 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 
   // Active roster players.
   const rosterRows = await db
-    .select({ player: players, status: teamMembers.status })
+    .select({ player: user, status: teamMembers.status })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, user.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
 
   // Which players have paid (individual payment for this team).
@@ -529,7 +529,7 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .innerJoin(players, eq(teamMembers.playerId, user.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     // Only chase fees once a team has actually been placed in a division under
     // League Control — unplaced teams aren't competing yet, so no fee is due.
     .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false), isNotNull(teams.divisionId)))
@@ -851,9 +851,9 @@ export type TeamRosterMember = {
 
 export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]> {
   const rows = await db
-    .select({ membership: teamMembers, player: players })
+    .select({ membership: teamMembers, player: user })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, user.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     // Exclude players who have been removed from the roster — only active and
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))

@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { user as user, userMeta } from "@/lib/db/schema"
+import { user, userMeta } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -13,7 +13,7 @@ export async function createPlayerProfile(
   _prev: OnboardingState,
   formData: FormData,
 ): Promise<OnboardingState> {
-  const user = await requireUser()
+  const currentUser = await requireUser()
 
   const firstName = String(formData.get("firstName") ?? "").trim()
   const lastName = String(formData.get("lastName") ?? "").trim()
@@ -37,11 +37,11 @@ export async function createPlayerProfile(
   if (!firstName || !lastName) return { error: "First and last name are required." }
 
   // Ensure user_meta exists (default role: player)
-  const [existingMeta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1)
+  const [existingMeta] = await db.select().from(userMeta).where(eq(userMeta.userId, currentUser.id)).limit(1)
   if (existingMeta) {
-    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, user.id))
+    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, currentUser.id))
   } else {
-    await db.insert(userMeta).values({ userId: user.id, role: "player", phone })
+    await db.insert(userMeta).values({ userId: currentUser.id, role: "player", phone })
   }
 
   // Update user profile with player data
@@ -66,11 +66,11 @@ export async function createPlayerProfile(
     updatedAt: new Date(),
   }
 
-  await db.update(user).set(values).where(eq(user.id, user.id))
+  await db.update(user).set(values).where(eq(user.id, currentUser.id))
 
   // Auto-join any teams that invited this email address.
   try {
-    await resolvePendingInvites(user.email, user.id)
+    await resolvePendingInvites(currentUser.email, currentUser.id)
   } catch (err) {
     console.log("[v0] resolvePendingInvites failed:", err)
   }
