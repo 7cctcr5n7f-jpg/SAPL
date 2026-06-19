@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { teams, teamMembers, players, clubs } from "@/lib/db/schema"
+import { teams, teamMembers, user, clubs } from "@/lib/db/schema"
 import { and, eq } from "drizzle-orm"
 
 /**
@@ -14,7 +14,7 @@ export async function recomputeTeamStats(teamId: number) {
   const roster = await db
     .select({ li: user.currentLi })
     .from(teamMembers)
-    .innerJoin(players, eq(user.id, teamMembers.playerId))
+    .innerJoin(user, eq(user.id, teamMembers.playerId))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
 
   const playerCount = roster.length
