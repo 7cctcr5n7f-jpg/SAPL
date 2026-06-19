@@ -10,7 +10,7 @@ import { and, eq, inArray } from "drizzle-orm"
  * manually by clubs/admins).
  */
 export async function syncDivisionFixtures(divisionId: number) {
-  const [div] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+  const [div] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!div) return
 
   // slot -> teamId for teams assigned to this division in its season.

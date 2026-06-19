@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, players, teamMembers } from "@/lib/db/schema"
+import { clubs, organisations, teams, user as user, teamMembers } from "@/lib/db/schema"
 import { asc, eq, inArray, sql, and } from "drizzle-orm"
 
 export type PlayerOption = {
@@ -15,16 +15,16 @@ export type PlayerOption = {
 export async function getPlayerOptions(): Promise<PlayerOption[]> {
   const rows = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
-      lookingForTeam: players.lookingForTeam,
-      userId: players.userId,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      currentLi: user.currentLi,
+      lookingForTeam: user.lookingForTeam,
+      userId: user.id,
     })
-    .from(players)
-    .where(sql`${players.userId} is not null`)
-    .orderBy(asc(players.firstName), asc(players.lastName))
+    .from(user)
+    .where(sql`${user.id} is not null`)
+    .orderBy(asc(user.firstName), asc(user.lastName))
     .limit(2000)
 
   // Map each player to the team they're actively rostered on (if any), so the
@@ -169,9 +169,9 @@ export async function getClubsWithUsage(
     const captainName = new Map<string, string>()
     if (captainIds.length) {
       const pRows = await db
-        .select({ userId: players.userId, firstName: players.firstName, lastName: players.lastName })
-        .from(players)
-        .where(inArray(players.userId, captainIds))
+        .select({ userId: user.id, firstName: user.firstName, lastName: user.lastName })
+        .from(user)
+        .where(inArray(user.id, captainIds))
       for (const p of pRows) captainName.set(p.userId, `${p.firstName} ${p.lastName}`.trim())
     }
 
@@ -224,6 +224,6 @@ export async function getOrganisationOptions() {
 }
 
 export async function getClubBySlug(slug: string) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.slug, slug)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.slug, slug)).limit(1)
   return club ?? null
 }

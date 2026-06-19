@@ -7,7 +7,6 @@ import {
   seasons,
   standings,
   fixtures,
-  players,
   sponsors,
   settings,
   tprHistory,
@@ -15,14 +14,15 @@ import {
   categories,
   regions,
   playoffs,
+  user,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
 
 export async function getCurrentSeason() {
-  const [season] = await db.select().from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [season] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
   if (season) return season
-  const [latest] = await db.select().from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).orderBy(desc(seasons.id)).limit(1)
   return latest ?? null
 }
 
@@ -42,7 +42,7 @@ export async function getPlayerFee(seasonId?: number | null): Promise<number> {
 }
 
 export async function getDivisions(seasonId: number) {
-  return db.select().from(divisions).where(eq(divisions.seasonId, seasonId)).orderBy(asc(divisions.level))
+  return db.select({ id: divisions.id, name: divisions.name, level: divisions.level, seasonId: divisions.seasonId, regionId: divisions.regionId }).from(divisions).where(eq(divisions.seasonId, seasonId)).orderBy(asc(divisions.level))
 }
 
 /** Divisions for a season including their SAPL region name, for region-grouped standings. */
@@ -62,11 +62,11 @@ export async function getDivisionsWithRegion(seasonId: number) {
 }
 
 export async function getCategories() {
-  return db.select().from(categories).orderBy(asc(categories.sortOrder))
+  return db.select({ id: categories.id, name: categories.name, sortOrder: categories.sortOrder }).from(categories).orderBy(asc(categories.sortOrder))
 }
 
 export async function getRegions() {
-  return db.select().from(regions).orderBy(asc(regions.name))
+  return db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.name))
 }
 
 // Team Power Rating leaderboard
@@ -221,7 +221,7 @@ export async function getOrganisations() {
 }
 
 export async function getOrganisationBySlug(slug: string) {
-  const [org] = await db.select().from(organisations).where(eq(organisations.slug, slug)).limit(1)
+  const [org] = await db.select({ id: organisations.id, name: organisations.name, slug: organisations.slug, type: organisations.type, city: organisations.city, province: organisations.province, cpi: organisations.cpi, logoUrl: organisations.logoUrl }).from(organisations).where(eq(organisations.slug, slug)).limit(1)
   if (!org) return null
   const orgTeams = await db
     .select({
@@ -267,17 +267,17 @@ export async function getTeamDetail(teamId: number) {
   const roster = await db
     .select({
       memberId: teamMembers.id,
-      playerId: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      gender: players.gender,
-      currentLi: players.currentLi,
-      currentTpr: players.currentTpr,
+      playerId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      gender: user.gender,
+      currentLi: user.currentLi,
+      currentTpr: user.currentTpr,
       role: teamMembers.role,
       status: teamMembers.status,
     })
     .from(teamMembers)
-    .leftJoin(players, eq(teamMembers.playerId, players.id))
+    .leftJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
 
   const history = await db
@@ -289,13 +289,21 @@ export async function getTeamDetail(teamId: number) {
   return { team, roster, history }
 }
 
+const sponsorFields = {
+  id: sponsors.id, name: sponsors.name, tier: sponsors.tier, scopeId: sponsors.scopeId,
+  logoUrl: sponsors.logoUrl, website: sponsors.website, description: sponsors.description,
+  level: sponsors.level, tagline: sponsors.tagline, mainSponsor: sponsors.mainSponsor,
+  contractStart: sponsors.contractStart, contractEnd: sponsors.contractEnd,
+  active: sponsors.active, createdAt: sponsors.createdAt,
+}
+
 export async function getSponsors() {
-  return db.select().from(sponsors).where(eq(sponsors.active, true)).orderBy(asc(sponsors.tier))
+  return db.select(sponsorFields).from(sponsors).where(eq(sponsors.active, true)).orderBy(asc(sponsors.tier))
 }
 
 export async function getMainSponsor() {
   const rows = await db
-    .select()
+    .select(sponsorFields)
     .from(sponsors)
     .where(and(eq(sponsors.active, true), eq(sponsors.mainSponsor, true)))
     .limit(1)
@@ -303,7 +311,10 @@ export async function getMainSponsor() {
 }
 
 export async function getPrizePool() {
-  const rows = await db.select().from(settings).where(sql`${settings.key} in ('prize_pool','prize_pool_label')`)
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(sql`${settings.key} in ('prize_pool','prize_pool_label')`)
   const map = new Map(rows.map((r) => [r.key, r.value]))
   const amount = (map.get("prize_pool") ?? "").trim()
   const label = (map.get("prize_pool_label") ?? "Total Prize Pool").trim() || "Total Prize Pool"
@@ -313,9 +324,9 @@ export async function getPrizePool() {
 export async function getFreeAgents() {
   return db
     .select()
-    .from(players)
-    .where(eq(players.lookingForTeam, true))
-    .orderBy(desc(players.currentLi))
+    .from(user)
+    .where(eq(user.lookingForTeam, true))
+    .orderBy(desc(user.currentLi))
     .limit(200)
 }
 
@@ -330,7 +341,7 @@ export async function getClubOptions() {
 export async function getLeagueStats() {
   const [teamCount] = await db.select({ c: sql<number>`count(*)::int` }).from(teams)
   const [orgCount] = await db.select({ c: sql<number>`count(*)::int` }).from(organisations)
-  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(players)
+  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(user)
   const [fixtureCount] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(fixtures)
@@ -346,5 +357,5 @@ export async function getLeagueStats() {
 }
 
 export async function getPlayoffs(seasonId: number) {
-  return db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
+  return db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
 }

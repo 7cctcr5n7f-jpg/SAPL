@@ -9,7 +9,7 @@ import {
   getUnassignedPlayers,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, players, user as authUser, userMeta, payments } from "@/lib/db/schema"
+import { organisations, user as userTable, userMeta, payments } from "@/lib/db/schema"
 import { eq, and, desc } from "drizzle-orm"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage } from "@/lib/queries-clubs"
@@ -38,7 +38,7 @@ export default async function OrgPage() {
   // Admins, and club managers without an owned org, borrow a sample org so the
   // create-team dialog still has a context to attach new teams to.
   if (!org && (isAdminWide || user.isSuperAdmin || hasScopedAccess)) {
-    const [sample] = await db.select().from(organisations).orderBy(organisations.id).limit(1)
+    const [sample] = await db.select({ id: organisations.id, ownerUserId: organisations.ownerUserId }).from(organisations).orderBy(organisations.id).limit(1)
     org = sample ?? null
   }
 
@@ -69,7 +69,7 @@ export default async function OrgPage() {
 
   // Captain profiles (name + contact details so the row can show and edit them).
   type CaptainInfo = {
-    playerId: number
+    playerId: string
     name: string
     email: string | null
     phone: string | null
@@ -78,14 +78,17 @@ export default async function OrgPage() {
   const captainMap = new Map<string, CaptainInfo>()
   for (const cid of captainIds) {
     if (captainMap.has(cid)) continue
-    const [p] = await db.select().from(players).where(eq(players.userId, cid)).limit(1)
+    const [p] = await db
+      .select({ firstName: userTable.firstName, lastName: userTable.lastName, email: userTable.email })
+      .from(userTable)
+      .where(eq(userTable.id, cid))
+      .limit(1)
     if (!p) continue
-    const [u] = await db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, cid)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
     captainMap.set(cid, {
-      playerId: p.id,
+      playerId: cid,
       name: `${p.firstName} ${p.lastName}`,
-      email: u?.email ?? null,
+      email: p.email ?? null,
       phone: m?.phone ?? null,
     })
   }

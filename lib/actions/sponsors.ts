@@ -6,9 +6,9 @@ import { eq } from "drizzle-orm"
 import { requireRole } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 
-// League sponsor management is restricted to league/super admins.
+// League sponsor management is restricted to super admins.
 async function requireLeagueAdmin() {
-  return requireRole(["league_admin", "super_admin"])
+  return requireRole(["super_admin"])
 }
 
 function revalidateSponsorSurfaces() {

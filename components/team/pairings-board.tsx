@@ -49,7 +49,7 @@ export function PairingsBoard({
 
   // Every player already placed in ANY category's slot — a player may occupy
   // only one slot across the whole lineup, so these are excluded everywhere.
-  const placedIds = new Set<number>()
+  const placedIds = new Set<string>()
   categories.forEach((c) =>
     c.pairs.forEach((pair) =>
       pair.forEach((s) => {
@@ -58,7 +58,7 @@ export function PairingsBoard({
     ),
   )
 
-  function assign(category: string, pairIndex: number, slotIndex: number, playerId: number | null) {
+  function assign(category: string, pairIndex: number, slotIndex: number, playerId: string | null) {
     start(async () => {
       const res = await setPairingSlot({ teamId, category, pairIndex, slotIndex, playerId })
       if (res?.error) toast.error(res.error)

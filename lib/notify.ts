@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { notifications, teams, teamMembers, players, user as userTable } from "@/lib/db/schema"
+import { notifications, teams, teamMembers, user } from "@/lib/db/schema"
 import { and, eq, sql } from "drizzle-orm"
 import { notificationProvider, type NotificationChannel } from "@/lib/providers"
 import { NOTE_LINK_SEP } from "@/lib/notify-constants"
@@ -80,17 +80,17 @@ async function getTeamUserIds(teamId: number): Promise<string[]> {
   const ownerEmail = team?.ownerEmail?.trim().toLowerCase()
   if (ownerEmail) {
     const [owner] = await db
-      .select({ id: userTable.id })
-      .from(userTable)
-      .where(sql`lower(${userTable.email}) = ${ownerEmail}`)
+      .select({ id: user.id })
+      .from(user)
+      .where(sql`lower(${user.email}) = ${ownerEmail}`)
       .limit(1)
     if (owner?.id) ids.add(owner.id)
   }
 
   const roster = await db
-    .select({ userId: players.userId })
+    .select({ userId: user.id })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
   for (const r of roster) if (r.userId) ids.add(r.userId)
 

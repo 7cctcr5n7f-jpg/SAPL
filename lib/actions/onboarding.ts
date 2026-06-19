@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { players, userMeta } from "@/lib/db/schema"
+import { user, userMeta } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -13,7 +13,7 @@ export async function createPlayerProfile(
   _prev: OnboardingState,
   formData: FormData,
 ): Promise<OnboardingState> {
-  const user = await requireUser()
+  const currentUser = await requireUser()
 
   const firstName = String(formData.get("firstName") ?? "").trim()
   const lastName = String(formData.get("lastName") ?? "").trim()
@@ -37,15 +37,14 @@ export async function createPlayerProfile(
   if (!firstName || !lastName) return { error: "First and last name are required." }
 
   // Ensure user_meta exists (default role: player)
-  const [existingMeta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1)
+  const [existingMeta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, currentUser.id)).limit(1)
   if (existingMeta) {
-    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, user.id))
+    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, currentUser.id))
   } else {
-    await db.insert(userMeta).values({ userId: user.id, role: "player", phone })
+    await db.insert(userMeta).values({ userId: currentUser.id, role: "player", phone })
   }
 
-  // Upsert player profile scoped to this user
-  const [existing] = await db.select().from(players).where(eq(players.userId, user.id)).limit(1)
+  // Update user profile with player data
   const values = {
     firstName,
     lastName,
@@ -63,21 +62,15 @@ export async function createPlayerProfile(
     anyClub,
     lookingForTeam,
     availability: lookingForTeam ? ("available" as const) : ("unavailable" as const),
+    isPlayer: true,
     updatedAt: new Date(),
   }
 
-  let playerId: number
-  if (existing) {
-    await db.update(players).set(values).where(eq(players.userId, user.id))
-    playerId = existing.id
-  } else {
-    const [created] = await db.insert(players).values({ userId: user.id, ...values }).returning({ id: players.id })
-    playerId = created.id
-  }
+  await db.update(user).set(values).where(eq(user.id, currentUser.id))
 
   // Auto-join any teams that invited this email address.
   try {
-    await resolvePendingInvites(user.email, playerId)
+    await resolvePendingInvites(currentUser.email, currentUser.id)
   } catch (err) {
     console.log("[v0] resolvePendingInvites failed:", err)
   }

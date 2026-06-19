@@ -1,15 +1,15 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { userMeta, players } from "@/lib/db/schema"
+import { userMeta, user as user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies, headers } from "next/headers"
 
-export type Role = "player" | "captain" | "org_admin" | "league_admin" | "super_admin"
+export type Role = "player" | "captain" | "org_admin" | "super_admin"
 
 export const ACTING_ROLE_COOKIE = "sapl_acting_role"
 
 // Roles a super admin is allowed to impersonate (everything except themselves).
-export const IMPERSONATABLE_ROLES: Role[] = ["league_admin", "org_admin", "captain", "player"]
+export const IMPERSONATABLE_ROLES: Role[] = ["org_admin", "captain", "player"]
 
 export type CurrentUser = {
   id: string
@@ -23,7 +23,8 @@ export type CurrentUser = {
   isSuperAdmin: boolean
   /** The role currently being previewed, or null when viewing as themselves. */
   actingRole: Role | null
-  playerId: number | null
+  isPlayer: boolean
+  onMarketplace: boolean
 }
 
 export async function getSession() {
@@ -42,8 +43,19 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
 
-  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
-  const [player] = await db.select().from(players).where(eq(players.userId, session.user.id)).limit(1)
+  const [meta] = await db.select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
+  
+  // Try to fetch player status, but gracefully handle missing columns during migration
+  let isPlayer = false
+  let onMarketplace = false
+  try {
+    const [userData] = await db.select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace }).from(user).where(eq(user.id, session.user.id)).limit(1)
+    isPlayer = userData?.isPlayer ?? false
+    onMarketplace = userData?.onMarketplace ?? false
+  } catch (err) {
+    // Columns may not exist yet if migration hasn't run
+    // Silently default to false if columns don't exist
+  }
 
   const realRole = (meta?.role as Role) ?? "player"
   const isSuperAdmin = realRole === "super_admin"
@@ -65,7 +77,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     realRole,
     isSuperAdmin,
     actingRole,
-    playerId: player?.id ?? null,
+    isPlayer,
+    onMarketplace,
   }
 }
 
@@ -84,5 +97,5 @@ export async function requireRole(roles: Role[]): Promise<CurrentUser> {
 }
 
 export function roleRank(role: Role): number {
-  return { player: 1, captain: 2, org_admin: 3, league_admin: 4, super_admin: 5 }[role]
+  return { player: 1, captain: 2, org_admin: 3, super_admin: 4 }[role]
 }

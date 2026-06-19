@@ -27,18 +27,20 @@ export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
   const access = await getAccessContext(me)
-  const player = me.playerId ? await getPlayerByUserId(me.id) : null
-  const memberships = player ? await getPlayerMemberships(player.id) : []
-  const payments = player ? await getPlayerPayments(me.id, player.id) : []
-  const teamFees = player ? await getPlayerTeamFees(player.id) : []
-  const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
+  // Load player data for everyone — admins also have LI, ratings, and teams.
+  // isPlayer=false only gates the onboarding redirect, not whether data exists.
+  const player = await getPlayerByUserId(me.id)
+  const memberships = player ? await getPlayerMemberships(me.id) : []
+  const payments = player ? await getPlayerPayments(me.id, me.id) : []
+  const teamFees = player ? await getPlayerTeamFees(me.id) : []
+  const overviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
   const detailMap =
     player && myMatches.length
-      ? await getFixtureDetails(
+      ? (await getFixtureDetails(
           myMatches.map((m) => m.id),
-          player.id,
-        )
+          me.id,
+        )) ?? new Map<number, FixtureDetail>()
       : new Map<number, FixtureDetail>()
   const fixtureDetails = Object.fromEntries(detailMap)
 

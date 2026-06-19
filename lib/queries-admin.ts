@@ -15,7 +15,7 @@ import {
 import { eq, and, desc, asc, inArray } from "drizzle-orm"
 
 export async function getRegions() {
-  return db.select().from(regions).orderBy(asc(regions.name))
+  return db.select({ id: regions.id }).from(regions).orderBy(asc(regions.name))
 }
 
 // All teams with their current division assignment, for the League Control
@@ -44,15 +44,15 @@ async function teamNameMap(ids: number[]) {
 }
 
 export async function getAdminSummary() {
-  const openDisputes = (await db.select().from(disputes).where(eq(disputes.status, "open"))).length
-  const teamCount = (await db.select().from(teams)).length
-  const fixtureCount = (await db.select().from(fixtures)).length
+  const openDisputes = (await db.select({ id: disputes.id }).from(disputes).where(eq(disputes.status, "open"))).length
+  const teamCount = (await db.select({ id: teams.id }).from(teams)).length
+  const fixtureCount = (await db.select({ id: fixtures.id }).from(fixtures)).length
   return { openDisputes, teamCount, fixtureCount }
 }
 
 export async function getSeasonsWithDivisions() {
-  const ss = await db.select().from(seasons).orderBy(desc(seasons.id))
-  const ds = await db.select().from(divisions).orderBy(asc(divisions.level))
+  const ss = await db.select({ id: seasons.id }).from(seasons).orderBy(desc(seasons.id))
+  const ds = await db.select({ id: divisions.id }).from(divisions).orderBy(asc(divisions.level))
   return ss.map((s) => ({
     ...s,
     divisions: ds.filter((d) => d.seasonId === s.id),
@@ -60,13 +60,13 @@ export async function getSeasonsWithDivisions() {
 }
 
 export async function getAllDivisions() {
-  return db.select().from(divisions).orderBy(asc(divisions.level))
+  return db.select({ id: divisions.id }).from(divisions).orderBy(asc(divisions.level))
 }
 
 export async function getAdminFixtures(divisionId?: number) {
   const rows = divisionId
-    ? await db.select().from(fixtures).where(eq(fixtures.divisionId, divisionId)).orderBy(asc(fixtures.week))
-    : await db.select().from(fixtures).orderBy(asc(fixtures.week)).limit(60)
+    ? await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.divisionId, divisionId)).orderBy(asc(fixtures.week))
+    : await db.select({ id: fixtures.id }).from(fixtures).orderBy(asc(fixtures.week)).limit(60)
   const ids = rows.flatMap((f) => [f.homeTeamId, f.awayTeamId]).filter((id): id is number => id != null)
   const names = await teamNameMap(ids)
   return rows.map((f) => ({
@@ -87,8 +87,8 @@ export async function getOpenDisputes() {
 
 export async function getPlayoffs(seasonId?: number) {
   const rows = seasonId
-    ? await db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
-    : await db.select().from(playoffs).orderBy(asc(playoffs.bracketPosition))
+    ? await db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
+    : await db.select({ id: playoffs.id }).from(playoffs).orderBy(asc(playoffs.bracketPosition))
   const names = await teamNameMap(rows.flatMap((p) => [p.homeTeamId ?? 0, p.awayTeamId ?? 0]))
   return rows.map((p) => ({
     ...p,

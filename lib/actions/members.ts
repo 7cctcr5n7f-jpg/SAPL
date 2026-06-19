@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, players, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
+import { user, userMeta, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
 import { eq, and, asc } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -15,9 +15,9 @@ import {
   type Permission,
 } from "@/lib/permissions"
 
-const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "league_admin", "super_admin"]
+const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "super_admin"]
 /** Roles only a main (super) admin may grant — prevents privilege escalation. */
-const PRIVILEGED_ROLES: Role[] = ["league_admin", "super_admin"]
+const PRIVILEGED_ROLES: Role[] = ["super_admin"]
 
 /**
  * Members management requires the League Management permission. Only a main
@@ -61,13 +61,12 @@ export async function listMembers(): Promise<MemberRow[]> {
       phone: userMeta.phone,
       role: userMeta.role,
       permissions: userMeta.permissions,
-      firstName: players.firstName,
-      lastName: players.lastName,
+      firstName: user.firstName,
+      lastName: user.lastName,
       createdAt: user.createdAt,
     })
     .from(user)
     .leftJoin(userMeta, eq(userMeta.userId, user.id))
-    .leftJoin(players, eq(players.userId, user.id))
     .orderBy(user.createdAt)
 
   return rows.map((r) => ({
@@ -111,14 +110,50 @@ export async function setMemberRole(userId: string, role: Role) {
 /** Update a member's core details: name (on the auth user row) and phone (on userMeta). */
 export async function updateMemberDetails(
   userId: string,
-  input: { name: string; phone?: string | null },
+  input: {
+    name?: string
+    firstName?: string
+    lastName?: string
+    phone?: string | null
+    gender?: string | null
+    city?: string | null
+    province?: string | null
+    currentLi?: number | null
+    playtomicUrl?: string | null
+    isPlayer?: boolean
+  },
 ) {
   const { me } = await requireMemberManager()
-  const name = input.name.trim()
-  if (!name) return { ok: false, error: "Name is required." }
+  
+  // Build user update object with player profile fields
+  const userUpdate: Record<string, any> = {}
+  
+  if (input.name) {
+    const name = input.name.trim()
+    if (!name) return { ok: false, error: "Name is required." }
+    userUpdate.name = name
+  }
+  
+  if (input.firstName !== undefined) userUpdate.firstName = input.firstName?.trim() || null
+  if (input.lastName !== undefined) userUpdate.lastName = input.lastName?.trim() || null
+  if (input.gender !== undefined) userUpdate.gender = input.gender || null
+  if (input.city !== undefined) userUpdate.city = input.city?.trim() || null
+  if (input.province !== undefined) userUpdate.province = input.province || null
+  if (input.currentLi !== undefined) userUpdate.currentLi = input.currentLi ?? 0
+  if (input.playtomicUrl !== undefined) userUpdate.playtomicUrl = input.playtomicUrl?.trim() || null
+  if (input.isPlayer !== undefined) userUpdate.isPlayer = input.isPlayer
 
-  await db.update(user).set({ name }).where(eq(user.id, userId))
-  await upsertMeta(userId, { phone: input.phone?.trim() || null })
+  if (Object.keys(userUpdate).length > 0) {
+    await db.update(user).set(userUpdate).where(eq(user.id, userId))
+  }
+  
+  // Update meta (phone and related)
+  const metaUpdate: Record<string, any> = {}
+  if (input.phone !== undefined) metaUpdate.phone = input.phone?.trim() || null
+  
+  if (Object.keys(metaUpdate).length > 0) {
+    await upsertMeta(userId, metaUpdate)
+  }
 
   revalidatePath("/admin/members")
   return { ok: true }
@@ -167,7 +202,8 @@ export async function getMemberDetail(userId: string): Promise<MemberDetail> {
     realRole: role,
     isSuperAdmin: role === "super_admin",
     actingRole: null,
-    playerId: null,
+    isPlayer: false,
+    onMarketplace: false,
   })
 
   return {
@@ -409,32 +445,15 @@ async function ensurePlayerProfile(
     bio: extra?.bio?.trim() || null,
   }
 
-  const [existing] = await db.select({ id: players.id }).from(players).where(eq(players.userId, userId)).limit(1)
+  const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1)
   if (existing) {
     // Reuse an existing profile but apply the details supplied here.
     await db
-      .update(players)
-      .set({ firstName: firstName || "New", lastName: lastName || "Player", ...profileValues, updatedAt: new Date() })
-      .where(eq(players.id, existing.id))
+      .update(user)
+      .set({ firstName: firstName || "New", lastName: lastName || "Player", isPlayer: true, ...profileValues, updatedAt: new Date() })
+      .where(eq(user.id, existing.id))
     return existing.id
   }
-  const [created] = await db
-    .insert(players)
-    .values({
-      userId,
-      firstName: firstName || "New",
-      lastName: lastName || "Player",
-      currentLi: 0,
-      highestLi: 0,
-      liDate: new Date(),
-      currentTpr: 1000,
-      highestTpr: 1000,
-      lookingForTeam: true,
-      availability: "available",
-      ...profileValues,
-    })
-    .returning({ id: players.id })
-  return created.id
 }
 
 /**
@@ -469,15 +488,15 @@ export async function createMember(input: {
   }
 
   revalidatePath("/admin/members")
-  return { ok: true, password: res.password }
+  return { ok: true, password: res.password, userId: res.userId }
 }
 
-/** Roles allowed to add players: captains, org admins, league/main admins. */
+/** Roles allowed to add players: captains, org admins, super admins. */
 async function requirePlayerManager() {
   const me = await getCurrentUser()
   if (!me) throw new Error("Not authenticated")
   const role = me.realRole
-  if (role !== "captain" && role !== "org_admin" && role !== "league_admin" && role !== "super_admin") {
+  if (role !== "captain" && role !== "org_admin" && role !== "super_admin") {
     throw new Error("Captain or club admin access required")
   }
   return me
@@ -511,12 +530,12 @@ export async function createPlayerAccount(input: {
   // anything, so we never half-provision an account.
   let targetTeam: typeof teams.$inferSelect | null = null
   if (input.assignTeamId) {
-    const [t] = await db.select().from(teams).where(eq(teams.id, input.assignTeamId)).limit(1)
+    const [t] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.assignTeamId)).limit(1)
     if (!t) return { ok: false, error: "Selected team not found." }
     if (me.realRole === "captain") {
       if (t.captainUserId !== me.id) return { ok: false, error: "You can only add players to your own teams." }
     } else if (me.realRole === "org_admin") {
-      const [org] = await db.select().from(organisations).where(eq(organisations.id, t.organisationId ?? 0)).limit(1)
+      const [org] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, t.organisationId ?? 0)).limit(1)
       if (!org || org.ownerUserId !== me.id) return { ok: false, error: "You cannot add players to that team." }
     }
     targetTeam = t
@@ -563,7 +582,7 @@ export async function createPlayerAccount(input: {
     } else {
       await db.insert(teamMembers).values({ teamId: targetTeam.id, playerId, role: "member", status: "active" })
     }
-    await db.update(players).set({ availability: "on_team", lookingForTeam: false }).where(eq(players.id, playerId))
+    await db.update(user).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(user.id, playerId))
     await recomputeTeamStats(targetTeam.id)
   }
 

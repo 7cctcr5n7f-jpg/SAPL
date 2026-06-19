@@ -37,7 +37,7 @@ export type PlacementBoardData = {
 }
 
 export type RosterEntry = {
-  playerId: number
+  playerId: string
   name: string
   li: number
   isCaptain: boolean

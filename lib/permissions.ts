@@ -42,33 +42,30 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 /**
  * Default permissions for each role, exactly per the SAPL brief.
  * - player: none (Overview/League Centre/Profile are always available)
- * - captain: player, billing, fixture, captain_hub
- * - org_admin (Club Admin): everything except league_management
- * - league_admin / super_admin: everything
+ * - captain: fixture, captain_hub (player_management removed — super admin only)
+ * - org_admin (Club Admin): club, team, fixture, captain_hub (player_management removed — super admin only)
+ * - super_admin: everything
  */
 export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
   player: [],
-  captain: ["player_management", "fixture_management", "captain_hub"],
+  captain: ["fixture_management", "captain_hub"],
   org_admin: [
     "club_management",
     "team_management",
-    "player_management",
     "fixture_management",
     "captain_hub",
   ],
-  league_admin: [...PERMISSIONS],
   super_admin: [...PERMISSIONS],
 }
 
 /**
  * Permissions automatically granted to a self-service Team Owner — someone who
  * created their own team from the dashboard. This mirrors a club admin's powers
- * minus club_management and league_management, scoped (by the access layer) to
+ * minus club_management, league_management, and player_management, scoped (by the access layer) to
  * the teams they own. Granted on team creation and revoked when they own none.
  */
 export const TEAM_OWNER_PERMISSIONS: Permission[] = [
   "team_management",
-  "player_management",
   "fixture_management",
   "captain_hub",
 ]
@@ -95,15 +92,14 @@ export function sanitizePermissions(values: string[] | null | undefined): Permis
  * @param role               The user's effective role (acting role when impersonating).
  * @param permissionsOverride The stored override list, or null to use role defaults.
  *
- * super_admin and league_admin always receive every permission for their role
- * regardless of overrides — a stored captain assignment must never be able to
- * downgrade an admin's access.
+ * super_admin always receives every permission regardless of overrides — a stored
+ * captain assignment must never be able to downgrade an admin's access.
  */
 export function getEffectivePermissions(
   role: Role,
   permissionsOverride: string[] | null | undefined,
 ): Set<Permission> {
-  if (role === "super_admin" || role === "league_admin") return new Set(PERMISSIONS)
+  if (role === "super_admin") return new Set(PERMISSIONS)
   if (permissionsOverride == null) return new Set(ROLE_DEFAULTS[role] ?? [])
   return new Set(sanitizePermissions(permissionsOverride))
 }

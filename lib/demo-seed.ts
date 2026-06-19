@@ -101,7 +101,7 @@ export async function runDemoSeed() {
   const captainEmail = DEMO_ACCOUNTS.find((a) => a.key === "captain")!.email
 
   // Pick the first organisation + its club for the club admin.
-  const [firstOrg] = await db.select().from(organisations).orderBy(organisations.id).limit(1)
+  const [firstOrg] = await db.select({ id: organisations.id }).from(organisations).orderBy(organisations.id).limit(1)
   if (firstOrg) {
     await db.update(organisations).set({ ownerUserId: clubAdminId }).where(eq(organisations.id, firstOrg.id))
     await db
@@ -112,8 +112,8 @@ export async function runDemoSeed() {
 
   // Make the captain own + captain the first team of that organisation.
   const [firstTeam] = firstOrg
-    ? await db.select().from(teams).where(eq(teams.organisationId, firstOrg.id)).orderBy(teams.id).limit(1)
-    : await db.select().from(teams).orderBy(teams.id).limit(1)
+    ? await db.select({ id: teams.id }).from(teams).where(eq(teams.organisationId, firstOrg.id)).orderBy(teams.id).limit(1)
+    : await db.select({ id: teams.id }).from(teams).orderBy(teams.id).limit(1)
   if (firstTeam) {
     await db
       .update(teams)

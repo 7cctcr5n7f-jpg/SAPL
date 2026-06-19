@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, UserCog } from "lucide-react"
+import { User, LogOut, UserCog, Bell } from "lucide-react"
 
 function initials(name: string) {
   return name
@@ -56,6 +56,10 @@ export function UserMenu({
           </span>
         </div>
         <DropdownMenuSeparator />
+        <DropdownMenuItem render={<Link href="/dashboard/notifications" />}>
+          <Bell className="h-4 w-4" />
+          Notifications
+        </DropdownMenuItem>
         <DropdownMenuItem render={<Link href="/dashboard/profile" />}>
           <UserCog className="h-4 w-4" />
           Update profile

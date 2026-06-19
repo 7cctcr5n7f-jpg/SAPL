@@ -6,8 +6,7 @@ import {
   teamMembers,
   teamPairings,
   teamInvites,
-  players,
-  user as authUser,
+  user,
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
@@ -26,7 +25,7 @@ import { getAccessContext } from "@/lib/access"
 //  - league / super admins
 // ---------------------------------------------------------------------------
 async function canManageTeam(me: CurrentUser, teamId: number) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return null
   const access = await getAccessContext(me)
   if (access.isLeagueAdmin) return team
@@ -41,7 +40,7 @@ export async function setPairingSlot(input: {
   category: string
   pairIndex: number
   slotIndex: number
-  playerId: number | null
+  playerId: string | null
 }) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
@@ -59,7 +58,7 @@ export async function setPairingSlot(input: {
       (p) => !(p.category === input.category && p.slotIndex === input.slotIndex),
     )
     if (elsewhere) {
-      const [p] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+      const [p] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
       const who = p ? `${p.firstName} ${p.lastName}` : "That player"
       return { error: `${who} is already assigned to ${elsewhere.category}. Clear that slot first.` }
     }
@@ -104,7 +103,7 @@ export async function setPairingSlot(input: {
  * availability so the one-team-per-season conflict no longer blocks re-assigning
  * them elsewhere. Clearing a pairing slot alone does NOT do this.
  */
-export async function removeFromTeam(input: { teamId: number; playerId: number }) {
+export async function removeFromTeam(input: { teamId: number; playerId: string }) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const team = await canManageTeam(me, input.teamId)
@@ -131,9 +130,9 @@ export async function removeFromTeam(input: { teamId: number; playerId: number }
     .limit(1)
   if (stillActive.length === 0) {
     await db
-      .update(players)
+      .update(user)
       .set({ availability: "available", updatedAt: new Date() })
-      .where(eq(players.id, input.playerId))
+      .where(eq(user.id, input.playerId))
   }
 
   await recomputeTeamStats(input.teamId)
@@ -164,13 +163,10 @@ export async function invitePlayerByEmail(input: {
   if (!email || !email.includes("@")) return { error: "Enter a valid email address." }
 
   // Does a registered user with a player profile already exist for this email?
-  const [existingUser] = await db.select().from(authUser).where(eq(authUser.email, email)).limit(1)
-  let existingPlayer: typeof players.$inferSelect | undefined
-  if (existingUser) {
-    ;[existingPlayer] = await db.select().from(players).where(eq(players.userId, existingUser.id)).limit(1)
-  }
+  const [existingUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
+  let existingPlayer = existingUser
 
-  if (existingPlayer) {
+  if (existingPlayer && existingPlayer.isPlayer) {
     // One team per player per season.
     const conflict = await getPlayerSeasonTeamConflict(existingPlayer.id, team.seasonId, input.teamId)
     if (conflict) {
@@ -185,7 +181,7 @@ export async function invitePlayerByEmail(input: {
       slotIndex: input.slotIndex,
     })
     await db.insert(notifications).values({
-      userId: existingPlayer.userId,
+      userId: existingPlayer.id,
       type: "team_invite",
       title: "You've been added to a team",
       body: `${team.name} has added you to their squad.`,
@@ -248,7 +244,11 @@ export async function invitePlayerByEmail(input: {
 export async function cancelInvite(inviteId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [invite] = await db.select().from(teamInvites).where(eq(teamInvites.id, inviteId)).limit(1)
+  const [invite] = await db
+    .select({ id: teamInvites.id, teamId: teamInvites.teamId, email: teamInvites.email, status: teamInvites.status, category: teamInvites.category })
+    .from(teamInvites)
+    .where(eq(teamInvites.id, inviteId))
+    .limit(1)
   if (!invite) return { error: "Invite not found." }
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
@@ -261,7 +261,7 @@ export async function cancelInvite(inviteId: number) {
 // Add a player to a team roster (idempotent) and optionally fill a pairing slot.
 async function joinTeam(
   teamId: number,
-  playerId: number,
+  playerId: string,
   slot?: { category?: string; pairIndex?: number; slotIndex?: number },
 ) {
   const [member] = await db
@@ -317,7 +317,7 @@ async function joinTeam(
 
 // Resolve any pending email invites for a freshly-registered player.
 // Called from the onboarding action once a player profile exists.
-export async function resolvePendingInvites(email: string, playerId: number) {
+export async function resolvePendingInvites(email: string, playerId: string) {
   const normalized = email.trim().toLowerCase()
   const pending = await db
     .select()
@@ -325,7 +325,7 @@ export async function resolvePendingInvites(email: string, playerId: number) {
     .where(and(eq(teamInvites.email, normalized), eq(teamInvites.status, "pending")))
 
   for (const invite of pending) {
-    const [team] = await db.select().from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+    const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
     // Respect "one team per player per season": if the player has already been
     // joined to another team in this season (e.g. an earlier pending invite),
     // skip this one and leave it pending so a captain/player can resolve it.

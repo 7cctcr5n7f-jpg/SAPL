@@ -12,6 +12,32 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  // Player profile fields (migrated from ppl_players table)
+  isPlayer: boolean("isPlayer").notNull().default(false),
+  onMarketplace: boolean("onMarketplace").notNull().default(false),
+  firstName: text("firstName"),
+  lastName: text("lastName"),
+  gender: text("gender"), // male | female
+  province: text("province"),
+  city: text("city"),
+  regionId: integer("regionId"),
+  currentLi: doublePrecision("currentLi").notNull().default(0),
+  highestLi: doublePrecision("highestLi").notNull().default(0),
+  liDate: timestamp("liDate"),
+  playtomicUserId: text("playtomicUserId"),
+  playtomicUrl: text("playtomicUrl"),
+  playtomicRating: doublePrecision("playtomicRating"),
+  currentTpr: doublePrecision("currentTpr"),
+  highestTpr: doublePrecision("highestTpr"),
+  preferredDivision: text("preferredDivision"),
+  preferredCategory: text("preferredCategory"),
+  preferredFormats: jsonb("preferredFormats").$type<string[]>().notNull().default([]),
+  preferredClubIds: jsonb("preferredClubIds").$type<number[]>().notNull().default([]),
+  anyClub: boolean("anyClub").notNull().default(true),
+  availability: text("availability").notNull().default("available"), // available | unavailable | on_team
+  lookingForTeam: boolean("lookingForTeam").notNull().default(true),
+  bio: text("bio"),
+  avatarUrl: text("avatarUrl"),
 })
 
 export const session = pgTable("session", {
@@ -300,7 +326,7 @@ export const teamMembers = pgTable(
   {
     id: serial("id").primaryKey(),
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(),
+    playerId: text("playerId").notNull(), // User ID (consolidated from old integer player IDs)
     role: text("role").notNull().default("member"), // captain | member
     // status drives invite/request workflow
     status: text("status").notNull().default("active"), // active | invited | requested | declined | removed
@@ -324,7 +350,7 @@ export const teamPairings = pgTable(
     category: text("category").notNull(), // e.g. "Mens Beginner"
     pairIndex: integer("pairIndex").notNull().default(1), // 1 or 2 (which block)
     slotIndex: integer("slotIndex").notNull().default(1), // 1 or 2 (player in the pair)
-    playerId: integer("playerId"), // null = empty slot
+    playerId: text("playerId"), // user id; null = empty slot
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -439,7 +465,7 @@ export const fixtureUnavailable = pgTable(
     id: serial("id").primaryKey(),
     fixtureId: integer("fixtureId").notNull(),
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(),
+    playerId: text("playerId").notNull(), // user id
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (t) => ({
@@ -598,7 +624,7 @@ export const payments = pgTable(
     id: serial("id").primaryKey(),
     type: text("type").notNull().default("individual"), // individual | team | organisation
     payerUserId: text("payerUserId"),
-    playerId: integer("playerId"),
+    playerId: text("playerId"),
     teamId: integer("teamId"),
     organisationId: integer("organisationId"),
     seasonId: integer("seasonId"),
@@ -746,7 +772,7 @@ export const feeNotes = pgTable(
     id: serial("id").primaryKey(),
     kind: text("kind").notNull(), // player | team
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(), // negative for team-funded rows
+    playerId: text("playerId").notNull(), // user id for player rows; "-<teamId>" sentinel for team-funded rows
     note: text("note"),
     lastReminderAt: timestamp("lastReminderAt"),
     reminderCount: integer("reminderCount").notNull().default(0),

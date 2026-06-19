@@ -2,7 +2,7 @@ import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/session"
 import { db } from "@/lib/db"
-import { players } from "@/lib/db/schema"
+import { user as user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 
 const MAX_BYTES = 6 * 1024 * 1024 // 6MB
@@ -34,9 +34,9 @@ export async function POST(request: NextRequest) {
       contentType: file.type,
     })
 
-    // Update player's avatarUrl in database
-    if (user.playerId) {
-      await db.update(players).set({ avatarUrl: blob.url }).where(eq(players.id, user.playerId))
+    // Update user's avatarUrl in database
+    if (user.isPlayer) {
+      await db.update(user).set({ avatarUrl: blob.url }).where(eq(user.id, user.id))
     }
 
     return NextResponse.json({ url: blob.url })

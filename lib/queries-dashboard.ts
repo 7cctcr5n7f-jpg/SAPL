@@ -1,6 +1,5 @@
 import { db } from "@/lib/db"
 import {
-  players,
   teams,
   teamMembers,
   organisations,
@@ -40,7 +39,7 @@ export async function getTeamUnavailability(teamId: number): Promise<Record<numb
 }
 
 export type PairingPlayer = {
-  playerId: number
+  playerId: string
   name: string
   li: number
   gender: string | null
@@ -51,14 +50,25 @@ export type PairingCategory = { category: string; pairs: PairingSlot[][] }
 
 // Aggregate everything the pairings board needs for one team.
 export async function getTeamPairingData(teamId: number, categoryNames: string[]) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
   if (!team) return null
 
   // Active roster players.
   const rosterRows = await db
-    .select({ player: players, status: teamMembers.status })
+    .select({
+      status: teamMembers.status,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      currentLi: user.currentLi,
+      gender: user.gender,
+    })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
 
   // Which players have paid (individual payment for this team).
@@ -69,16 +79,24 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   const paidSet = new Set(paidRows.map((r) => r.playerId))
 
   const roster: PairingPlayer[] = rosterRows.map((r) => ({
-    playerId: r.player.id,
-    name: `${r.player.firstName} ${r.player.lastName}`,
-    li: r.player.currentLi,
-    gender: r.player.gender,
+    playerId: r.id,
+    name: `${r.firstName} ${r.lastName}`,
+    li: r.currentLi,
+    gender: r.gender,
     // If the club covers fees, everyone is considered covered.
-    paid: team.clubPaysFees || paidSet.has(r.player.id),
+    paid: team.clubPaysFees || paidSet.has(r.id),
   }))
   const rosterById = new Map(roster.map((p) => [p.playerId, p]))
 
-  const slotRows = await db.select().from(teamPairings).where(eq(teamPairings.teamId, teamId))
+  const slotRows = await db
+    .select({
+      category: teamPairings.category,
+      pairIndex: teamPairings.pairIndex,
+      slotIndex: teamPairings.slotIndex,
+      playerId: teamPairings.playerId,
+    })
+    .from(teamPairings)
+    .where(eq(teamPairings.teamId, teamId))
   const slotMap = new Map<string, number | null>()
   for (const s of slotRows) {
     slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId)
@@ -90,14 +108,20 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   // board can show who is in the slot rather than silently rendering it empty.
   const rosterPlayerIds = new Set(roster.map((p) => p.playerId))
   const orphanIds = [...new Set(
-    slotRows.map((s) => s.playerId).filter((id): id is number => id != null && !rosterPlayerIds.has(id))
+    slotRows.map((s) => s.playerId).filter((id): id is string => id != null && !rosterPlayerIds.has(id))
   )]
   if (orphanIds.length > 0) {
     const orphanRows = await db
-      .select({ player: players })
-      .from(players)
-      .where(inArray(players.id, orphanIds))
-    for (const { player: p } of orphanRows) {
+      .select({
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        currentLi: user.currentLi,
+        gender: user.gender,
+      })
+      .from(user)
+      .where(inArray(user.id, orphanIds))
+    for (const p of orphanRows) {
       const entry: PairingPlayer = {
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
@@ -122,7 +146,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   })
 
   const invites = await db
-    .select()
+    .select({ id: teamInvites.id, email: teamInvites.email, category: teamInvites.category, status: teamInvites.status })
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")))
 
@@ -135,14 +159,36 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 }
 
 export async function getPlayerByUserId(userId: string) {
-  const [p] = await db.select().from(players).where(eq(players.userId, userId)).limit(1)
+  const [p] = await db
+    .select({
+      id: user.id,
+      currentLi: user.currentLi,
+      highestLi: user.highestLi,
+      playtomicRating: user.playtomicRating,
+      playtomicUrl: user.playtomicUrl,
+      gender: user.gender,
+      lookingForTeam: user.lookingForTeam,
+      availability: user.availability,
+      avatarUrl: user.avatarUrl,
+    })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
   return p ?? null
 }
 
 export async function getCurrentSeason() {
-  const [s] = await db.select().from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [s] = await db
+    .select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee })
+    .from(seasons)
+    .where(eq(seasons.isCurrent, true))
+    .limit(1)
   if (s) return s
-  const [latest] = await db.select().from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db
+    .select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee })
+    .from(seasons)
+    .orderBy(desc(seasons.id))
+    .limit(1)
   return latest ?? null
 }
 
@@ -154,14 +200,30 @@ export type RosterEntry = {
   season: typeof seasons.$inferSelect | null
 }
 
-export async function getPlayerMemberships(playerId: number): Promise<RosterEntry[]> {
+export async function getPlayerMemberships(playerId: string): Promise<RosterEntry[]> {
   const rows = await db
     .select({
-      membership: teamMembers,
-      team: teams,
-      org: organisations,
-      division: divisions,
-      season: seasons,
+      membership: {
+        id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
+        status: teamMembers.status, role: teamMembers.role,
+      },
+      team: {
+        id: teams.id, name: teams.name, divisionId: teams.divisionId, seasonId: teams.seasonId,
+        organisationId: teams.organisationId, captainUserId: teams.captainUserId,
+        homeClubId: teams.homeClubId, teamType: teams.teamType, clubPaysFees: teams.clubPaysFees,
+        avgLi: teams.avgLi, tpr: teams.tpr,
+      },
+      org: {
+        id: organisations.id, name: organisations.name, slug: organisations.slug,
+        type: organisations.type, city: organisations.city, province: organisations.province,
+        logoUrl: organisations.logoUrl,
+      },
+      division: {
+        id: divisions.id, name: divisions.name, level: divisions.level, seasonId: divisions.seasonId,
+      },
+      season: {
+        id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee,
+      },
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
@@ -180,7 +242,7 @@ export async function getPlayerMemberships(playerId: number): Promise<RosterEntr
  * a season) is treated as unconstrained.
  */
 export async function getPlayerSeasonTeamConflict(
-  playerId: number,
+  playerId: string,
   seasonId: number | null,
   excludeTeamId: number,
 ): Promise<{ teamId: number; teamName: string } | null> {
@@ -196,7 +258,7 @@ export async function getPlayerSeasonTeamConflict(
   return conflict ?? null
 }
 
-export async function getPlayerPayments(userId: string, playerId: number) {
+export async function getPlayerPayments(userId: string, playerId: string) {
   return db
     .select()
     .from(payments)
@@ -218,7 +280,7 @@ export type PlayerTeamFee = {
 //  - covered: the club pays this team's fees
 //  - paid: the player already paid their individual fee
 //  - due: an individual fee is outstanding
-export async function getPlayerTeamFees(playerId: number): Promise<PlayerTeamFee[]> {
+export async function getPlayerTeamFees(playerId: string): Promise<PlayerTeamFee[]> {
   const memberRows = await db
     .select({ team: teams })
     .from(teamMembers)
@@ -283,7 +345,7 @@ export type PlayerOverviewTeam = {
  * centre: club, division, region, fee responsibility and league position.
  * Returns null when the player isn't on an active team.
  */
-export async function getPlayerOverviewTeam(playerId: number): Promise<PlayerOverviewTeam | null> {
+export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOverviewTeam | null> {
   const [row] = await db
     .select({
       membershipId: teamMembers.id,
@@ -367,7 +429,7 @@ export type FixtureDetail = {
  */
 export async function getFixtureDetails(
   fixtureIds: number[],
-  playerId: number,
+  playerId: string,
 ): Promise<Map<number, FixtureDetail>> {
   const out = new Map<number, FixtureDetail>()
   if (fixtureIds.length === 0) return out
@@ -391,16 +453,32 @@ export async function getFixtureDetails(
 
   // Played rubbers for these fixtures (carry score + per-match player ids).
   const matchRows = fixtureIds.length
-    ? await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
+    ? await db
+        .select({
+          id: matches.id, fixtureId: matches.fixtureId, category: matches.category,
+          homeSetsWon: matches.homeSetsWon, awaySetsWon: matches.awaySetsWon,
+          homeGames: matches.homeGames, awayGames: matches.awayGames,
+          scoreDetail: matches.scoreDetail, winnerTeamId: matches.winnerTeamId,
+          homePlayerIds: matches.homePlayerIds, awayPlayerIds: matches.awayPlayerIds,
+        })
+        .from(matches)
+        .where(inArray(matches.fixtureId, fixtureIds))
     : []
 
   // Planned lineups for every involved team.
   const pairingRows = teamIdList.length
-    ? await db.select().from(teamPairings).where(inArray(teamPairings.teamId, teamIdList))
+    ? await db
+        .select({
+          teamId: teamPairings.teamId, category: teamPairings.category,
+          pairIndex: teamPairings.pairIndex, slotIndex: teamPairings.slotIndex,
+          playerId: teamPairings.playerId,
+        })
+        .from(teamPairings)
+        .where(inArray(teamPairings.teamId, teamIdList))
     : []
 
   // Resolve player ids → display names (roster + any ids referenced in matches).
-  const extraIds = new Set<number>()
+  const extraIds = new Set<string>()
   for (const p of pairingRows) if (p.playerId) extraIds.add(p.playerId)
   for (const m of matchRows) {
     for (const arr of [m.homePlayerIds, m.awayPlayerIds]) {
@@ -409,9 +487,9 @@ export async function getFixtureDetails(
   }
   const nameRows = extraIds.size
     ? await db
-        .select({ id: players.id, firstName: players.firstName, lastName: players.lastName })
-        .from(players)
-        .where(inArray(players.id, [...extraIds]))
+        .select({ id: user.id, firstName: user.firstName, lastName: user.lastName })
+        .from(user)
+        .where(inArray(user.id, [...extraIds]))
     : []
   const nameById = new Map(nameRows.map((r) => [r.id, `${r.firstName} ${r.lastName}`]))
 
@@ -484,7 +562,7 @@ export type OutstandingFee = {
   // "player" = an individual who must pay their own fee. "team" = a team whose
   // owner/manager agreed to fund the whole squad's fees.
   kind: "player" | "team"
-  playerId: number
+  playerId: string
   playerName: string
   email: string | null
   phone: string | null
@@ -520,17 +598,17 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   // Active memberships on teams whose fees are NOT covered by the club.
   const rows = await db
     .select({
-      playerId: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      userId: players.userId,
+      playerId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      userId: user.id,
       teamId: teams.id,
       teamName: teams.name,
       seasonId: teams.seasonId,
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     // Only chase fees once a team has actually been placed in a division under
     // League Control — unplaced teams aren't competing yet, so no fee is due.
     .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false), isNotNull(teams.divisionId)))
@@ -619,8 +697,8 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
 
     result.push({
       kind: "team",
-      // Negative id keeps the row key unique and clearly non-player.
-      playerId: -t.teamId,
+      // Negative-team-id string keeps the row key unique and clearly non-player.
+      playerId: String(-t.teamId),
       playerName: ownerName,
       email,
       phone,
@@ -635,7 +713,12 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   }
 
   // Merge billing-management metadata (admin notes + reminder tracking).
-  const noteRows = await db.select().from(feeNotes)
+  const noteRows = await db
+    .select({
+      kind: feeNotes.kind, teamId: feeNotes.teamId, playerId: feeNotes.playerId,
+      note: feeNotes.note, lastReminderAt: feeNotes.lastReminderAt, reminderCount: feeNotes.reminderCount,
+    })
+    .from(feeNotes)
   const noteMap = new Map<string, (typeof noteRows)[number]>()
   for (const n of noteRows) noteMap.set(`${n.kind}-${n.teamId}-${n.playerId}`, n)
   for (const f of result) {
@@ -669,8 +752,8 @@ export async function getUnreadCount(userId: string) {
 // Team / captain helpers ----------------------------------------------------
 
 export type ManagedPlayer = {
-  /** null when the user account has no player profile yet. */
-  playerId: number | null
+  /** The user id (same as userId since players are users) */
+  playerId: string
   userId: string
   name: string
   firstName: string
@@ -709,9 +792,9 @@ async function getScopedTeamIds(access: AccessContext): Promise<number[] | null>
 }
 
 /** Player ids a user may manage (used to authorise inline edits). */
-export async function getManageablePlayerIds(access: AccessContext): Promise<Set<number>> {
+export async function getManageablePlayerIds(access: AccessContext): Promise<Set<string>> {
   const players = await getManagedPlayers(access)
-  return new Set(players.map((p) => p.playerId).filter((id): id is number => id != null))
+  return new Set(players.map((p) => p.playerId).filter((id): id is string => id != null))
 }
 
 /**
@@ -737,32 +820,44 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
   // A non-admin with no teams in scope manages nobody.
   if (scopedTeamIds && scopedTeamIds.length === 0) return []
 
+  let whereCondition
+  if (scopedTeamIds === null) {
+    // League admin: see every user (players AND admin-only accounts). Their real
+    // League Index, Playtomic rating and team memberships pull through via the
+    // joins below — so admins like Ruan show full data, not an empty placeholder.
+    whereCondition = undefined
+  } else {
+    // Scoped admin/captain: only users who belong to a team within their scope.
+    whereCondition = inArray(teams.id, scopedTeamIds)
+  }
+
   const rows = await db
     .select({
-      playerId: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      gender: players.gender,
-      currentLi: players.currentLi,
-      playtomicRating: players.playtomicRating,
-      playtomicUrl: players.playtomicUrl,
-      userId: players.userId,
+      playerId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      gender: user.gender,
+      currentLi: user.currentLi,
+      playtomicRating: user.playtomicRating,
+      playtomicUrl: user.playtomicUrl,
+      userId: user.id,
       teamId: teams.id,
       teamName: teams.name,
       divisionName: divisions.name,
     })
-    .from(players)
-    .leftJoin(teamMembers, and(eq(teamMembers.playerId, players.id), eq(teamMembers.status, "active")))
+    .from(user)
+    .leftJoin(teamMembers, and(eq(teamMembers.playerId, user.id), eq(teamMembers.status, "active")))
     .leftJoin(teams, eq(teamMembers.teamId, teams.id))
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
-    .orderBy(players.firstName, players.lastName)
+    .where(whereCondition)
+    .orderBy(user.firstName, user.lastName)
 
-  const byPlayer = new Map<number, ManagedPlayer & { userId: string }>()
+  const byPlayer = new Map<string, ManagedPlayer & { userId: string }>()
   for (const r of rows) {
-    let p = byPlayer.get(r.playerId)
+    let p = byPlayer.get(r.userId)
     if (!p) {
       p = {
-        playerId: r.playerId,
+        playerId: r.userId,
         name: `${r.firstName} ${r.lastName}`.trim(),
         firstName: r.firstName,
         lastName: r.lastName,
@@ -775,7 +870,7 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
         userId: r.userId,
         teams: [],
       }
-      byPlayer.set(r.playerId, p)
+      byPlayer.set(r.userId, p)
     }
     if (r.teamId && !p.teams.some((t) => t.teamId === r.teamId)) {
       p.teams.push({ teamId: r.teamId, teamName: r.teamName ?? "—", divisionName: r.divisionName ?? null })
@@ -803,7 +898,7 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
       if (usersWithProfile.has(u.id)) continue
       const [firstName, ...rest] = (u.name ?? "").trim().split(/\s+/)
       list.push({
-        playerId: null,
+        playerId: u.id,
         name: (u.name ?? "").trim() || "Unnamed user",
         firstName: firstName ?? "",
         lastName: rest.join(" "),
@@ -842,24 +937,45 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
 }
 
 export async function getTeamsForCaptain(userId: string) {
-  return db.select().from(teams).where(eq(teams.captainUserId, userId)).orderBy(teams.name)
+  return db.select({
+    id: teams.id,
+    name: teams.name,
+    seasonId: teams.seasonId,
+    organisationId: teams.organisationId,
+    captainUserId: teams.captainUserId,
+  }).from(teams).where(eq(teams.captainUserId, userId)).orderBy(teams.name)
 }
 
 export type TeamRosterMember = {
   membership: typeof teamMembers.$inferSelect
-  player: typeof players.$inferSelect
+  player: typeof user.$inferSelect
 }
 
 export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]> {
   const rows = await db
-    .select({ membership: teamMembers, player: players })
+    .select({
+      membership: {
+        id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
+        status: teamMembers.status, role: teamMembers.role,
+      },
+      player: {
+        id: user.id, firstName: user.firstName, lastName: user.lastName,
+        email: user.email, currentLi: user.currentLi, highestLi: user.highestLi,
+        playtomicRating: user.playtomicRating, playtomicUrl: user.playtomicUrl,
+        gender: user.gender, avatarUrl: user.avatarUrl, isPlayer: user.isPlayer,
+      },
+      meta: {
+        role: userMeta.role, phone: userMeta.phone,
+      },
+    })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
+    .leftJoin(userMeta, eq(userMeta.userId, user.id))
     // Exclude players who have been removed from the roster — only active and
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
-    .orderBy(desc(players.currentLi))
-  return rows as TeamRosterMember[]
+    .orderBy(desc(user.currentLi))
+  return rows as unknown as TeamRosterMember[]
 }
 
 /**
@@ -870,7 +986,7 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
  */
 export async function getUnassignedPlayers(
   limit = 500,
-): Promise<{ playerId: number; name: string; li: number }[]> {
+): Promise<{ playerId: string; name: string; li: number }[]> {
   const activeRows = await db
     .select({ playerId: teamMembers.playerId })
     .from(teamMembers)
@@ -879,13 +995,13 @@ export async function getUnassignedPlayers(
 
   const all = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      currentLi: user.currentLi,
     })
-    .from(players)
-    .orderBy(players.firstName, players.lastName)
+    .from(user)
+    .orderBy(user.firstName, user.lastName)
     .limit(limit)
 
   return all
@@ -895,7 +1011,14 @@ export async function getUnassignedPlayers(
 
 export async function getTeamFixtures(teamId: number) {
   const rows = await db
-    .select()
+    .select({
+      id: fixtures.id, week: fixtures.week, matchDate: fixtures.matchDate,
+      homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId,
+      status: fixtures.status, divisionId: fixtures.divisionId,
+      homePoints: fixtures.homePoints, awayPoints: fixtures.awayPoints,
+      homeSetsWon: fixtures.homeSetsWon, awaySetsWon: fixtures.awaySetsWon,
+      timeslot: fixtures.timeslot, venue: fixtures.venue,
+    })
     .from(fixtures)
     .where(or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)))
     .orderBy(fixtures.week)
@@ -917,14 +1040,29 @@ export async function getTeamFixtures(teamId: number) {
 }
 
 export async function getCategories() {
-  return db.select().from(categories).orderBy(categories.sortOrder)
+  return db
+    .select({
+      id: categories.id,
+      name: categories.name,
+      sortOrder: categories.sortOrder,
+      session: categories.session,
+      isFeatureCourt: categories.isFeatureCourt,
+    })
+    .from(categories)
+    .orderBy(categories.sortOrder)
 }
 
 // Per-category set scores for a set of fixtures, used to pre-fill result edits.
 export async function getFixtureScores(fixtureIds: number[]) {
   const map: Record<number, Record<string, { home: number; away: number }[]>> = {}
   if (fixtureIds.length === 0) return map
-  const rows = await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
+  const rows = await db
+    .select({
+      fixtureId: matches.fixtureId, category: matches.category,
+      scoreDetail: matches.scoreDetail, homeSetsWon: matches.homeSetsWon, awaySetsWon: matches.awaySetsWon,
+    })
+    .from(matches)
+    .where(inArray(matches.fixtureId, fixtureIds))
   for (const m of rows) {
     if (!map[m.fixtureId]) map[m.fixtureId] = {}
     const sets = parseScoreDetail(m.scoreDetail)
@@ -935,21 +1073,25 @@ export async function getFixtureScores(fixtureIds: number[]) {
 }
 
 export async function getDivisionTeams(divisionId: number) {
-  return db.select().from(teams).where(eq(teams.divisionId, divisionId)).orderBy(teams.name)
+  return db.select({ id: teams.id }).from(teams).where(eq(teams.divisionId, divisionId)).orderBy(teams.name)
 }
 
 // Free agents (marketplace) for captain invitations
 export async function getFreeAgents(limit = 50) {
   return db
-    .select()
-    .from(players)
-    .where(eq(players.lookingForTeam, true))
-    .orderBy(desc(players.currentLi))
+    .select({
+      id: user.id, firstName: user.firstName, lastName: user.lastName,
+      currentLi: user.currentLi, playtomicRating: user.playtomicRating,
+      gender: user.gender, city: user.city, email: user.email,
+    })
+    .from(user)
+    .where(eq(user.lookingForTeam, true))
+    .orderBy(desc(user.currentLi))
     .limit(limit)
 }
 
 export type AddablePlayer = {
-  id: number
+  id: string
   firstName: string
   lastName: string
   currentLi: number
@@ -966,15 +1108,15 @@ export type AddablePlayer = {
 export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
   const rows = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
-      city: players.city,
-      userId: players.userId,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      currentLi: user.currentLi,
+      city: user.city,
+      userId: user.id,
     })
-    .from(players)
-    .orderBy(players.firstName, players.lastName)
+    .from(user)
+    .orderBy(user.firstName, user.lastName)
     .limit(limit)
 
   const userIds = [...new Set(rows.map((r) => r.userId))]
@@ -996,29 +1138,55 @@ export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
 // Org admin helpers ---------------------------------------------------------
 
 export async function getOrgByOwner(userId: string) {
-  const [o] = await db.select().from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
+  const [o] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
   return o ?? null
 }
 
+// Shared team+division field shape used by all three team-row queries below.
+const teamRowFields = {
+  team: {
+    id: teams.id,
+    name: teams.name,
+    divisionId: teams.divisionId,
+    seasonId: teams.seasonId,
+    organisationId: teams.organisationId,
+    captainUserId: teams.captainUserId,
+    homeClubId: teams.homeClubId,
+    teamType: teams.teamType,
+    clubPaysFees: teams.clubPaysFees,
+    managerUserId: teams.managerUserId,
+    ownerEmail: teams.ownerEmail,
+    avgLi: teams.avgLi,
+    tpr: teams.tpr,
+    playerCount: teams.playerCount,
+    maxPlayers: teams.maxPlayers,
+    saplRegion: teams.saplRegion,
+  },
+  division: {
+    id: divisions.id,
+    name: divisions.name,
+    level: divisions.level,
+    seasonId: divisions.seasonId,
+  },
+}
+
 export async function getOrgTeams(orgId: number) {
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .where(eq(teams.organisationId, orgId))
     .orderBy(teams.name)
-  return rows
 }
 
 // League/super admins manage every team, not just one org's. Returns the same
 // shape as getOrgTeams so the Team Admin page can render either set.
 export async function getAllTeamsForAdmin() {
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .orderBy(teams.name)
-  return rows
 }
 
 // Teams a club manager may manage in Team Admin: every team within their access
@@ -1030,16 +1198,25 @@ export async function getScopedTeamRows(access: AccessContext) {
   // null means "no restriction" (league admin) — callers handle that separately.
   if (scopedTeamIds === null) return getAllTeamsForAdmin()
   if (scopedTeamIds.length === 0) return []
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .where(inArray(teams.id, scopedTeamIds))
     .orderBy(teams.name)
-  return rows
 }
 
 export async function getStandingForTeam(teamId: number) {
-  const [s] = await db.select().from(standings).where(eq(standings.teamId, teamId)).limit(1)
+  const [s] = await db
+    .select({
+      id: standings.id,
+      played: standings.played,
+      wins: standings.wins,
+      points: standings.points,
+      rank: standings.rank,
+    })
+    .from(standings)
+    .where(eq(standings.teamId, teamId))
+    .limit(1)
   return s ?? null
 }

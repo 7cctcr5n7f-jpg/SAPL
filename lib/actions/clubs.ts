@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/lib/db/schema"
+import { clubs, organisations, teams, teamMembers, user as user, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -199,7 +199,7 @@ export async function saveClub(input: ClubInput) {
 }
 
 export async function deleteClub(id: number) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.id, id)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, id)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
     await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
@@ -223,9 +223,9 @@ export async function deleteClub(id: number) {
 export async function setClubTeamCaptain(input: {
   clubId: number
   teamId: number
-  playerId: number | null
+  playerId: string | null
 }) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
     await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
@@ -233,7 +233,7 @@ export async function setClubTeamCaptain(input: {
     return { ok: false, error: (e as Error).message }
   }
 
-  const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team || team.homeClubId !== input.clubId || team.teamType !== "Club Team") {
     return { ok: false, error: "Team does not belong to this venue" }
   }
@@ -254,23 +254,23 @@ export async function setClubTeamCaptain(input: {
     return { ok: true }
   }
 
-  const [player] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
-  if (!player?.userId) return { ok: false, error: "Player has no linked account" }
+  const [player] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
+  if (!player) return { ok: false, error: "Player not found" }
 
-  await db.update(teams).set({ captainUserId: player.userId, updatedAt: new Date() }).where(eq(teams.id, team.id))
+  await db.update(teams).set({ captainUserId: player.id, updatedAt: new Date() }).where(eq(teams.id, team.id))
   // Only elevate to "captain" if the user is currently a plain player (or has no
-  // meta row yet). Never downgrade a league_admin / super_admin / org_admin who
+  // meta row yet). Never downgrade a super_admin / org_admin who
   // happens to also be assigned as team captain.
   const [existingMeta] = await db
     .select({ role: userMeta.role })
     .from(userMeta)
-    .where(eq(userMeta.userId, player.userId))
+    .where(eq(userMeta.userId, player.id))
     .limit(1)
-  const adminRoles = ["league_admin", "super_admin", "org_admin"]
+  const adminRoles = ["super_admin", "org_admin"]
   if (!existingMeta) {
-    await db.insert(userMeta).values({ userId: player.userId, role: "captain" })
+    await db.insert(userMeta).values({ userId: player.id, role: "captain" })
   } else if (!adminRoles.includes(existingMeta.role ?? "")) {
-    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.id))
   }
 
   // Ensure the captain is on the roster.

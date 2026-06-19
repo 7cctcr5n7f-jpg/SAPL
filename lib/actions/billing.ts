@@ -12,13 +12,13 @@ import { BRAND } from "@/lib/constants"
 async function requireLeagueAdmin() {
   const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
-  if (user.realRole !== "league_admin" && user.realRole !== "super_admin") {
-    throw new Error("League admin access required")
+  if (user.realRole !== "super_admin") {
+    throw new Error("Super admin access required")
   }
   return user
 }
 
-type FeeKey = { kind: "player" | "team"; teamId: number; playerId: number }
+type FeeKey = { kind: "player" | "team"; teamId: number; playerId: string }
 
 async function upsertNote(key: FeeKey, patch: Partial<typeof feeNotes.$inferInsert>, userId: string) {
   const [existing] = await db

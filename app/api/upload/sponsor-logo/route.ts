@@ -6,9 +6,9 @@ const MAX_BYTES = 6 * 1024 * 1024 // 6MB
 const ALLOWED = ["image/png", "image/jpeg", "image/webp"]
 
 export async function POST(request: NextRequest) {
-  // Only league/super admins manage sponsors.
+  // Only super admins manage sponsors.
   try {
-    await requireRole(["league_admin", "super_admin"])
+    await requireRole(["super_admin"])
   } catch {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 })
   }

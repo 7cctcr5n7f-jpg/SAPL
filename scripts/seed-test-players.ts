@@ -70,7 +70,7 @@ const BANDS: Band[] = [
 
 async function run() {
   // Idempotent: clear previously seeded test players.
-  const deleted = await db.delete(players).where(like(players.userId, "seed-test-%")).returning({ id: players.id })
+  const deleted = await db.delete(players).where(like(user.id, "seed-test-%")).returning({ id: user.id })
   console.log(`[seed-test-players] removed ${deleted.length} existing test players`)
 
   let counter = 0

@@ -7,8 +7,9 @@ import { UserMenu } from "@/components/dashboard/user-menu"
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser()
   if (!me) redirect("/sign-in")
-  // Players must complete onboarding first (super admins skip this entirely).
-  if (!me.playerId && me.role === "player" && !me.isSuperAdmin) redirect("/onboarding")
+  // Only pure "player" role users who haven't completed onboarding get redirected.
+  // Captains, org admins, and super admins bypass onboarding regardless of isPlayer.
+  if (!me.isPlayer && me.realRole === "player") redirect("/onboarding")
 
   const access = await getAccessContext(me)
 

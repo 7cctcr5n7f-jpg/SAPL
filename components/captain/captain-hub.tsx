@@ -21,20 +21,26 @@ import { invitePlayerByEmail, cancelInvite } from "@/lib/actions/pairings"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check, Clock } from "lucide-react"
+import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check, Clock, Edit2 } from "lucide-react"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+import { adminUpdatePlayerRatings } from "@/lib/actions/player"
 
 const PAYING_PLAYERS_COUNT = 8
 
 type RosterMember = {
   membershipId: number
-  playerId: number
+  playerId: string
   name: string
   li: number
   status: string
   role: string
+  userRole?: string | null
+  email?: string | null
+  phone?: string | null
+  playtomicRating?: string | number | null
+  playtomicUrl?: string | null
 }
-type FreeAgent = { playerId: number; name: string; li: number; city: string | null; email: string | null }
+type FreeAgent = { playerId: string; name: string; li: number; city: string | null; email: string | null }
 type FixtureLite = {
   id: number
   week: number
@@ -74,6 +80,8 @@ export function CaptainHub({
   canEdit = false,
   playerFee,
   isLeagueAdmin = false,
+  isSuperAdmin = false,
+  allTeams,
 }: {
   teams: CaptainTeam[]
   freeAgents: FreeAgent[]
@@ -81,9 +89,13 @@ export function CaptainHub({
   canEdit?: boolean
   playerFee: number
   isLeagueAdmin?: boolean
+  isSuperAdmin?: boolean
+  allTeams?: CaptainTeam[]
 }) {
-  const [activeId, setActiveId] = useState(teams[0]?.id ?? 0)
-  const team = teams.find((t) => t.id === activeId) ?? teams[0]
+  // Super admins can select any team from all teams; captains only their own
+  const selectableTeams = isSuperAdmin && allTeams ? allTeams : teams
+  const [activeId, setActiveId] = useState(selectableTeams[0]?.id ?? 0)
+  const team = selectableTeams.find((t) => t.id === activeId) ?? selectableTeams[0]
   const [pending, start] = useTransition()
   const router = useRouter()
   const [search, setSearch] = useState("")
@@ -166,10 +178,19 @@ export function CaptainHub({
 
   return (
     <div className="space-y-5">
+      {/* Header for super admins */}
+      {isSuperAdmin && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
+          <p className="text-sm text-primary font-medium">
+            As super admin, you can manage scores for any team
+          </p>
+        </div>
+      )}
+
       {/* Team selector */}
-      {teams.length > 1 && (
+      {selectableTeams.length > 1 && (
         <div className="flex flex-wrap gap-2">
-          {teams.map((t) => (
+          {selectableTeams.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveId(t.id)}
@@ -354,6 +375,7 @@ export function CaptainHub({
               onRemove={remove}
               onCancelInvite={cancelSquadInvite}
               isLeagueAdmin={isLeagueAdmin}
+              canEditRatings={canEdit}
             />
           </CardContent>
         </Card>
@@ -398,7 +420,7 @@ export function CaptainHub({
   )
 }
 
-// ─── Squad + Fee selector ──────────────────────────────────────────────────────
+// ─── Squad + Fee selector ─────────────────────────────────────────────�������────────
 
 function SquadWithFees({
   team,
@@ -408,25 +430,61 @@ function SquadWithFees({
   onRemove,
   onCancelInvite,
   isLeagueAdmin,
+  canEditRatings = false,
 }: {
   team: CaptainTeam
-  metaById: Map<number, PairingPlayer>
+  metaById: Map<string, PairingPlayer>
   playerFee: number
   pending: boolean
   onRemove: (membershipId: number) => void
   onCancelInvite: (inviteId: number) => void
   isLeagueAdmin: boolean
+  canEditRatings?: boolean
 }) {
   const active = team.roster.filter((m) => m.status !== "invited")
 
   // Default: first 8 active players pay; captain can toggle
-  const [payingIds, setPayingIds] = useState<Set<number>>(() => {
-    const defaultSet = new Set<number>()
+  const [payingIds, setPayingIds] = useState<Set<string>>(() => {
+    const defaultSet = new Set<string>()
     active.slice(0, PAYING_PLAYERS_COUNT).forEach((m) => defaultSet.add(m.playerId))
     return defaultSet
   })
 
-  function togglePaying(playerId: number) {
+  // Edit player ratings dialog state
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
+  const [editLi, setEditLi] = useState("")
+  const [editPlaytomicRating, setEditPlaytomicRating] = useState("")
+  const [editPlaytomicUrl, setEditPlaytomicUrl] = useState("")
+  const router = useRouter()
+  const [transitionPending, startTransition] = useTransition()
+
+  function openEditDialog(player: RosterMember) {
+    setEditingPlayerId(player.playerId)
+    setEditLi(player.li.toFixed(1))
+    setEditPlaytomicRating("")
+    setEditPlaytomicUrl("")
+  }
+
+  function savePlayerRatings() {
+    if (!editingPlayerId) return
+    startTransition(async () => {
+      const res = await adminUpdatePlayerRatings({
+        playerId: editingPlayerId,
+        currentLi: Math.min(7, Math.max(0, parseFloat(editLi) || 0)),
+        playtomicRating: editPlaytomicRating ? Math.min(7, Math.max(0, parseFloat(editPlaytomicRating))) : null,
+        playtomicUrl: editPlaytomicUrl || undefined,
+      })
+      if (res.ok) {
+        toast.success("Player rating updated")
+        setEditingPlayerId(null)
+        router.refresh()
+      } else {
+        toast.error(res.error || "Failed to update")
+      }
+    })
+  }
+
+  function togglePaying(playerId: string) {
     setPayingIds((prev) => {
       const next = new Set(prev)
       if (next.has(playerId)) {
@@ -477,6 +535,18 @@ function SquadWithFees({
       {team.roster.length === 0 && (
         <p className="text-sm text-muted-foreground">No players yet. Add free agents to build your squad.</p>
       )}
+      {/* Header row */}
+      <div className="grid grid-cols-12 gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground mb-2">
+        {!team.clubPaysFees && <div className="col-span-1 text-center">Paid</div>}
+        <div className={!team.clubPaysFees ? "col-span-3" : "col-span-4"}>Player</div>
+        <div className="col-span-1 text-center">LI</div>
+        <div className="col-span-1 text-center">PT</div>
+        <div className="col-span-2">Contact</div>
+        <div className="col-span-1 text-center">Role</div>
+        <div className="col-span-2 text-right">Actions</div>
+      </div>
+
+      {/* Data rows */}
       {team.roster.map((m) => {
         const meta = metaById.get(m.playerId)
         const isPaying = team.clubPaysFees ? (meta?.paid ?? true) : payingIds.has(m.playerId)
@@ -485,68 +555,136 @@ function SquadWithFees({
         return (
           <div
             key={m.membershipId}
-            className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+            className="grid grid-cols-12 gap-2 rounded-md border border-border px-3 py-3 text-sm items-center hover:bg-muted/20 transition-colors"
           >
-            {/* Paying checkbox — only for player-pays teams, active members only */}
-            {!team.clubPaysFees && isActive && (
-              <button
-                onClick={() => togglePaying(m.playerId)}
-                aria-label={isPaying ? "Remove from paying" : "Mark as paying"}
-                className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors",
-                  isPaying
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-slate-300 bg-white text-transparent hover:border-primary",
+            {/* Paying checkbox */}
+            {!team.clubPaysFees && (
+              <div className="col-span-1 flex justify-center">
+                {isActive && (
+                  <button
+                    onClick={() => togglePaying(m.playerId)}
+                    aria-label={isPaying ? "Remove from paying" : "Mark as paying"}
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center rounded border-2 transition-colors",
+                      isPaying
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-slate-300 bg-white text-transparent hover:border-primary",
+                    )}
+                  >
+                    <Check className="h-3 w-3" />
+                  </button>
                 )}
-              >
-                <Check className="h-3 w-3" />
-              </button>
+              </div>
             )}
 
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="flex items-center gap-1 truncate text-sm font-medium">
-                  {meta?.gender === "female" ? (
-                    <Venus className="h-3.5 w-3.5 shrink-0 text-pink-500" aria-label="Female" />
-                  ) : (
-                    <Mars className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-label="Male" />
-                  )}
-                  <span className={cn("truncate", !team.clubPaysFees && isActive && !isPaying && "text-muted-foreground")}>
+            {/* Player Name */}
+            <div className={!team.clubPaysFees ? "col-span-3" : "col-span-4"}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="h-7 w-7 shrink-0">
+                  <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className={cn("truncate font-medium", !team.clubPaysFees && isActive && !isPaying && "text-muted-foreground")}>
                     {m.name}
-                  </span>
-                </p>
-                <p className="text-xs text-muted-foreground">LI {m.li.toFixed(1)}</p>
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Paid indicator */}
-              {team.clubPaysFees && (
+            {/* LI */}
+            <div className="col-span-1 text-center font-medium">
+              {m.li.toFixed(1)}
+            </div>
+
+            {/* Playtomic Rating */}
+            <div className="col-span-1 text-center">
+              {m.playtomicRating ? (
+                <span className="font-medium">{m.playtomicRating}</span>
+              ) : (
+                <span className="text-muted-foreground text-xs">—</span>
+              )}
+            </div>
+
+            {/* Contact Info */}
+            <div className="col-span-2 text-xs">
+              {m.email || m.phone || m.playtomicUrl ? (
+                <div className="space-y-0.5">
+                  {m.phone && <div className="truncate">{m.phone}</div>}
+                  {m.email && <div className="truncate">{m.email}</div>}
+                  {m.playtomicUrl && (
+                    <a
+                      href={m.playtomicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-xs"
+                      title="View Playtomic profile"
+                    >
+                      Playtomic
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </div>
+
+            {/* Role/Status */}
+            <div className="col-span-1 text-center">
+              {m.userRole === "super_admin" ? (
+                <Badge variant="destructive" className="text-xs">Super Admin</Badge>
+              ) : m.userRole === "org_admin" ? (
+                <Badge variant="secondary" className="text-xs">Org Admin</Badge>
+              ) : m.userRole === "league_admin" ? (
+                <Badge variant="secondary" className="text-xs">League Admin</Badge>
+              ) : m.userRole === "captain" ? (
+                <Badge variant="default" className="text-xs">Captain</Badge>
+              ) : m.role === "captain" ? (
+                <Badge variant="default" className="text-xs">Team Captain</Badge>
+              ) : m.role === "manager" ? (
+                <Badge variant="outline" className="text-xs">Manager</Badge>
+              ) : m.role === "admin" ? (
+                <Badge variant="secondary" className="text-xs">Admin</Badge>
+              ) : m.status === "invited" ? (
+                <Badge variant="secondary" className="text-xs">Invited</Badge>
+              ) : team.clubPaysFees ? (
                 <span
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-600"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-600 text-xs"
                   title="Covered by club"
                 >
-                  <DollarSign className="h-3.5 w-3.5" />
+                  <DollarSign className="h-3 w-3" />
                 </span>
-              )}
-              {m.role === "captain" ? (
-                <Badge>Captain</Badge>
-              ) : m.status === "invited" ? (
-                <Badge variant="secondary">Invited</Badge>
               ) : (
-                !isLeagueAdmin && (
-                  <button
-                    onClick={() => onRemove(m.membershipId)}
-                    disabled={pending}
-                    className="text-muted-foreground hover:text-destructive"
-                    aria-label={`Remove ${m.name}`}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )
+                <span className="text-muted-foreground text-xs">Player</span>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="col-span-2 flex justify-end gap-1">
+              {m.status !== "invited" && (
+                <>
+                  {canEditRatings && (
+                    <button
+                      onClick={() => openEditDialog(m)}
+                      disabled={transitionPending}
+                      className="p-1 text-muted-foreground hover:text-primary transition-colors rounded hover:bg-muted"
+                      aria-label={`Edit ratings for ${m.name}`}
+                      title="Edit League Index & Playtomic rating"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  )}
+                  {!isLeagueAdmin && (
+                    <button
+                      onClick={() => onRemove(m.membershipId)}
+                      disabled={pending}
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded hover:bg-muted"
+                      aria-label={`Remove ${m.name}`}
+                      title="Remove player"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -587,6 +725,59 @@ function SquadWithFees({
           ))}
         </>
       )}
+
+      {/* Edit player ratings dialog */}
+      <Dialog open={editingPlayerId !== null} onOpenChange={(open) => !open && setEditingPlayerId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Player Rating</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">League Index (LI)</label>
+              <Input
+                type="number"
+                min="0"
+                max="7"
+                step="0.1"
+                value={editLi}
+                onChange={(e) => setEditLi(e.target.value)}
+                placeholder="0.0"
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Between 0.0 and 7.0</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Playtomic Rating</label>
+              <Input
+                type="number"
+                min="0"
+                max="7"
+                step="0.1"
+                value={editPlaytomicRating}
+                onChange={(e) => setEditPlaytomicRating(e.target.value)}
+                placeholder="Optional"
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Between 0.0 and 7.0 (optional)</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Playtomic URL</label>
+              <Input
+                type="url"
+                value={editPlaytomicUrl}
+                onChange={(e) => setEditPlaytomicUrl(e.target.value)}
+                placeholder="https://..."
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Player&apos;s Playtomic profile link (optional)</p>
+            </div>
+            <Button onClick={savePlayerRatings} disabled={transitionPending} className="w-full">
+              {transitionPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

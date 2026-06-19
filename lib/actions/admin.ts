@@ -35,8 +35,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 async function requireAdmin() {
   const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
-  if (user.realRole !== "league_admin" && user.realRole !== "super_admin") {
-    throw new Error("League admin access required")
+  if (user.realRole !== "super_admin") {
+    throw new Error("Super admin access required")
   }
   return user
 }
@@ -46,17 +46,17 @@ async function requireAdmin() {
 export async function generateFixtures(formData: FormData) {
   await requireAdmin()
   const divisionId = Number(formData.get("divisionId"))
-  const [division] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+  const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
 
-  const divTeams = await db.select().from(teams).where(eq(teams.divisionId, divisionId))
+  const divTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.divisionId, divisionId))
   if (divTeams.length < 2) return { ok: false, error: "Need at least 2 teams in the division" }
 
   // wipe scheduled fixtures for this division
   await db.delete(fixtures).where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.status, "scheduled")))
 
   const schedule = generateRoundRobin(divTeams.map((t) => t.id))
-  const [season] = await db.select().from(seasons).where(eq(seasons.id, division.seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, division.seasonId)).limit(1)
   const start = season?.startDate ? new Date(season.startDate) : new Date()
 
   for (const g of schedule) {
@@ -91,7 +91,7 @@ export async function generateFixtures(formData: FormData) {
 export async function generateSeason(formData: FormData) {
   await requireAdmin()
   const seasonId = Number(formData.get("seasonId"))
-  const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
   if (!season) return { ok: false, error: "Season not found" }
 
   const allDivs = await db
@@ -194,7 +194,7 @@ export async function generateSeason(formData: FormData) {
   // Wipe any previously generated (un-played) playoff rows for this season.
   await db.delete(playoffs).where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.status, "scheduled")))
 
-  const allRegions = await db.select().from(regions)
+  const allRegions = await db.select({ id: regions.id }).from(regions)
   const regionNameById = new Map(allRegions.map((r) => [r.id, r.name]))
   const regionIdByName = new Map(allRegions.map((r) => [r.name, r.id]))
 
@@ -276,10 +276,10 @@ export async function generateSeason(formData: FormData) {
 export async function adjustDivisionFixtures(formData: FormData) {
   await requireAdmin()
   const divisionId = Number(formData.get("divisionId"))
-  const [division] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+  const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
 
-  const [season] = await db.select().from(seasons).where(eq(seasons.id, division.seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, division.seasonId)).limit(1)
   if (!season) return { ok: false, error: "Season not found" }
 
   // Count assigned teams (placed into a slot) for this division.
@@ -335,7 +335,7 @@ export async function adjustDivisionFixtures(formData: FormData) {
 export async function generatePlayoffs(formData: FormData) {
   await requireAdmin()
   const divisionId = Number(formData.get("divisionId"))
-  const [division] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+  const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
 
   const table = await db
@@ -385,14 +385,14 @@ export async function pullPlayoffTeams(formData: FormData) {
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
 
-  const rows = await db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId))
+  const rows = await db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId))
   if (rows.length === 0) return { ok: false, error: "No playoff fixtures to populate. Generate the season first." }
 
   // Standings by division, ranked.
-  const seasonDivisions = await db.select().from(divisions).where(eq(divisions.seasonId, seasonId))
+  const seasonDivisions = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
   const divIds = seasonDivisions.map((d) => d.id)
   const allStandings = divIds.length
-    ? await db.select().from(standings).where(inArray(standings.divisionId, divIds)).orderBy(asc(standings.rank))
+    ? await db.select({ id: standings.id }).from(standings).where(inArray(standings.divisionId, divIds)).orderBy(asc(standings.rank))
     : []
   const rankInDivision = (divisionId: number, rank: number) =>
     allStandings.find((s) => s.divisionId === divisionId && s.rank === rank)?.teamId ?? null
@@ -430,7 +430,7 @@ export async function pullPlayoffTeams(formData: FormData) {
   }
 
   // Refresh after the semi update so finals can read semi winners.
-  const refreshed = await db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId))
+  const refreshed = await db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId))
   const winnerByBracket = (type: string, divisionId: number | null, bracket: number) => {
     const semi = refreshed.find(
       (x) =>
@@ -497,7 +497,7 @@ export async function resolveDispute(formData: FormData) {
   const resolution = String(formData.get("resolution") ?? "")
   const penalty = String(formData.get("penalty") ?? "") || null
 
-  const [dispute] = await db.select().from(disputes).where(eq(disputes.id, id)).limit(1)
+  const [dispute] = await db.select({ id: disputes.id }).from(disputes).where(eq(disputes.id, id)).limit(1)
   if (!dispute) return { ok: false, error: "Dispute not found" }
 
   await db
@@ -756,7 +756,7 @@ export async function setSeasonDivisions(input: {
 }) {
   await requireAdmin()
   const { seasonId } = input
-  const existing = await db.select().from(divisions).where(eq(divisions.seasonId, seasonId))
+  const existing = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
   const keyOf = (regionId: number | null, level: number) => `${regionId ?? "none"}:${level}`
   const existingByKey = new Map(existing.map((d) => [keyOf(d.regionId, d.level), d]))
 
@@ -814,7 +814,7 @@ export async function assignTeamToDivision(formData: FormData) {
     return { ok: true }
   }
 
-  const [division] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+  const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
 
   // Respect the division capacity.

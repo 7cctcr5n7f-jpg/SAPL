@@ -14,7 +14,6 @@ import {
   Trophy,
   ClipboardList,
   Building2,
-  Bell,
   CreditCard,
   Megaphone,
   ShieldCheck,
@@ -36,7 +35,6 @@ const ICONS = {
   rankings: Trophy,
   results: ClipboardList,
   org: Building2,
-  notifications: Bell,
   payments: CreditCard,
   announce: Megaphone,
   admin: ShieldCheck,
@@ -78,8 +76,8 @@ export function DashboardNav({
 
   const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
 
-  // League Centre — always available to every signed-in user.
-  items.push({ href: "/league-centre", label: "League Centre", icon: ICONS.rankings })
+  // League Centre — always available within dashboard, stays in dashboard layout
+  items.push({ href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings })
 
   if (canCaptainHub) {
     items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
@@ -93,7 +91,8 @@ export function DashboardNav({
     items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
   }
 
-  if (has("player_management")) {
+  // Player Management is league admins only
+  if (has("league_management")) {
     items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
   }
 
@@ -119,8 +118,6 @@ export function DashboardNav({
   if (canManageMembers) {
     items.push({ href: "/admin/members", label: "Members & Roles", icon: ICONS.members })
   }
-
-  items.push({ href: "/dashboard/notifications", label: "Notifications", icon: ICONS.notifications })
 
   async function signOut() {
     await authClient.signOut()

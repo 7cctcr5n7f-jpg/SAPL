@@ -5,10 +5,9 @@ import {
   teamEntries,
   clubs,
   teamMembers,
-  players,
   seasons,
   regions,
-  user as userTable,
+  user,
 } from "@/lib/db/schema"
 import { and, eq, asc } from "drizzle-orm"
 import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
@@ -19,17 +18,17 @@ export type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "
 async function nameForUserId(userId: string | null): Promise<string | null> {
   if (!userId) return null
   const [p] = await db
-    .select({ first: players.firstName, last: players.lastName })
-    .from(players)
-    .where(eq(players.userId, userId))
+    .select({ first: user.firstName, last: user.lastName })
+    .from(user)
+    .where(eq(user.id, userId))
     .limit(1)
   if (p) return `${p.first} ${p.last}`
-  const [u] = await db.select({ name: userTable.name }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  const [u] = await db.select({ name: user.name }).from(user).where(eq(user.id, userId)).limit(1)
   return u?.name ?? null
 }
 
 export async function getPlacementBoard(seasonId: number): Promise<PlacementBoardData | null> {
-  const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
 
   const divs = await db
     .select({
@@ -98,16 +97,16 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
 export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
   const rows = await db
     .select({
-      playerId: players.id,
-      first: players.firstName,
-      last: players.lastName,
-      li: players.currentLi,
-      userId: players.userId,
+      playerId: user.id,
+      first: user.firstName,
+      last: user.lastName,
+      li: user.currentLi,
+      userId: user.id,
     })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
-    .orderBy(asc(players.currentLi))
+    .orderBy(asc(user.currentLi))
 
   const [team] = await db.select({ captainUserId: teams.captainUserId }).from(teams).where(eq(teams.id, teamId)).limit(1)
 

@@ -9,7 +9,7 @@ import {
 } from "@/lib/queries-dashboard"
 import { getPlayerFee } from "@/lib/queries"
 import { db } from "@/lib/db"
-import { divisions, teams } from "@/lib/db/schema"
+import { divisions, teams, user as dbUser } from "@/lib/db/schema"
 import { eq, inArray } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { CaptainHub, type CaptainTeam } from "@/components/captain/captain-hub"
@@ -23,18 +23,23 @@ export default async function CaptainPage() {
   if (!access.can("captain_hub") && !access.can("team_management") && !access.isLeagueAdmin)
     redirect("/dashboard")
 
-  // League admins can select ANY team and enter scores
+  // Super admins can select ANY team and enter scores
   // Everyone else sees only their assigned teams
   let captainTeams: typeof teams.$inferSelect[] = []
   let isAdminSelectingTeams = false
 
+  const teamFields = {
+    id: teams.id, name: teams.name, divisionId: teams.divisionId,
+    seasonId: teams.seasonId, tpr: teams.tpr, clubPaysFees: teams.clubPaysFees,
+    organisationId: teams.organisationId, captainUserId: teams.captainUserId,
+    homeClubId: teams.homeClubId, teamType: teams.teamType,
+    avgLi: teams.avgLi, playerCount: teams.playerCount, maxPlayers: teams.maxPlayers,
+  }
   if (access.isLeagueAdmin) {
-    // Admins can see and manage all teams
-    captainTeams = await db.select().from(teams).orderBy(teams.name)
+    captainTeams = await db.select(teamFields).from(teams).orderBy(teams.name)
     isAdminSelectingTeams = true
   } else if (access.teamIds.length > 0) {
-    // Non-admin captains/managers see only their assigned teams
-    captainTeams = await db.select().from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
+    captainTeams = await db.select(teamFields).from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
   }
 
   if (captainTeams.length === 0) {
@@ -69,6 +74,11 @@ export default async function CaptainPage() {
     isFeatureCourt: c.isFeatureCourt,
   }))
 
+  // Get user email for roster players
+  const userEmailMap = new Map()
+  const users = await db.select({ id: dbUser.id, email: dbUser.email }).from(dbUser)
+  users.forEach((u) => userEmailMap.set(u.id, u.email))
+
   const teamsData: CaptainTeam[] = []
   for (const team of captainTeams) {
     const roster = await getTeamRoster(team.id)
@@ -82,7 +92,7 @@ export default async function CaptainPage() {
     const unavailable = await getTeamUnavailability(team.id)
     let divisionName = "Unassigned"
     if (team.divisionId) {
-      const [d] = await db.select().from(divisions).where(eq(divisions.id, team.divisionId)).limit(1)
+      const [d] = await db.select({ id: divisions.id, name: divisions.name }).from(divisions).where(eq(divisions.id, team.divisionId)).limit(1)
       if (d) divisionName = d.name
     }
     const playerFee = await getPlayerFee(team.seasonId)
@@ -97,14 +107,22 @@ export default async function CaptainPage() {
       pairingCategories: pairingData?.categories ?? [],
       pairingRoster: pairingData?.roster ?? [],
       pairingInvites: pairingData?.invites ?? [],
-      roster: roster.map((r) => ({
-        membershipId: r.membership.id,
-        playerId: r.player.id,
-        name: `${r.player.firstName} ${r.player.lastName}`,
-        li: r.player.currentLi,
-        status: r.membership.status,
-        role: r.membership.role,
-      })),
+      roster: roster.map((r) => {
+        const userEmail = userEmailMap.get(r.player.id)
+        return {
+          membershipId: r.membership.id,
+          playerId: r.player.id,
+          name: `${r.player.firstName} ${r.player.lastName}`,
+          li: r.player.currentLi,
+          status: r.membership.status,
+          role: r.membership.role,
+          userRole: r.userRole,
+          email: userEmail,
+          phone: r.meta?.phone ?? null,
+          playtomicRating: r.player.playtomicRating ?? null,
+          playtomicUrl: r.player.playtomicUrl ?? null,
+        }
+      }),
       fixtures: fixtures.map((f) => ({
         id: f.id,
         week: f.week,
@@ -112,11 +130,12 @@ export default async function CaptainPage() {
         awayTeamId: f.awayTeamId,
         homeName: f.homeName,
         awayName: f.awayName,
-        matchDate: f.matchDate,
+        // Serialize Date → ISO string so Next.js can pass it across the RSC boundary
+        matchDate: f.matchDate ? f.matchDate.toISOString() : null,
         status: f.status,
-        homePoints: f.homePoints,
-        awayPoints: f.awayPoints,
-        scores: scoreMap[f.id],
+        homePoints: f.homePoints ?? null,
+        awayPoints: f.awayPoints ?? null,
+        scores: scoreMap[f.id] ?? null,
       })),
     })
   }
@@ -140,7 +159,7 @@ export default async function CaptainPage() {
         title="Captain Hub"
         subtitle={
           isAdminSelectingTeams
-            ? "As league admin, you can manage scores for any team"
+            ? "As main admin, you can manage scores for any team"
             : "Manage your roster, submit lineups, and enter results"
         }
       />
@@ -151,6 +170,8 @@ export default async function CaptainPage() {
         canEdit={true}
         playerFee={playerFee}
         isLeagueAdmin={access.isLeagueAdmin}
+        isSuperAdmin={access.user.isSuperAdmin}
+        allTeams={isAdminSelectingTeams ? teamsData : undefined}
       />
     </div>
   )

@@ -61,9 +61,9 @@ function normalizeUrl(raw: string): string | null {
   return v
 }
 
-/** True when the user is a league/super admin. */
+/** True when the user is a super admin. */
 function isLeagueAdmin(role: string) {
-  return role === "league_admin" || role === "super_admin"
+  return role === "super_admin"
 }
 
 /**
