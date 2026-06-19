@@ -334,12 +334,28 @@ function EditMemberDialog({
 }) {
   const [name, setName] = useState(member.name)
   const [phone, setPhone] = useState(member.phone ?? "")
+  const [gender, setGender] = useState("")
+  const [city, setCity] = useState("")
+  const [province, setProvince] = useState("")
+  const [li, setLi] = useState("")
+  const [playtomicUrl, setPlaytomicUrl] = useState("")
+  const [isPlayer, setIsPlayer] = useState(member.playerName ? true : false)
+  const [expandAdvanced, setExpandAdvanced] = useState(false)
   const [pending, startTransition] = useTransition()
 
   function submit() {
     if (!name.trim()) return toast.error("Name is required.")
     startTransition(async () => {
-      const res = await updateMemberDetails(member.id, { name, phone: phone || null })
+      const res = await updateMemberDetails(member.id, {
+        name,
+        phone: phone || null,
+        gender: gender || null,
+        city: city || null,
+        province: province || null,
+        currentLi: li ? parseFloat(li) : null,
+        playtomicUrl: playtomicUrl || null,
+        isPlayer,
+      })
       if (res.ok) {
         toast.success("Details updated")
         onSaved()
@@ -351,33 +367,103 @@ function EditMemberDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit member details</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-name">Full name</Label>
-            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
-            <p className="text-xs text-muted-foreground">For player profiles, ensure names are formatted as "FirstName LastName"</p>
+          {/* Basic info */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">Full name</Label>
+              <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input id="edit-email" value={member.email} disabled className="opacity-60" />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-email">Email</Label>
-            <Input id="edit-email" value={member.email} disabled className="opacity-60" />
-            <p className="text-xs text-muted-foreground">Email cannot be changed here.</p>
+
+          {/* Contact & Player toggle */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone">Contact number</Label>
+              <Input id="edit-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPlayer}
+                  onChange={(e) => setIsPlayer(e.target.checked)}
+                  className="rounded border-2 border-input"
+                />
+                <span className="text-sm font-medium">Mark as player</span>
+              </label>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-phone">Contact number</Label>
-            <Input id="edit-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
-          </div>
-          <div className="rounded-md bg-blue-50 p-3 dark:bg-blue-950/20">
-            <p className="text-xs font-medium text-blue-900 dark:text-blue-200">
-              To complete a player profile with gender, LI, and other details, have the user complete onboarding at <code className="font-mono text-xs">/onboarding</code> or assign them the "Player" role to enable team membership.
-            </p>
-          </div>
+
+          {/* Player profile fields (show when isPlayer is true) */}
+          {isPlayer && (
+            <>
+              <div className="space-y-1.5 pt-2 border-t">
+                <p className="text-sm font-semibold text-muted-foreground">Player Profile</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-gender">Gender</Label>
+                  <select
+                    id="edit-gender"
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-li">League Index (LI)</Label>
+                  <Input
+                    id="edit-li"
+                    type="number"
+                    step="0.1"
+                    value={li}
+                    onChange={(e) => setLi(e.target.value)}
+                    placeholder="e.g., 7.5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-city">City</Label>
+                  <Input id="edit-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="—" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-province">Province</Label>
+                  <Input id="edit-province" value={province} onChange={(e) => setProvince(e.target.value)} placeholder="—" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-playtomic">Playtomic URL</Label>
+                <Input
+                  id="edit-playtomic"
+                  value={playtomicUrl}
+                  onChange={(e) => setPlaytomicUrl(e.target.value)}
+                  placeholder="https://playtomic.io/..."
+                />
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="button" disabled={pending} onClick={submit}>
             {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
             Save changes
@@ -400,12 +486,20 @@ function AddMemberDialog({
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
   const [role, setRole] = useState<Role>("player")
+  const [gender, setGender] = useState("")
+  const [li, setLi] = useState("")
+  const [city, setCity] = useState("")
+  const [province, setProvince] = useState("")
 
   function reset() {
     setFirstName("")
     setLastName("")
     setEmail("")
     setRole("player")
+    setGender("")
+    setLi("")
+    setCity("")
+    setProvince("")
   }
 
   function submit() {
@@ -416,6 +510,16 @@ function AddMemberDialog({
     startTransition(async () => {
       const res = await createMember({ firstName, lastName, email, role })
       if (res.ok && res.password) {
+        // After creating the member, update with player profile if role is player/captain
+        if ((role === "player" || role === "captain") && (gender || li || city || province)) {
+          await updateMemberDetails(res.userId, {
+            gender: gender || null,
+            city: city || null,
+            province: province || null,
+            currentLi: li ? parseFloat(li) : null,
+            isPlayer: true,
+          })
+        }
         toast.success(`${firstName} added as ${roleLabel(role)}`)
         onCreated({ name: `${firstName} ${lastName}`.trim(), email: email.trim().toLowerCase(), password: res.password })
         setOpen(false)
@@ -442,7 +546,7 @@ function AddMemberDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add a member</DialogTitle>
         </DialogHeader>
@@ -486,6 +590,53 @@ function AddMemberDialog({
               A temporary password is generated automatically. You can share it after creating the member.
             </p>
           </div>
+
+          {/* Player profile fields if role is player or captain */}
+          {(role === "player" || role === "captain") && (
+            <>
+              <div className="space-y-2 pt-4 border-t">
+                <p className="text-sm font-semibold text-muted-foreground">Player Profile (optional)</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <select
+                    id="gender"
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="li">League Index (LI)</Label>
+                  <Input
+                    id="li"
+                    type="number"
+                    step="0.1"
+                    value={li}
+                    onChange={(e) => setLi(e.target.value)}
+                    placeholder="e.g., 7.5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="province">Province</Label>
+                  <Input id="province" value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Optional" />
+                </div>
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>

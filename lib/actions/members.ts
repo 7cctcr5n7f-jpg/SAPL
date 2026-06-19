@@ -110,14 +110,50 @@ export async function setMemberRole(userId: string, role: Role) {
 /** Update a member's core details: name (on the auth user row) and phone (on userMeta). */
 export async function updateMemberDetails(
   userId: string,
-  input: { name: string; phone?: string | null },
+  input: {
+    name?: string
+    firstName?: string
+    lastName?: string
+    phone?: string | null
+    gender?: string | null
+    city?: string | null
+    province?: string | null
+    currentLi?: number | null
+    playtomicUrl?: string | null
+    isPlayer?: boolean
+  },
 ) {
   const { me } = await requireMemberManager()
-  const name = input.name.trim()
-  if (!name) return { ok: false, error: "Name is required." }
+  
+  // Build user update object with player profile fields
+  const userUpdate: Record<string, any> = {}
+  
+  if (input.name) {
+    const name = input.name.trim()
+    if (!name) return { ok: false, error: "Name is required." }
+    userUpdate.name = name
+  }
+  
+  if (input.firstName !== undefined) userUpdate.firstName = input.firstName?.trim() || null
+  if (input.lastName !== undefined) userUpdate.lastName = input.lastName?.trim() || null
+  if (input.gender !== undefined) userUpdate.gender = input.gender || null
+  if (input.city !== undefined) userUpdate.city = input.city?.trim() || null
+  if (input.province !== undefined) userUpdate.province = input.province || null
+  if (input.currentLi !== undefined) userUpdate.currentLi = input.currentLi ?? 0
+  if (input.playtomicUrl !== undefined) userUpdate.playtomicUrl = input.playtomicUrl?.trim() || null
+  if (input.isPlayer !== undefined) userUpdate.isPlayer = input.isPlayer
 
-  await db.update(user).set({ name }).where(eq(user.id, userId))
-  await upsertMeta(userId, { phone: input.phone?.trim() || null })
+  if (Object.keys(userUpdate).length > 0) {
+    await db.update(user).set(userUpdate).where(eq(user.id, userId))
+  }
+  
+  // Update meta (phone and related)
+  const metaUpdate: Record<string, any> = {}
+  if (input.phone !== undefined) metaUpdate.phone = input.phone?.trim() || null
+  
+  if (Object.keys(metaUpdate).length > 0) {
+    await upsertMeta(userId, metaUpdate)
+  }
 
   revalidatePath("/admin/members")
   return { ok: true }
@@ -452,7 +488,7 @@ export async function createMember(input: {
   }
 
   revalidatePath("/admin/members")
-  return { ok: true, password: res.password }
+  return { ok: true, password: res.password, userId: res.userId }
 }
 
 /** Roles allowed to add players: captains, org admins, super admins. */
