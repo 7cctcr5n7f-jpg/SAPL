@@ -812,7 +812,7 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
       if (usersWithProfile.has(u.id)) continue
       const [firstName, ...rest] = (u.name ?? "").trim().split(/\s+/)
       list.push({
-        playerId: null,
+        playerId: u.id,
         name: (u.name ?? "").trim() || "Unnamed user",
         firstName: firstName ?? "",
         lastName: rest.join(" "),
@@ -851,7 +851,13 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
 }
 
 export async function getTeamsForCaptain(userId: string) {
-  return db.select().from(teams).where(eq(teams.captainUserId, userId)).orderBy(teams.name)
+  return db.select({
+    id: teams.id,
+    name: teams.name,
+    seasonId: teams.seasonId,
+    organisationId: teams.organisationId,
+    captainUserId: teams.captainUserId,
+  }).from(teams).where(eq(teams.captainUserId, userId)).orderBy(teams.name)
 }
 
 export type TeamRosterMember = {

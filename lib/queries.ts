@@ -20,9 +20,9 @@ import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
 
 export async function getCurrentSeason() {
-  const [season] = await db.select().from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [season] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
   if (season) return season
-  const [latest] = await db.select().from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).orderBy(desc(seasons.id)).limit(1)
   return latest ?? null
 }
 
@@ -42,7 +42,7 @@ export async function getPlayerFee(seasonId?: number | null): Promise<number> {
 }
 
 export async function getDivisions(seasonId: number) {
-  return db.select().from(divisions).where(eq(divisions.seasonId, seasonId)).orderBy(asc(divisions.level))
+  return db.select({ id: divisions.id, name: divisions.name, level: divisions.level, seasonId: divisions.seasonId, regionId: divisions.regionId }).from(divisions).where(eq(divisions.seasonId, seasonId)).orderBy(asc(divisions.level))
 }
 
 /** Divisions for a season including their SAPL region name, for region-grouped standings. */
@@ -62,11 +62,11 @@ export async function getDivisionsWithRegion(seasonId: number) {
 }
 
 export async function getCategories() {
-  return db.select().from(categories).orderBy(asc(categories.sortOrder))
+  return db.select({ id: categories.id, name: categories.name, sortOrder: categories.sortOrder }).from(categories).orderBy(asc(categories.sortOrder))
 }
 
 export async function getRegions() {
-  return db.select().from(regions).orderBy(asc(regions.name))
+  return db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.name))
 }
 
 // Team Power Rating leaderboard
@@ -221,7 +221,7 @@ export async function getOrganisations() {
 }
 
 export async function getOrganisationBySlug(slug: string) {
-  const [org] = await db.select().from(organisations).where(eq(organisations.slug, slug)).limit(1)
+  const [org] = await db.select({ id: organisations.id, name: organisations.name, slug: organisations.slug, type: organisations.type, city: organisations.city, province: organisations.province, cpi: organisations.cpi, logoUrl: organisations.logoUrl }).from(organisations).where(eq(organisations.slug, slug)).limit(1)
   if (!org) return null
   const orgTeams = await db
     .select({

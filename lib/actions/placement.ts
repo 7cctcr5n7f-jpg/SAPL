@@ -106,13 +106,13 @@ export async function saveTeamPlacement(input: {
 
   let regionId: number | null = null
   if (divisionId) {
-    const [d] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+    const [d] = await db.select({ id: divisions.id, seasonId: divisions.seasonId, regionId: divisions.regionId }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
     if (!d || d.seasonId !== seasonId) return { ok: false, error: "Invalid division for season" }
     regionId = d.regionId ?? null
   }
 
   const [existing] = await db
-    .select()
+    .select({ id: teamEntries.id, divisionId: teamEntries.divisionId, teamId: teamEntries.teamId, seasonId: teamEntries.seasonId })
     .from(teamEntries)
     .where(and(eq(teamEntries.teamId, teamId), eq(teamEntries.seasonId, seasonId)))
     .limit(1)
@@ -167,7 +167,7 @@ export async function reindexDivisionColumn(input: {
 
   let regionId: number | null = null
   if (divisionId) {
-    const [d] = await db.select().from(divisions).where(eq(divisions.id, divisionId)).limit(1)
+    const [d] = await db.select({ id: divisions.id, seasonId: divisions.seasonId, regionId: divisions.regionId }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
     if (!d || d.seasonId !== seasonId) return { ok: false, error: "Invalid division" }
     regionId = d.regionId ?? null
   }
@@ -178,7 +178,7 @@ export async function reindexDivisionColumn(input: {
     const teamId = orderedTeamIds[i]
     const slot = divisionId ? i + 1 : null
     const [existing] = await db
-      .select()
+      .select({ id: teamEntries.id, divisionId: teamEntries.divisionId })
       .from(teamEntries)
       .where(and(eq(teamEntries.teamId, teamId), eq(teamEntries.seasonId, seasonId)))
       .limit(1)
