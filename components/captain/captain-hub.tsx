@@ -35,6 +35,7 @@ type RosterMember = {
   status: string
   role: string
   email?: string | null
+  phone?: string | null
   playtomicRating?: string | number | null
   playtomicUrl?: string | null
 }
@@ -418,7 +419,7 @@ export function CaptainHub({
   )
 }
 
-// ─── Squad + Fee selector ─────────────────────────────────────────────�����────────
+// ─── Squad + Fee selector ─────────────────────────────────────────────�������────────
 
 function SquadWithFees({
   team,
@@ -605,8 +606,9 @@ function SquadWithFees({
 
             {/* Contact Info */}
             <div className="col-span-2 text-xs">
-              {m.email || m.playtomicUrl ? (
+              {m.email || m.phone || m.playtomicUrl ? (
                 <div className="space-y-0.5">
+                  {m.phone && <div className="truncate">{m.phone}</div>}
                   {m.email && <div className="truncate">{m.email}</div>}
                   {m.playtomicUrl && (
                     <a
@@ -629,6 +631,10 @@ function SquadWithFees({
             <div className="col-span-1 text-center">
               {m.role === "captain" ? (
                 <Badge variant="default" className="text-xs">Captain</Badge>
+              ) : m.role === "manager" ? (
+                <Badge variant="outline" className="text-xs">Manager</Badge>
+              ) : m.role === "admin" ? (
+                <Badge variant="secondary" className="text-xs">Admin</Badge>
               ) : m.status === "invited" ? (
                 <Badge variant="secondary" className="text-xs">Invited</Badge>
               ) : team.clubPaysFees ? (
@@ -638,7 +644,9 @@ function SquadWithFees({
                 >
                   <DollarSign className="h-3 w-3" />
                 </span>
-              ) : null}
+              ) : (
+                <span className="text-muted-foreground text-xs">Player</span>
+              )}
             </div>
 
             {/* Actions */}

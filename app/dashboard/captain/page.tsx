@@ -103,7 +103,7 @@ export default async function CaptainPage() {
       pairingRoster: pairingData?.roster ?? [],
       pairingInvites: pairingData?.invites ?? [],
       roster: roster.map((r) => {
-        const userEmail = userEmailMap.get(r.player.userId)
+        const userEmail = userEmailMap.get(r.player.id)
         return {
           membershipId: r.membership.id,
           playerId: r.player.id,
@@ -112,6 +112,7 @@ export default async function CaptainPage() {
           status: r.membership.status,
           role: r.membership.role,
           email: userEmail,
+          phone: r.meta?.phone,
           playtomicRating: r.player.playtomicRating,
           playtomicUrl: r.player.playtomicUrl,
         }

@@ -861,9 +861,10 @@ export type TeamRosterMember = {
 
 export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]> {
   const rows = await db
-    .select({ membership: teamMembers, player: user })
+    .select({ membership: teamMembers, player: user, meta: userMeta })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.playerId, user.id))
+    .leftJoin(userMeta, eq(userMeta.userId, user.id))
     // Exclude players who have been removed from the roster — only active and
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
