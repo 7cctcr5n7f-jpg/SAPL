@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, players, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
+import { user, userMeta, user as userTable, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
 import { eq, and, asc } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -61,13 +61,12 @@ export async function listMembers(): Promise<MemberRow[]> {
       phone: userMeta.phone,
       role: userMeta.role,
       permissions: userMeta.permissions,
-      firstName: players.firstName,
-      lastName: players.lastName,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
       createdAt: user.createdAt,
     })
     .from(user)
     .leftJoin(userMeta, eq(userMeta.userId, user.id))
-    .leftJoin(players, eq(players.userId, user.id))
     .orderBy(user.createdAt)
 
   return rows.map((r) => ({
@@ -167,7 +166,8 @@ export async function getMemberDetail(userId: string): Promise<MemberDetail> {
     realRole: role,
     isSuperAdmin: role === "super_admin",
     actingRole: null,
-    playerId: null,
+    isPlayer: false,
+    onMarketplace: false,
   })
 
   return {
@@ -409,32 +409,15 @@ async function ensurePlayerProfile(
     bio: extra?.bio?.trim() || null,
   }
 
-  const [existing] = await db.select({ id: players.id }).from(players).where(eq(players.userId, userId)).limit(1)
+  const [existing] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (existing) {
     // Reuse an existing profile but apply the details supplied here.
     await db
-      .update(players)
-      .set({ firstName: firstName || "New", lastName: lastName || "Player", ...profileValues, updatedAt: new Date() })
-      .where(eq(players.id, existing.id))
+      .update(userTable)
+      .set({ firstName: firstName || "New", lastName: lastName || "Player", isPlayer: true, ...profileValues, updatedAt: new Date() })
+      .where(eq(userTable.id, existing.id))
     return existing.id
   }
-  const [created] = await db
-    .insert(players)
-    .values({
-      userId,
-      firstName: firstName || "New",
-      lastName: lastName || "Player",
-      currentLi: 0,
-      highestLi: 0,
-      liDate: new Date(),
-      currentTpr: 1000,
-      highestTpr: 1000,
-      lookingForTeam: true,
-      availability: "available",
-      ...profileValues,
-    })
-    .returning({ id: players.id })
-  return created.id
 }
 
 /**
@@ -563,7 +546,7 @@ export async function createPlayerAccount(input: {
     } else {
       await db.insert(teamMembers).values({ teamId: targetTeam.id, playerId, role: "member", status: "active" })
     }
-    await db.update(players).set({ availability: "on_team", lookingForTeam: false }).where(eq(players.id, playerId))
+    await db.update(userTable).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(userTable.id, playerId))
     await recomputeTeamStats(targetTeam.id)
   }
 

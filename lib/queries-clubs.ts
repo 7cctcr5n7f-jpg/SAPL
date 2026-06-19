@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, players, teamMembers } from "@/lib/db/schema"
+import { clubs, organisations, teams, user as userTable, teamMembers } from "@/lib/db/schema"
 import { asc, eq, inArray, sql, and } from "drizzle-orm"
 
 export type PlayerOption = {
@@ -15,16 +15,16 @@ export type PlayerOption = {
 export async function getPlayerOptions(): Promise<PlayerOption[]> {
   const rows = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
+      id: userTable.id,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
+      currentLi: userTable.currentLi,
       lookingForTeam: players.lookingForTeam,
-      userId: players.userId,
+      userId: userTable.id,
     })
-    .from(players)
-    .where(sql`${players.userId} is not null`)
-    .orderBy(asc(players.firstName), asc(players.lastName))
+    .from(userTable)
+    .where(sql`${userTable.id} is not null`)
+    .orderBy(asc(userTable.firstName), asc(userTable.lastName))
     .limit(2000)
 
   // Map each player to the team they're actively rostered on (if any), so the
@@ -169,9 +169,9 @@ export async function getClubsWithUsage(
     const captainName = new Map<string, string>()
     if (captainIds.length) {
       const pRows = await db
-        .select({ userId: players.userId, firstName: players.firstName, lastName: players.lastName })
-        .from(players)
-        .where(inArray(players.userId, captainIds))
+        .select({ userId: userTable.id, firstName: userTable.firstName, lastName: userTable.lastName })
+        .from(userTable)
+        .where(inArray(userTable.id, captainIds))
       for (const p of pRows) captainName.set(p.userId, `${p.firstName} ${p.lastName}`.trim())
     }
 

@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { userMeta, players } from "@/lib/db/schema"
+import { userMeta, user as userTable } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies, headers } from "next/headers"
 
@@ -23,7 +23,8 @@ export type CurrentUser = {
   isSuperAdmin: boolean
   /** The role currently being previewed, or null when viewing as themselves. */
   actingRole: Role | null
-  playerId: number | null
+  isPlayer: boolean
+  onMarketplace: boolean
 }
 
 export async function getSession() {
@@ -43,7 +44,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!session?.user) return null
 
   const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
-  const [player] = await db.select().from(players).where(eq(players.userId, session.user.id)).limit(1)
+  const [userData] = await db.select({ isPlayer: userTable.isPlayer, onMarketplace: userTable.onMarketplace }).from(userTable).where(eq(userTable.id, session.user.id)).limit(1)
 
   const realRole = (meta?.role as Role) ?? "player"
   const isSuperAdmin = realRole === "super_admin"
@@ -65,7 +66,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     realRole,
     isSuperAdmin,
     actingRole,
-    playerId: player?.id ?? null,
+    isPlayer: userData?.isPlayer ?? false,
+    onMarketplace: userData?.onMarketplace ?? false,
   }
 }
 

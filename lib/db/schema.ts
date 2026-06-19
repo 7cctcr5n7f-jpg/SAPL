@@ -12,6 +12,32 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  // Player profile fields (migrated from ppl_players table)
+  isPlayer: boolean("isPlayer").notNull().default(false),
+  onMarketplace: boolean("onMarketplace").notNull().default(false),
+  firstName: text("firstName"),
+  lastName: text("lastName"),
+  gender: text("gender"), // male | female
+  province: text("province"),
+  city: text("city"),
+  regionId: integer("regionId"),
+  currentLi: doublePrecision("currentLi").notNull().default(0),
+  highestLi: doublePrecision("highestLi").notNull().default(0),
+  liDate: timestamp("liDate"),
+  playtomicUserId: text("playtomicUserId"),
+  playtomicUrl: text("playtomicUrl"),
+  playtomicRating: doublePrecision("playtomicRating"),
+  currentTpr: doublePrecision("currentTpr"),
+  highestTpr: doublePrecision("highestTpr"),
+  preferredDivision: text("preferredDivision"),
+  preferredCategory: text("preferredCategory"),
+  preferredFormats: jsonb("preferredFormats").$type<string[]>().notNull().default([]),
+  preferredClubIds: jsonb("preferredClubIds").$type<number[]>().notNull().default([]),
+  anyClub: boolean("anyClub").notNull().default(true),
+  availability: text("availability").notNull().default("available"), // available | unavailable | on_team
+  lookingForTeam: boolean("lookingForTeam").notNull().default(true),
+  bio: text("bio"),
+  avatarUrl: text("avatarUrl"),
 })
 
 export const session = pgTable("session", {

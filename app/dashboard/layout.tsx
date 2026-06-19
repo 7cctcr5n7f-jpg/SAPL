@@ -8,7 +8,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const me = await getCurrentUser()
   if (!me) redirect("/sign-in")
   // Players must complete onboarding first (super admins skip this entirely).
-  if (!me.playerId && me.role === "player" && !me.isSuperAdmin) redirect("/onboarding")
+  if (!me.isPlayer && me.role === "player" && !me.isSuperAdmin) redirect("/onboarding")
 
   const access = await getAccessContext(me)
 

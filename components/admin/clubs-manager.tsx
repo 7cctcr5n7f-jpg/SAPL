@@ -524,11 +524,11 @@ function CaptainRow({
         lastName: newLast,
         email: newEmail,
       })
-      if (!created.ok || !created.playerId) {
+      if (!created.ok || !created.userId) {
         toast.error(created.error ?? "Could not create player")
         return
       }
-      const res = await setClubTeamCaptain({ clubId, teamId: team.teamId, playerId: created.playerId })
+      const res = await setClubTeamCaptain({ clubId, teamId: team.teamId, playerId: created.userId })
       if (res.ok) {
         toast.success(
           created.password ? `Player created. Temp password: ${created.password}` : "Captain assigned",

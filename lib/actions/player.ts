@@ -59,7 +59,7 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
     })
-    .where(eq(players.id, me.playerId))
+    .where(eq(userTable.id, me.isPlayer))
 
   // Keep the auth display name in sync with the player's name.
   await db.update(user).set({ name: `${firstName} ${lastName}`, updatedAt: new Date() }).where(eq(user.id, me.id))
@@ -85,7 +85,7 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
   const [m] = await db
     .select()
     .from(teamMembers)
-    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.playerId)))
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.isPlayer)))
     .limit(1)
   if (!m || m.status !== "invited") return { error: "Invitation not found." }
 
@@ -98,7 +98,7 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
     await db
       .update(players)
       .set({ availability: "on_team", lookingForTeam: false, updatedAt: new Date() })
-      .where(eq(players.id, me.playerId))
+      .where(eq(userTable.id, me.isPlayer))
 
     const [team] = await db.select().from(teams).where(eq(teams.id, m.teamId)).limit(1)
     if (team?.captainUserId) {
@@ -126,7 +126,7 @@ export async function payTeamFee(teamId: number) {
   const [member] = await db
     .select()
     .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, me.playerId), eq(teamMembers.status, "active")))
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, me.isPlayer), eq(teamMembers.status, "active")))
     .limit(1)
   if (!member) return { error: "You are not an active member of this team." }
 
@@ -139,7 +139,7 @@ export async function payTeamFee(teamId: number) {
   const [existing] = await db
     .select()
     .from(payments)
-    .where(and(eq(payments.teamId, teamId), eq(payments.playerId, me.playerId), eq(payments.type, "individual")))
+    .where(and(eq(payments.teamId, teamId), eq(payments.playerId, me.isPlayer), eq(payments.type, "individual")))
     .limit(1)
 
   if (existing) {
@@ -152,7 +152,7 @@ export async function payTeamFee(teamId: number) {
     await db.insert(payments).values({
       type: "individual",
       payerUserId: me.id,
-      playerId: me.playerId,
+      playerId: me.isPlayer,
       teamId,
       seasonId: team.seasonId ?? null,
       amount,
@@ -161,7 +161,7 @@ export async function payTeamFee(teamId: number) {
       status: "paid",
       provider: "mock",
       invoiceNumber: `PPL-INV-${Date.now()}`,
-      reference: `TEAMFEE-${teamId}-P${me.playerId}`,
+      reference: `TEAMFEE-${teamId}-P${me.isPlayer}`,
       description: `Individual team fee — ${team.name}`,
       paidAt: new Date(),
     })
@@ -179,7 +179,7 @@ export async function leaveTeam(membershipId: number) {
   await db
     .update(teamMembers)
     .set({ status: "removed", updatedAt: new Date() })
-    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.playerId)))
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.isPlayer)))
   revalidatePath("/dashboard")
   return { success: "You left the team." }
 }
@@ -203,7 +203,7 @@ export async function adminUpdatePlayerRatings(input: {
     return { ok: false, error: "Playtomic rating must be between 0 and 7." }
   }
 
-  const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  const [existing] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
   // Non-league admins may only edit players within their own scope (assigned
@@ -227,7 +227,7 @@ export async function adminUpdatePlayerRatings(input: {
       ...(url !== undefined ? { playtomicUrl: url } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(players.id, input.playerId))
+    .where(eq(userTable.id, input.playerId))
 
   revalidatePath("/admin/players")
   revalidatePath("/dashboard")
@@ -259,7 +259,7 @@ export async function adminUpdatePlayer(input: {
   const access = await getAccessContext(me)
   if (!access.can("player_management")) return { ok: false, error: "Not authorised" }
 
-  const [existing] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+  const [existing] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
   // Scope check: non-league admins may only edit players inside their scope.
@@ -294,7 +294,7 @@ export async function adminUpdatePlayer(input: {
     patch.liDate = new Date()
   }
 
-  await db.update(players).set(patch).where(eq(players.id, input.playerId))
+  await db.update(players).set(patch).where(eq(userTable.id, input.playerId))
 
   // Keep the auth display name in sync when the name changed.
   if (firstName !== undefined || lastName !== undefined) {
@@ -334,7 +334,7 @@ export async function adminUpdatePlayer(input: {
       await db
         .update(players)
         .set({ availability: "available", lookingForTeam: true, updatedAt: new Date() })
-        .where(eq(players.id, input.playerId))
+        .where(eq(userTable.id, input.playerId))
     }
     await recomputeTeamStats(input.removeFromTeamId)
   }
@@ -369,7 +369,7 @@ export async function adminCreatePlayerProfile(input: {
   if (!account) return { ok: false, error: "User account not found." }
 
   // Guard against duplicates — one profile per user.
-  const [existing] = await db.select({ id: players.id }).from(players).where(eq(players.userId, input.userId)).limit(1)
+  const [existing] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.id, input.userId)).limit(1)
   if (existing) return { ok: false, error: "This user already has a player profile.", playerId: existing.id }
 
   const [nameFirst, ...nameRest] = (account.name ?? "").trim().split(/\s+/)
@@ -398,7 +398,7 @@ export async function adminCreatePlayerProfile(input: {
       availability: "unavailable",
       updatedAt: new Date(),
     })
-    .returning({ id: players.id })
+    .returning({ id: userTable.id })
 
   // Ensure a userMeta row exists so contact details can be edited later.
   const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, input.userId)).limit(1)
@@ -449,9 +449,9 @@ export async function adminDeleteUsers(input: { userId?: string; all?: boolean }
 
   // Map user ids -> player ids so we can clean player-scoped tables.
   const playerRows = await db
-    .select({ id: players.id, userId: players.userId })
-    .from(players)
-    .where(inArray(players.userId, userIds))
+    .select({ id: userTable.id, userId: userTable.id })
+    .from(userTable)
+    .where(inArray(userTable.id, userIds))
   const playerIds = playerRows.map((p) => p.id)
   const affectedTeamIds = new Set<number>()
 
@@ -468,7 +468,7 @@ export async function adminDeleteUsers(input: { userId?: string; all?: boolean }
     await db.delete(fixtureUnavailable).where(inArray(fixtureUnavailable.playerId, playerIds))
     await db.delete(feeNotes).where(inArray(feeNotes.playerId, playerIds))
     await db.delete(payments).where(inArray(payments.playerId, playerIds))
-    await db.delete(players).where(inArray(players.id, playerIds))
+    await db.delete(players).where(inArray(userTable.id, playerIds))
   }
 
   // User-scoped rows.

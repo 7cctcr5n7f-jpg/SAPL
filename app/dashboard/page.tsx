@@ -27,7 +27,7 @@ export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
   const access = await getAccessContext(me)
-  const player = me.playerId ? await getPlayerByUserId(me.id) : null
+  const player = me.isPlayer ? await getPlayerByUserId(me.id) : null
   const memberships = player ? await getPlayerMemberships(player.id) : []
   const payments = player ? await getPlayerPayments(me.id, player.id) : []
   const teamFees = player ? await getPlayerTeamFees(player.id) : []

@@ -19,9 +19,9 @@ export type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "
 async function nameForUserId(userId: string | null): Promise<string | null> {
   if (!userId) return null
   const [p] = await db
-    .select({ first: players.firstName, last: players.lastName })
-    .from(players)
-    .where(eq(players.userId, userId))
+    .select({ first: userTable.firstName, last: userTable.lastName })
+    .from(userTable)
+    .where(eq(userTable.id, userId))
     .limit(1)
   if (p) return `${p.first} ${p.last}`
   const [u] = await db.select({ name: userTable.name }).from(userTable).where(eq(userTable.id, userId)).limit(1)
@@ -98,16 +98,16 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
 export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
   const rows = await db
     .select({
-      playerId: players.id,
-      first: players.firstName,
-      last: players.lastName,
-      li: players.currentLi,
-      userId: players.userId,
+      playerId: userTable.id,
+      first: userTable.firstName,
+      last: userTable.lastName,
+      li: userTable.currentLi,
+      userId: userTable.id,
     })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
-    .orderBy(asc(players.currentLi))
+    .orderBy(asc(userTable.currentLi))
 
   const [team] = await db.select({ captainUserId: teams.captainUserId }).from(teams).where(eq(teams.id, teamId)).limit(1)
 

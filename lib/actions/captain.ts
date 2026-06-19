@@ -6,7 +6,7 @@ import {
   fixtures,
   teams,
   teamMembers,
-  players,
+  user as userTable,
   notifications,
   fixtureUnavailable,
 } from "@/lib/db/schema"
@@ -191,14 +191,14 @@ export async function addPlayer(teamId: number, playerId: number) {
     })
   }
 
-  const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+  const [player] = await db.select().from(userTable).where(eq(userTable.id, playerId)).limit(1)
   if (player) {
     await db
-      .update(players)
-      .set({ availability: "on_team", lookingForTeam: false, updatedAt: new Date() })
-      .where(eq(players.id, playerId))
+      .update(userTable)
+      .set({ availability: "on_team", lookingForTeam: false, onMarketplace: false, updatedAt: new Date() })
+      .where(eq(userTable.id, playerId))
     await db.insert(notifications).values({
-      userId: player.userId,
+      userId: player.id,
       type: "team_invite",
       title: "You've been added to a team",
       body: `${team.name} has added you to their roster.`,

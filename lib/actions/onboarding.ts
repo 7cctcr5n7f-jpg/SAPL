@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { players, userMeta } from "@/lib/db/schema"
+import { user as userTable, userMeta } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -44,8 +44,7 @@ export async function createPlayerProfile(
     await db.insert(userMeta).values({ userId: user.id, role: "player", phone })
   }
 
-  // Upsert player profile scoped to this user
-  const [existing] = await db.select().from(players).where(eq(players.userId, user.id)).limit(1)
+  // Update user profile with player data
   const values = {
     firstName,
     lastName,
@@ -63,21 +62,15 @@ export async function createPlayerProfile(
     anyClub,
     lookingForTeam,
     availability: lookingForTeam ? ("available" as const) : ("unavailable" as const),
+    isPlayer: true,
     updatedAt: new Date(),
   }
 
-  let playerId: number
-  if (existing) {
-    await db.update(players).set(values).where(eq(players.userId, user.id))
-    playerId = existing.id
-  } else {
-    const [created] = await db.insert(players).values({ userId: user.id, ...values }).returning({ id: players.id })
-    playerId = created.id
-  }
+  await db.update(userTable).set(values).where(eq(userTable.id, user.id))
 
   // Auto-join any teams that invited this email address.
   try {
-    await resolvePendingInvites(user.email, playerId)
+    await resolvePendingInvites(user.email, user.id)
   } catch (err) {
     console.log("[v0] resolvePendingInvites failed:", err)
   }

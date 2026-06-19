@@ -58,7 +58,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   const rosterRows = await db
     .select({ player: players, status: teamMembers.status })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
 
   // Which players have paid (individual payment for this team).
@@ -95,8 +95,8 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   if (orphanIds.length > 0) {
     const orphanRows = await db
       .select({ player: players })
-      .from(players)
-      .where(inArray(players.id, orphanIds))
+      .from(userTable)
+      .where(inArray(userTable.id, orphanIds))
     for (const { player: p } of orphanRows) {
       const entry: PairingPlayer = {
         playerId: p.id,
@@ -135,7 +135,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 }
 
 export async function getPlayerByUserId(userId: string) {
-  const [p] = await db.select().from(players).where(eq(players.userId, userId)).limit(1)
+  const [p] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   return p ?? null
 }
 
@@ -409,9 +409,9 @@ export async function getFixtureDetails(
   }
   const nameRows = extraIds.size
     ? await db
-        .select({ id: players.id, firstName: players.firstName, lastName: players.lastName })
-        .from(players)
-        .where(inArray(players.id, [...extraIds]))
+        .select({ id: userTable.id, firstName: userTable.firstName, lastName: userTable.lastName })
+        .from(userTable)
+        .where(inArray(userTable.id, [...extraIds]))
     : []
   const nameById = new Map(nameRows.map((r) => [r.id, `${r.firstName} ${r.lastName}`]))
 
@@ -520,17 +520,17 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   // Active memberships on teams whose fees are NOT covered by the club.
   const rows = await db
     .select({
-      playerId: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      userId: players.userId,
+      playerId: userTable.id,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
+      userId: userTable.id,
       teamId: teams.id,
       teamName: teams.name,
       seasonId: teams.seasonId,
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
     // Only chase fees once a team has actually been placed in a division under
     // League Control — unplaced teams aren't competing yet, so no fee is due.
     .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false), isNotNull(teams.divisionId)))
@@ -739,23 +739,23 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
 
   const rows = await db
     .select({
-      playerId: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
+      playerId: userTable.id,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
       gender: players.gender,
-      currentLi: players.currentLi,
-      playtomicRating: players.playtomicRating,
-      playtomicUrl: players.playtomicUrl,
-      userId: players.userId,
+      currentLi: userTable.currentLi,
+      playtomicRating: userTable.playtomicRating,
+      playtomicUrl: userTable.playtomicUrl,
+      userId: userTable.id,
       teamId: teams.id,
       teamName: teams.name,
       divisionName: divisions.name,
     })
-    .from(players)
-    .leftJoin(teamMembers, and(eq(teamMembers.playerId, players.id), eq(teamMembers.status, "active")))
+    .from(userTable)
+    .leftJoin(teamMembers, and(eq(teamMembers.playerId, userTable.id), eq(teamMembers.status, "active")))
     .leftJoin(teams, eq(teamMembers.teamId, teams.id))
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
-    .orderBy(players.firstName, players.lastName)
+    .orderBy(userTable.firstName, userTable.lastName)
 
   const byPlayer = new Map<number, ManagedPlayer & { userId: string }>()
   for (const r of rows) {
@@ -854,11 +854,11 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
   const rows = await db
     .select({ membership: teamMembers, player: players })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
     // Exclude players who have been removed from the roster — only active and
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
-    .orderBy(desc(players.currentLi))
+    .orderBy(desc(userTable.currentLi))
   return rows as TeamRosterMember[]
 }
 
@@ -879,13 +879,13 @@ export async function getUnassignedPlayers(
 
   const all = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
+      id: userTable.id,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
+      currentLi: userTable.currentLi,
     })
-    .from(players)
-    .orderBy(players.firstName, players.lastName)
+    .from(userTable)
+    .orderBy(userTable.firstName, userTable.lastName)
     .limit(limit)
 
   return all
@@ -942,9 +942,9 @@ export async function getDivisionTeams(divisionId: number) {
 export async function getFreeAgents(limit = 50) {
   return db
     .select()
-    .from(players)
+    .from(userTable)
     .where(eq(players.lookingForTeam, true))
-    .orderBy(desc(players.currentLi))
+    .orderBy(desc(userTable.currentLi))
     .limit(limit)
 }
 
@@ -966,15 +966,15 @@ export type AddablePlayer = {
 export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
   const rows = await db
     .select({
-      id: players.id,
-      firstName: players.firstName,
-      lastName: players.lastName,
-      currentLi: players.currentLi,
+      id: userTable.id,
+      firstName: userTable.firstName,
+      lastName: userTable.lastName,
+      currentLi: userTable.currentLi,
       city: players.city,
-      userId: players.userId,
+      userId: userTable.id,
     })
-    .from(players)
-    .orderBy(players.firstName, players.lastName)
+    .from(userTable)
+    .orderBy(userTable.firstName, userTable.lastName)
     .limit(limit)
 
   const userIds = [...new Set(rows.map((r) => r.userId))]

@@ -88,9 +88,9 @@ async function getTeamUserIds(teamId: number): Promise<string[]> {
   }
 
   const roster = await db
-    .select({ userId: players.userId })
+    .select({ userId: userTable.id })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, players.id))
+    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
   for (const r of roster) if (r.userId) ids.add(r.userId)
 

@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, teamMembers, players, userMeta } from "@/lib/db/schema"
+import { clubs, organisations, teams, teamMembers, user as userTable, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -254,23 +254,23 @@ export async function setClubTeamCaptain(input: {
     return { ok: true }
   }
 
-  const [player] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
-  if (!player?.userId) return { ok: false, error: "Player has no linked account" }
+  const [player] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
+  if (!player) return { ok: false, error: "Player not found" }
 
-  await db.update(teams).set({ captainUserId: player.userId, updatedAt: new Date() }).where(eq(teams.id, team.id))
+  await db.update(teams).set({ captainUserId: player.id, updatedAt: new Date() }).where(eq(teams.id, team.id))
   // Only elevate to "captain" if the user is currently a plain player (or has no
-  // meta row yet). Never downgrade a league_admin / super_admin / org_admin who
+  // meta row yet). Never downgrade a super_admin / org_admin who
   // happens to also be assigned as team captain.
   const [existingMeta] = await db
     .select({ role: userMeta.role })
     .from(userMeta)
-    .where(eq(userMeta.userId, player.userId))
+    .where(eq(userMeta.userId, player.id))
     .limit(1)
-  const adminRoles = ["league_admin", "super_admin", "org_admin"]
+  const adminRoles = ["super_admin", "org_admin"]
   if (!existingMeta) {
-    await db.insert(userMeta).values({ userId: player.userId, role: "captain" })
+    await db.insert(userMeta).values({ userId: player.id, role: "captain" })
   } else if (!adminRoles.includes(existingMeta.role ?? "")) {
-    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.id))
   }
 
   // Ensure the captain is on the roster.

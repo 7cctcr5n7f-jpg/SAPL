@@ -59,7 +59,7 @@ export async function setPairingSlot(input: {
       (p) => !(p.category === input.category && p.slotIndex === input.slotIndex),
     )
     if (elsewhere) {
-      const [p] = await db.select().from(players).where(eq(players.id, input.playerId)).limit(1)
+      const [p] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
       const who = p ? `${p.firstName} ${p.lastName}` : "That player"
       return { error: `${who} is already assigned to ${elsewhere.category}. Clear that slot first.` }
     }
@@ -133,7 +133,7 @@ export async function removeFromTeam(input: { teamId: number; playerId: number }
     await db
       .update(players)
       .set({ availability: "available", updatedAt: new Date() })
-      .where(eq(players.id, input.playerId))
+      .where(eq(userTable.id, input.playerId))
   }
 
   await recomputeTeamStats(input.teamId)
@@ -167,7 +167,7 @@ export async function invitePlayerByEmail(input: {
   const [existingUser] = await db.select().from(authUser).where(eq(authUser.email, email)).limit(1)
   let existingPlayer: typeof players.$inferSelect | undefined
   if (existingUser) {
-    ;[existingPlayer] = await db.select().from(players).where(eq(players.userId, existingUser.id)).limit(1)
+    ;[existingPlayer] = await db.select().from(userTable).where(eq(userTable.id, existingUser.id)).limit(1)
   }
 
   if (existingPlayer) {
