@@ -59,7 +59,14 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 
   // Active roster players.
   const rosterRows = await db
-    .select({ player: user, status: teamMembers.status })
+    .select({
+      status: teamMembers.status,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      currentLi: user.currentLi,
+      gender: user.gender,
+    })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
@@ -72,12 +79,12 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   const paidSet = new Set(paidRows.map((r) => r.playerId))
 
   const roster: PairingPlayer[] = rosterRows.map((r) => ({
-    playerId: r.player.id,
-    name: `${r.player.firstName} ${r.player.lastName}`,
-    li: r.player.currentLi,
-    gender: r.player.gender,
+    playerId: r.id,
+    name: `${r.firstName} ${r.lastName}`,
+    li: r.currentLi,
+    gender: r.gender,
     // If the club covers fees, everyone is considered covered.
-    paid: team.clubPaysFees || paidSet.has(r.player.id),
+    paid: team.clubPaysFees || paidSet.has(r.id),
   }))
   const rosterById = new Map(roster.map((p) => [p.playerId, p]))
 
@@ -105,10 +112,16 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   )]
   if (orphanIds.length > 0) {
     const orphanRows = await db
-      .select({ player: user })
+      .select({
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        currentLi: user.currentLi,
+        gender: user.gender,
+      })
       .from(user)
       .where(inArray(user.id, orphanIds))
-    for (const { player: p } of orphanRows) {
+    for (const p of orphanRows) {
       const entry: PairingPlayer = {
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
@@ -190,11 +203,27 @@ export type RosterEntry = {
 export async function getPlayerMemberships(playerId: string): Promise<RosterEntry[]> {
   const rows = await db
     .select({
-      membership: teamMembers,
-      team: teams,
-      org: organisations,
-      division: divisions,
-      season: seasons,
+      membership: {
+        id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
+        status: teamMembers.status, role: teamMembers.role, updatedAt: teamMembers.updatedAt,
+      },
+      team: {
+        id: teams.id, name: teams.name, divisionId: teams.divisionId, seasonId: teams.seasonId,
+        organisationId: teams.organisationId, captainUserId: teams.captainUserId,
+        homeClubId: teams.homeClubId, teamType: teams.teamType, clubPaysFees: teams.clubPaysFees,
+        avgLi: teams.avgLi, tpr: teams.tpr,
+      },
+      org: {
+        id: organisations.id, name: organisations.name, slug: organisations.slug,
+        type: organisations.type, city: organisations.city, province: organisations.province,
+        logoUrl: organisations.logoUrl,
+      },
+      division: {
+        id: divisions.id, name: divisions.name, level: divisions.level, seasonId: divisions.seasonId,
+      },
+      season: {
+        id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee,
+      },
     })
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
@@ -924,7 +953,21 @@ export type TeamRosterMember = {
 
 export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]> {
   const rows = await db
-    .select({ membership: teamMembers, player: user, meta: userMeta })
+    .select({
+      membership: {
+        id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
+        status: teamMembers.status, role: teamMembers.role, updatedAt: teamMembers.updatedAt,
+      },
+      player: {
+        id: user.id, firstName: user.firstName, lastName: user.lastName,
+        email: user.email, currentLi: user.currentLi, highestLi: user.highestLi,
+        playtomicRating: user.playtomicRating, gender: user.gender,
+        avatarUrl: user.avatarUrl, isPlayer: user.isPlayer,
+      },
+      meta: {
+        role: userMeta.role, phone: userMeta.phone,
+      },
+    })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.playerId, user.id))
     .leftJoin(userMeta, eq(userMeta.userId, user.id))
@@ -932,10 +975,7 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
     .orderBy(desc(user.currentLi))
-  return rows.map(r => ({
-    ...r,
-    userRole: r.meta?.role
-  })) as unknown as TeamRosterMember[]
+  return rows as unknown as TeamRosterMember[]
 }
 
 /**
