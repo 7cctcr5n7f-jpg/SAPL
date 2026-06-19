@@ -78,9 +78,9 @@ export default async function OrgPage() {
   const captainMap = new Map<string, CaptainInfo>()
   for (const cid of captainIds) {
     if (captainMap.has(cid)) continue
-    const [p] = await db.select().from(user).where(eq(user.id, cid)).limit(1)
+    const [p] = await db.select({ firstName: user.firstName, lastName: user.lastName }).from(user).where(eq(user.id, cid)).limit(1)
     if (!p) continue
-    const [u] = await db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, cid)).limit(1)
+    const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, cid)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
     captainMap.set(cid, {
       name: `${p.firstName} ${p.lastName}`,

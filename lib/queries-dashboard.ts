@@ -483,7 +483,7 @@ export type OutstandingFee = {
   // "player" = an individual who must pay their own fee. "team" = a team whose
   // owner/manager agreed to fund the whole squad's fees.
   kind: "player" | "team"
-  playerId: number
+  playerId: string
   playerName: string
   email: string | null
   phone: string | null
@@ -668,8 +668,8 @@ export async function getUnreadCount(userId: string) {
 // Team / captain helpers ----------------------------------------------------
 
 export type ManagedPlayer = {
-  /** null when the user account has no player profile yet. */
-  playerId: number | null
+  /** The user id (same as userId since players are users) */
+  playerId: string
   userId: string
   name: string
   firstName: string
@@ -708,9 +708,9 @@ async function getScopedTeamIds(access: AccessContext): Promise<number[] | null>
 }
 
 /** Player ids a user may manage (used to authorise inline edits). */
-export async function getManageablePlayerIds(access: AccessContext): Promise<Set<number>> {
+export async function getManageablePlayerIds(access: AccessContext): Promise<Set<string>> {
   const players = await getManagedPlayers(access)
-  return new Set(players.map((p) => p.playerId).filter((id): id is number => id != null))
+  return new Set(players.map((p) => p.playerId).filter((id): id is string => id != null))
 }
 
 /**
@@ -883,7 +883,7 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
  */
 export async function getUnassignedPlayers(
   limit = 500,
-): Promise<{ playerId: number; name: string; li: number }[]> {
+): Promise<{ playerId: string; name: string; li: number }[]> {
   const activeRows = await db
     .select({ playerId: teamMembers.playerId })
     .from(teamMembers)
