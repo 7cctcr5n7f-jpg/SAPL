@@ -37,10 +37,10 @@ export default async function DashboardOverview() {
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
   const detailMap =
     player && myMatches.length
-      ? await getFixtureDetails(
+      ? (await getFixtureDetails(
           myMatches.map((m) => m.id),
           me.id,
-        )
+        )) ?? new Map<number, FixtureDetail>()
       : new Map<number, FixtureDetail>()
   const fixtureDetails = Object.fromEntries(detailMap)
 

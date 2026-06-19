@@ -289,13 +289,21 @@ export async function getTeamDetail(teamId: number) {
   return { team, roster, history }
 }
 
+const sponsorFields = {
+  id: sponsors.id, name: sponsors.name, tier: sponsors.tier, scopeId: sponsors.scopeId,
+  logoUrl: sponsors.logoUrl, website: sponsors.website, description: sponsors.description,
+  level: sponsors.level, tagline: sponsors.tagline, mainSponsor: sponsors.mainSponsor,
+  contractStart: sponsors.contractStart, contractEnd: sponsors.contractEnd,
+  active: sponsors.active, createdAt: sponsors.createdAt,
+}
+
 export async function getSponsors() {
-  return db.select().from(sponsors).where(eq(sponsors.active, true)).orderBy(asc(sponsors.tier))
+  return db.select(sponsorFields).from(sponsors).where(eq(sponsors.active, true)).orderBy(asc(sponsors.tier))
 }
 
 export async function getMainSponsor() {
   const rows = await db
-    .select()
+    .select(sponsorFields)
     .from(sponsors)
     .where(and(eq(sponsors.active, true), eq(sponsors.mainSponsor, true)))
     .limit(1)
@@ -303,7 +311,10 @@ export async function getMainSponsor() {
 }
 
 export async function getPrizePool() {
-  const rows = await db.select().from(settings).where(sql`${settings.key} in ('prize_pool','prize_pool_label')`)
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(sql`${settings.key} in ('prize_pool','prize_pool_label')`)
   const map = new Map(rows.map((r) => [r.key, r.value]))
   const amount = (map.get("prize_pool") ?? "").trim()
   const label = (map.get("prize_pool_label") ?? "Total Prize Pool").trim() || "Total Prize Pool"

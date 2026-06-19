@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic"
 export default async function AdminSponsorsPage() {
   await requirePermissionPage("league_management")
   const [rows, prizePool] = await Promise.all([
-    db.select().from(sponsors).orderBy(asc(sponsors.level)),
+    db.select({ id: sponsors.id, name: sponsors.name, level: sponsors.level, tier: sponsors.tier, website: sponsors.website, logoUrl: sponsors.logoUrl, description: sponsors.description, tagline: sponsors.tagline, mainSponsor: sponsors.mainSponsor, active: sponsors.active, contractStart: sponsors.contractStart, contractEnd: sponsors.contractEnd }).from(sponsors).orderBy(asc(sponsors.level)),
     getPrizePool(),
   ])
   const data = rows.map((s) => ({

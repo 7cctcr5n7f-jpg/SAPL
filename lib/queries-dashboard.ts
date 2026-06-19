@@ -50,7 +50,11 @@ export type PairingCategory = { category: string; pairs: PairingSlot[][] }
 
 // Aggregate everything the pairings board needs for one team.
 export async function getTeamPairingData(teamId: number, categoryNames: string[]) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
   if (!team) return null
 
   // Active roster players.
@@ -77,7 +81,15 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   }))
   const rosterById = new Map(roster.map((p) => [p.playerId, p]))
 
-  const slotRows = await db.select().from(teamPairings).where(eq(teamPairings.teamId, teamId))
+  const slotRows = await db
+    .select({
+      category: teamPairings.category,
+      pairIndex: teamPairings.pairIndex,
+      slotIndex: teamPairings.slotIndex,
+      playerId: teamPairings.playerId,
+    })
+    .from(teamPairings)
+    .where(eq(teamPairings.teamId, teamId))
   const slotMap = new Map<string, number | null>()
   for (const s of slotRows) {
     slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId)
@@ -121,7 +133,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   })
 
   const invites = await db
-    .select()
+    .select({ id: teamInvites.id, email: teamInvites.email, category: teamInvites.category, status: teamInvites.status })
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")))
 
@@ -412,16 +424,32 @@ export async function getFixtureDetails(
 
   // Played rubbers for these fixtures (carry score + per-match player ids).
   const matchRows = fixtureIds.length
-    ? await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
+    ? await db
+        .select({
+          id: matches.id, fixtureId: matches.fixtureId, category: matches.category,
+          homeSetsWon: matches.homeSetsWon, awaySetsWon: matches.awaySetsWon,
+          homeGames: matches.homeGames, awayGames: matches.awayGames,
+          scoreDetail: matches.scoreDetail, winnerTeamId: matches.winnerTeamId,
+          homePlayerIds: matches.homePlayerIds, awayPlayerIds: matches.awayPlayerIds,
+        })
+        .from(matches)
+        .where(inArray(matches.fixtureId, fixtureIds))
     : []
 
   // Planned lineups for every involved team.
   const pairingRows = teamIdList.length
-    ? await db.select().from(teamPairings).where(inArray(teamPairings.teamId, teamIdList))
+    ? await db
+        .select({
+          teamId: teamPairings.teamId, category: teamPairings.category,
+          pairIndex: teamPairings.pairIndex, slotIndex: teamPairings.slotIndex,
+          playerId: teamPairings.playerId,
+        })
+        .from(teamPairings)
+        .where(inArray(teamPairings.teamId, teamIdList))
     : []
 
   // Resolve player ids → display names (roster + any ids referenced in matches).
-  const extraIds = new Set<number>()
+  const extraIds = new Set<string>()
   for (const p of pairingRows) if (p.playerId) extraIds.add(p.playerId)
   for (const m of matchRows) {
     for (const arr of [m.homePlayerIds, m.awayPlayerIds]) {
@@ -656,7 +684,12 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   }
 
   // Merge billing-management metadata (admin notes + reminder tracking).
-  const noteRows = await db.select().from(feeNotes)
+  const noteRows = await db
+    .select({
+      kind: feeNotes.kind, teamId: feeNotes.teamId, playerId: feeNotes.playerId,
+      note: feeNotes.note, lastReminderAt: feeNotes.lastReminderAt, reminderCount: feeNotes.reminderCount,
+    })
+    .from(feeNotes)
   const noteMap = new Map<string, (typeof noteRows)[number]>()
   for (const n of noteRows) noteMap.set(`${n.kind}-${n.teamId}-${n.playerId}`, n)
   for (const f of result) {
@@ -967,7 +1000,13 @@ export async function getCategories() {
 export async function getFixtureScores(fixtureIds: number[]) {
   const map: Record<number, Record<string, { home: number; away: number }[]>> = {}
   if (fixtureIds.length === 0) return map
-  const rows = await db.select().from(matches).where(inArray(matches.fixtureId, fixtureIds))
+  const rows = await db
+    .select({
+      fixtureId: matches.fixtureId, category: matches.category,
+      scoreDetail: matches.scoreDetail, homeSetsWon: matches.homeSetsWon, awaySetsWon: matches.awaySetsWon,
+    })
+    .from(matches)
+    .where(inArray(matches.fixtureId, fixtureIds))
   for (const m of rows) {
     if (!map[m.fixtureId]) map[m.fixtureId] = {}
     const sets = parseScoreDetail(m.scoreDetail)

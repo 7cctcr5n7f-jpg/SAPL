@@ -244,7 +244,11 @@ export async function invitePlayerByEmail(input: {
 export async function cancelInvite(inviteId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const [invite] = await db.select().from(teamInvites).where(eq(teamInvites.id, inviteId)).limit(1)
+  const [invite] = await db
+    .select({ id: teamInvites.id, teamId: teamInvites.teamId, email: teamInvites.email, status: teamInvites.status, category: teamInvites.category })
+    .from(teamInvites)
+    .where(eq(teamInvites.id, inviteId))
+    .limit(1)
   if (!invite) return { error: "Invite not found." }
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
