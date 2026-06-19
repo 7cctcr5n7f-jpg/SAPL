@@ -205,7 +205,7 @@ export async function getPlayerMemberships(playerId: string): Promise<RosterEntr
     .select({
       membership: {
         id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
-        status: teamMembers.status, role: teamMembers.role, updatedAt: teamMembers.updatedAt,
+        status: teamMembers.status, role: teamMembers.role,
       },
       team: {
         id: teams.id, name: teams.name, divisionId: teams.divisionId, seasonId: teams.seasonId,
@@ -956,7 +956,7 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
     .select({
       membership: {
         id: teamMembers.id, teamId: teamMembers.teamId, playerId: teamMembers.playerId,
-        status: teamMembers.status, role: teamMembers.role, updatedAt: teamMembers.updatedAt,
+        status: teamMembers.status, role: teamMembers.role,
       },
       player: {
         id: user.id, firstName: user.firstName, lastName: user.lastName,
@@ -1012,9 +1012,12 @@ export async function getUnassignedPlayers(
 export async function getTeamFixtures(teamId: number) {
   const rows = await db
     .select({
-      id: fixtures.id, week: fixtures.week, fixtureDate: fixtures.fixtureDate,
+      id: fixtures.id, week: fixtures.week, matchDate: fixtures.matchDate,
       homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId,
-      venueId: fixtures.venueId, status: fixtures.status, divisionId: fixtures.divisionId,
+      status: fixtures.status, divisionId: fixtures.divisionId,
+      homePoints: fixtures.homePoints, awayPoints: fixtures.awayPoints,
+      homeSetsWon: fixtures.homeSetsWon, awaySetsWon: fixtures.awaySetsWon,
+      timeslot: fixtures.timeslot, venue: fixtures.venue,
     })
     .from(fixtures)
     .where(or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)))

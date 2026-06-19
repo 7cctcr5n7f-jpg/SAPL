@@ -118,9 +118,9 @@ export default async function CaptainPage() {
           role: r.membership.role,
           userRole: r.userRole,
           email: userEmail,
-          phone: r.meta?.phone,
-          playtomicRating: r.player.playtomicRating,
-          playtomicUrl: r.player.playtomicUrl,
+          phone: r.meta?.phone ?? null,
+          playtomicRating: r.player.playtomicRating ?? null,
+          playtomicUrl: r.player.playtomicUrl ?? null,
         }
       }),
       fixtures: fixtures.map((f) => ({
@@ -130,11 +130,12 @@ export default async function CaptainPage() {
         awayTeamId: f.awayTeamId,
         homeName: f.homeName,
         awayName: f.awayName,
-        matchDate: f.matchDate,
+        // Serialize Date → ISO string so Next.js can pass it across the RSC boundary
+        matchDate: f.matchDate ? f.matchDate.toISOString() : null,
         status: f.status,
-        homePoints: f.homePoints,
-        awayPoints: f.awayPoints,
-        scores: scoreMap[f.id],
+        homePoints: f.homePoints ?? null,
+        awayPoints: f.awayPoints ?? null,
+        scores: scoreMap[f.id] ?? null,
       })),
     })
   }
