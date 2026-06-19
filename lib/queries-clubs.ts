@@ -19,7 +19,7 @@ export async function getPlayerOptions(): Promise<PlayerOption[]> {
       firstName: user.firstName,
       lastName: user.lastName,
       currentLi: user.currentLi,
-      lookingForTeam: players.lookingForTeam,
+      lookingForTeam: user.lookingForTeam,
       userId: user.id,
     })
     .from(user)

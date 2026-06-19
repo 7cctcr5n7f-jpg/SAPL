@@ -1,6 +1,5 @@
 import { db } from "@/lib/db"
 import {
-  players,
   teams,
   teamMembers,
   organisations,
@@ -847,7 +846,7 @@ export async function getTeamsForCaptain(userId: string) {
 
 export type TeamRosterMember = {
   membership: typeof teamMembers.$inferSelect
-  player: typeof players.$inferSelect
+  player: typeof user.$inferSelect
 }
 
 export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]> {
@@ -943,7 +942,7 @@ export async function getFreeAgents(limit = 50) {
   return db
     .select()
     .from(user)
-    .where(eq(players.lookingForTeam, true))
+    .where(eq(user.lookingForTeam, true))
     .orderBy(desc(user.currentLi))
     .limit(limit)
 }
@@ -970,7 +969,7 @@ export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
       firstName: user.firstName,
       lastName: user.lastName,
       currentLi: user.currentLi,
-      city: players.city,
+      city: user.city,
       userId: user.id,
     })
     .from(user)

@@ -7,7 +7,6 @@ import {
   seasons,
   standings,
   fixtures,
-  players,
   sponsors,
   settings,
   tprHistory,
@@ -15,6 +14,7 @@ import {
   categories,
   regions,
   playoffs,
+  user,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
@@ -270,9 +270,9 @@ export async function getTeamDetail(teamId: number) {
       playerId: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
-      gender: players.gender,
+      gender: user.gender,
       currentLi: user.currentLi,
-      currentTpr: players.currentTpr,
+      currentTpr: user.currentTpr,
       role: teamMembers.role,
       status: teamMembers.status,
     })
@@ -314,7 +314,7 @@ export async function getFreeAgents() {
   return db
     .select()
     .from(user)
-    .where(eq(players.lookingForTeam, true))
+    .where(eq(user.lookingForTeam, true))
     .orderBy(desc(user.currentLi))
     .limit(200)
 }
