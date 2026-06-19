@@ -28,16 +28,16 @@ export default async function DashboardOverview() {
   if (!me) return null
   const access = await getAccessContext(me)
   const player = me.isPlayer ? await getPlayerByUserId(me.id) : null
-  const memberships = player ? await getPlayerMemberships(player.id) : []
-  const payments = player ? await getPlayerPayments(me.id, player.id) : []
-  const teamFees = player ? await getPlayerTeamFees(player.id) : []
-  const overviewTeam = player ? await getPlayerOverviewTeam(player.id) : null
+  const memberships = player ? await getPlayerMemberships(me.id) : []
+  const payments = player ? await getPlayerPayments(me.id, me.id) : []
+  const teamFees = player ? await getPlayerTeamFees(me.id) : []
+  const overviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
   const detailMap =
     player && myMatches.length
       ? await getFixtureDetails(
           myMatches.map((m) => m.id),
-          player.id,
+          me.id,
         )
       : new Map<number, FixtureDetail>()
   const fixtureDetails = Object.fromEntries(detailMap)

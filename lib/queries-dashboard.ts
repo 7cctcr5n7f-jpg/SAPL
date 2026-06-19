@@ -154,7 +154,7 @@ export type RosterEntry = {
   season: typeof seasons.$inferSelect | null
 }
 
-export async function getPlayerMemberships(playerId: number): Promise<RosterEntry[]> {
+export async function getPlayerMemberships(playerId: string): Promise<RosterEntry[]> {
   const rows = await db
     .select({
       membership: teamMembers,
@@ -196,7 +196,7 @@ export async function getPlayerSeasonTeamConflict(
   return conflict ?? null
 }
 
-export async function getPlayerPayments(userId: string, playerId: number) {
+export async function getPlayerPayments(userId: string, playerId: string) {
   return db
     .select()
     .from(payments)
@@ -218,7 +218,7 @@ export type PlayerTeamFee = {
 //  - covered: the club pays this team's fees
 //  - paid: the player already paid their individual fee
 //  - due: an individual fee is outstanding
-export async function getPlayerTeamFees(playerId: number): Promise<PlayerTeamFee[]> {
+export async function getPlayerTeamFees(playerId: string): Promise<PlayerTeamFee[]> {
   const memberRows = await db
     .select({ team: teams })
     .from(teamMembers)
@@ -283,7 +283,7 @@ export type PlayerOverviewTeam = {
  * centre: club, division, region, fee responsibility and league position.
  * Returns null when the player isn't on an active team.
  */
-export async function getPlayerOverviewTeam(playerId: number): Promise<PlayerOverviewTeam | null> {
+export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOverviewTeam | null> {
   const [row] = await db
     .select({
       membershipId: teamMembers.id,
@@ -367,7 +367,7 @@ export type FixtureDetail = {
  */
 export async function getFixtureDetails(
   fixtureIds: number[],
-  playerId: number,
+  playerId: string,
 ): Promise<Map<number, FixtureDetail>> {
   const out = new Map<number, FixtureDetail>()
   if (fixtureIds.length === 0) return out

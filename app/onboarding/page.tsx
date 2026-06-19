@@ -9,7 +9,7 @@ export const metadata = { title: "Create Your Profile | SAPL" }
 export default async function OnboardingPage() {
   const user = await getCurrentUser()
   if (!user) redirect("/sign-in")
-  if (user.playerId) redirect("/dashboard")
+  if (user.isPlayer) redirect("/dashboard")
 
   const clubs = await getClubOptions()
 

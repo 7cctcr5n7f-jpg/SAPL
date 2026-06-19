@@ -326,7 +326,7 @@ export const teamMembers = pgTable(
   {
     id: serial("id").primaryKey(),
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(),
+    playerId: text("playerId").notNull(), // User ID (consolidated from old integer player IDs)
     role: text("role").notNull().default("member"), // captain | member
     // status drives invite/request workflow
     status: text("status").notNull().default("active"), // active | invited | requested | declined | removed

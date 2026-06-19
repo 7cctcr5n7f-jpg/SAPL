@@ -501,7 +501,7 @@ function CaptainRow({
   const [newLast, setNewLast] = useState("")
   const [newEmail, setNewEmail] = useState("")
 
-  function assign(playerId: number | null) {
+  function assign(playerId: string | null) {
     startTransition(async () => {
       const res = await setClubTeamCaptain({ clubId, teamId: team.teamId, playerId })
       if (res.ok) {

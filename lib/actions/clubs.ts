@@ -223,7 +223,7 @@ export async function deleteClub(id: number) {
 export async function setClubTeamCaptain(input: {
   clubId: number
   teamId: number
-  playerId: number | null
+  playerId: string | null
 }) {
   const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
