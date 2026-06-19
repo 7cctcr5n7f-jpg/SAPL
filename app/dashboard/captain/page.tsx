@@ -28,13 +28,18 @@ export default async function CaptainPage() {
   let captainTeams: typeof teams.$inferSelect[] = []
   let isAdminSelectingTeams = false
 
+  const teamFields = {
+    id: teams.id, name: teams.name, divisionId: teams.divisionId,
+    seasonId: teams.seasonId, tpr: teams.tpr, clubPaysFees: teams.clubPaysFees,
+    organisationId: teams.organisationId, captainUserId: teams.captainUserId,
+    homeClubId: teams.homeClubId, teamType: teams.teamType,
+    avgLi: teams.avgLi, playerCount: teams.playerCount, maxPlayers: teams.maxPlayers,
+  }
   if (access.isLeagueAdmin) {
-    // Super admins can see and manage all teams
-    captainTeams = await db.select({ id: teams.id }).from(teams).orderBy(teams.name)
+    captainTeams = await db.select(teamFields).from(teams).orderBy(teams.name)
     isAdminSelectingTeams = true
   } else if (access.teamIds.length > 0) {
-    // Non-admin captains/managers see only their assigned teams
-    captainTeams = await db.select({ id: teams.id }).from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
+    captainTeams = await db.select(teamFields).from(teams).where(inArray(teams.id, access.teamIds)).orderBy(teams.name)
   }
 
   if (captainTeams.length === 0) {
@@ -87,7 +92,7 @@ export default async function CaptainPage() {
     const unavailable = await getTeamUnavailability(team.id)
     let divisionName = "Unassigned"
     if (team.divisionId) {
-      const [d] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, team.divisionId)).limit(1)
+      const [d] = await db.select({ id: divisions.id, name: divisions.name }).from(divisions).where(eq(divisions.id, team.divisionId)).limit(1)
       if (d) divisionName = d.name
     }
     const playerFee = await getPlayerFee(team.seasonId)

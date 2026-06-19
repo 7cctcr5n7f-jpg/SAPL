@@ -961,8 +961,8 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
       player: {
         id: user.id, firstName: user.firstName, lastName: user.lastName,
         email: user.email, currentLi: user.currentLi, highestLi: user.highestLi,
-        playtomicRating: user.playtomicRating, gender: user.gender,
-        avatarUrl: user.avatarUrl, isPlayer: user.isPlayer,
+        playtomicRating: user.playtomicRating, playtomicUrl: user.playtomicUrl,
+        gender: user.gender, avatarUrl: user.avatarUrl, isPlayer: user.isPlayer,
       },
       meta: {
         role: userMeta.role, phone: userMeta.phone,
@@ -1037,7 +1037,16 @@ export async function getTeamFixtures(teamId: number) {
 }
 
 export async function getCategories() {
-  return db.select({ id: categories.id, name: categories.name, sortOrder: categories.sortOrder }).from(categories).orderBy(categories.sortOrder)
+  return db
+    .select({
+      id: categories.id,
+      name: categories.name,
+      sortOrder: categories.sortOrder,
+      session: categories.session,
+      isFeatureCourt: categories.isFeatureCourt,
+    })
+    .from(categories)
+    .orderBy(categories.sortOrder)
 }
 
 // Per-category set scores for a set of fixtures, used to pre-fill result edits.
