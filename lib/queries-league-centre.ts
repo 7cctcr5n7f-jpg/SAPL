@@ -11,7 +11,7 @@ import {
   teamMembers,
   matches,
   teamPairings,
-  players,
+  user,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
@@ -369,7 +369,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
           currentLi: user.currentLi,
         })
         .from(teamPairings)
-        .innerJoin(players, eq(teamPairings.playerId, user.id))
+        .innerJoin(user, eq(teamPairings.playerId, user.id))
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
 

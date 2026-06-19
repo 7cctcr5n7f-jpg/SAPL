@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db"
 import {
-  players,
   teamMembers,
   teamPairings,
   teamInvites,
@@ -27,7 +26,7 @@ import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
 export async function updateProfile(_prev: unknown, formData: FormData) {
   const me = await getCurrentUser()
-  if (!me?.playerId) return { error: "Not authorised" }
+  if (!me?.isPlayer) return { error: "Not authorised" }
 
   const firstName = String(formData.get("firstName") ?? "").trim()
   const lastName = String(formData.get("lastName") ?? "").trim()
@@ -46,30 +45,27 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
     : (formData.getAll("preferredClubIds") as string[]).map((v) => Number(v)).filter((n) => Number.isFinite(n))
 
   await db
-    .update(players)
+    .update(user)
     .set({
       firstName,
       lastName,
-      bio,
       city,
       playtomicUrl: playtomicUrl || null,
-      preferredClubIds,
-      anyClub,
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
     })
-    .where(eq(user.id, me.isPlayer))
+    .where(eq(user.id, me.id))
 
   // Keep the auth display name in sync with the player's name.
   await db.update(user).set({ name: `${firstName} ${lastName}`, updatedAt: new Date() }).where(eq(user.id, me.id))
 
-  // Contact number lives on userMeta; upsert it.
+  // Contact number and bio live on userMeta; upsert them.
   const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
   if (meta) {
-    await db.update(userMeta).set({ phone: phone || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
+    await db.update(userMeta).set({ phone: phone || null, bio: bio || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
   } else {
-    await db.insert(userMeta).values({ userId: me.id, phone: phone || null })
+    await db.insert(userMeta).values({ userId: me.id, phone: phone || null, bio: bio || null })
   }
 
   revalidatePath("/dashboard/profile")
@@ -80,12 +76,12 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
 
 export async function respondToInvite(membershipId: number, accept: boolean) {
   const me = await getCurrentUser()
-  if (!me?.playerId) return { error: "Not authorised" }
+  if (!me?.isPlayer) return { error: "Not authorised" }
 
   const [m] = await db
     .select()
     .from(teamMembers)
-    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.isPlayer)))
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.id)))
     .limit(1)
   if (!m || m.status !== "invited") return { error: "Invitation not found." }
 
@@ -96,9 +92,9 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
 
   if (accept) {
     await db
-      .update(players)
+      .update(user)
       .set({ availability: "on_team", lookingForTeam: false, updatedAt: new Date() })
-      .where(eq(user.id, me.isPlayer))
+      .where(eq(user.id, me.id))
 
     const [team] = await db.select().from(teams).where(eq(teams.id, m.teamId)).limit(1)
     if (team?.captainUserId) {
@@ -120,13 +116,13 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
 // creates (or updates) an individual payment row and marks it paid.
 export async function payTeamFee(teamId: number) {
   const me = await getCurrentUser()
-  if (!me?.playerId) return { error: "Not authorised" }
+  if (!me?.isPlayer) return { error: "Not authorised" }
 
   // Player must actually belong to this team.
   const [member] = await db
     .select()
     .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, me.isPlayer), eq(teamMembers.status, "active")))
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, me.id), eq(teamMembers.status, "active")))
     .limit(1)
   if (!member) return { error: "You are not an active member of this team." }
 
@@ -139,7 +135,7 @@ export async function payTeamFee(teamId: number) {
   const [existing] = await db
     .select()
     .from(payments)
-    .where(and(eq(payments.teamId, teamId), eq(payments.playerId, me.isPlayer), eq(payments.type, "individual")))
+    .where(and(eq(payments.teamId, teamId), eq(payments.playerId, me.id), eq(payments.type, "individual")))
     .limit(1)
 
   if (existing) {
@@ -150,9 +146,8 @@ export async function payTeamFee(teamId: number) {
       .where(eq(payments.id, existing.id))
   } else {
     await db.insert(payments).values({
-      type: "individual",
       payerUserId: me.id,
-      playerId: me.isPlayer,
+      playerId: me.id,
       teamId,
       seasonId: team.seasonId ?? null,
       amount,
@@ -161,7 +156,7 @@ export async function payTeamFee(teamId: number) {
       status: "paid",
       provider: "mock",
       invoiceNumber: `PPL-INV-${Date.now()}`,
-      reference: `TEAMFEE-${teamId}-P${me.isPlayer}`,
+      reference: `TEAMFEE-${teamId}-P${me.id}`,
       description: `Individual team fee — ${team.name}`,
       paidAt: new Date(),
     })
@@ -175,11 +170,11 @@ export async function payTeamFee(teamId: number) {
 
 export async function leaveTeam(membershipId: number) {
   const me = await getCurrentUser()
-  if (!me?.playerId) return { error: "Not authorised" }
+  if (!me?.isPlayer) return { error: "Not authorised" }
   await db
     .update(teamMembers)
     .set({ status: "removed", updatedAt: new Date() })
-    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.isPlayer)))
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.id)))
   revalidatePath("/dashboard")
   return { success: "You left the team." }
 }
@@ -189,7 +184,7 @@ export async function leaveTeam(membershipId: number) {
  * the Player Management dashboard. Players cannot change these themselves.
  */
 export async function adminUpdatePlayerRatings(input: {
-  playerId: number
+  playerId: string
   playtomicRating: number | null
   currentLi: number
   playtomicUrl?: string | null
@@ -218,7 +213,7 @@ export async function adminUpdatePlayerRatings(input: {
   const url = input.playtomicUrl === undefined ? undefined : input.playtomicUrl?.trim() || null
 
   await db
-    .update(players)
+    .update(user)
     .set({
       currentLi: input.currentLi,
       highestLi: Math.max(existing.highestLi ?? 0, input.currentLi),
@@ -243,7 +238,7 @@ export async function adminUpdatePlayerRatings(input: {
  * anyone. Set `removeFromTeamId` to take the player off one of their teams.
  */
 export async function adminUpdatePlayer(input: {
-  playerId: number
+  playerId: string
   firstName?: string
   lastName?: string
   phone?: string | null
@@ -282,7 +277,7 @@ export async function adminUpdatePlayer(input: {
   if (input.lastName !== undefined && !lastName) return { ok: false, error: "Last name is required." }
 
   // Build the profile patch from only the fields that were supplied.
-  const patch: Partial<typeof players.$inferSelect> = { updatedAt: new Date() }
+  const patch: Partial<typeof user.$inferSelect> = { updatedAt: new Date() }
   if (firstName !== undefined) patch.firstName = firstName
   if (lastName !== undefined) patch.lastName = lastName
   if (input.gender !== undefined) patch.gender = input.gender
@@ -294,22 +289,22 @@ export async function adminUpdatePlayer(input: {
     patch.liDate = new Date()
   }
 
-  await db.update(players).set(patch).where(eq(user.id, input.playerId))
+  await db.update(user).set(patch).where(eq(user.id, input.playerId))
 
   // Keep the auth display name in sync when the name changed.
   if (firstName !== undefined || lastName !== undefined) {
     const fullName = `${firstName ?? existing.firstName} ${lastName ?? existing.lastName}`.trim()
-    await db.update(user).set({ name: fullName, updatedAt: new Date() }).where(eq(user.id, existing.userId))
+    await db.update(user).set({ name: fullName, updatedAt: new Date() }).where(eq(user.id, existing.id))
   }
 
   // Contact number lives on userMeta; upsert when supplied.
   if (input.phone !== undefined) {
     const phone = input.phone?.trim() || null
-    const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, existing.userId)).limit(1)
+    const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, existing.id)).limit(1)
     if (meta) {
-      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, existing.userId))
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, existing.id))
     } else {
-      await db.insert(userMeta).values({ userId: existing.userId, role: "player", phone })
+      await db.insert(userMeta).values({ userId: existing.id, role: "player", phone })
     }
   }
 
@@ -332,7 +327,7 @@ export async function adminUpdatePlayer(input: {
       .limit(1)
     if (stillActive.length === 0) {
       await db
-        .update(players)
+        .update(user)
         .set({ availability: "available", lookingForTeam: true, updatedAt: new Date() })
         .where(eq(user.id, input.playerId))
     }
@@ -368,18 +363,16 @@ export async function adminCreatePlayerProfile(input: {
   const [account] = await db.select().from(user).where(eq(user.id, input.userId)).limit(1)
   if (!account) return { ok: false, error: "User account not found." }
 
-  // Guard against duplicates — one profile per user.
-  const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.userId)).limit(1)
-  if (existing) return { ok: false, error: "This user already has a player profile.", playerId: existing.id }
+  // Guard against duplicates — user can only be a player once.
+  if (account.isPlayer) return { ok: false, error: "This user already has a player profile.", playerId: account.id }
 
   const [nameFirst, ...nameRest] = (account.name ?? "").trim().split(/\s+/)
   const firstName = (input.firstName?.trim() || nameFirst || "Player").trim()
   const lastName = (input.lastName?.trim() || nameRest.join(" ") || "").trim()
 
-  const [created] = await db
-    .insert(players)
-    .values({
-      userId: input.userId,
+  await db
+    .update(user)
+    .set({
       firstName,
       lastName,
       gender: input.gender ?? "male",
@@ -388,17 +381,14 @@ export async function adminCreatePlayerProfile(input: {
       currentLi: 0,
       highestLi: 0,
       liDate: new Date(),
-      currentTpr: 1000,
-      highestTpr: 1000,
       playtomicUrl: null,
-      preferredFormats: [],
-      preferredClubIds: [],
       anyClub: true,
       lookingForTeam: false,
       availability: "unavailable",
+      isPlayer: true,
       updatedAt: new Date(),
     })
-    .returning({ id: user.id })
+    .where(eq(user.id, input.userId))
 
   // Ensure a userMeta row exists so contact details can be edited later.
   const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, input.userId)).limit(1)
@@ -406,7 +396,7 @@ export async function adminCreatePlayerProfile(input: {
 
   revalidatePath("/admin/players")
   revalidatePath("/dashboard")
-  return { ok: true, playerId: created.id }
+  return { ok: true, playerId: input.userId }
 }
 
 /**
@@ -447,28 +437,22 @@ export async function adminDeleteUsers(input: { userId?: string; all?: boolean }
 
   const userIds = targets.map((t) => t.id)
 
-  // Map user ids -> player ids so we can clean player-scoped tables.
-  const playerRows = await db
-    .select({ id: user.id, userId: user.id })
-    .from(user)
-    .where(inArray(user.id, userIds))
-  const playerIds = playerRows.map((p) => p.id)
+  // Use userIds directly since players are just users with isPlayer=true
   const affectedTeamIds = new Set<number>()
 
-  if (playerIds.length > 0) {
+  if (userIds.length > 0) {
     // Track teams these players were on so we can refresh roster counts after.
     const memberRows = await db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
-      .where(inArray(teamMembers.playerId, playerIds))
+      .where(inArray(teamMembers.playerId, userIds))
     memberRows.forEach((m) => affectedTeamIds.add(m.teamId))
 
-    await db.delete(teamMembers).where(inArray(teamMembers.playerId, playerIds))
-    await db.delete(teamPairings).where(inArray(teamPairings.playerId, playerIds))
-    await db.delete(fixtureUnavailable).where(inArray(fixtureUnavailable.playerId, playerIds))
-    await db.delete(feeNotes).where(inArray(feeNotes.playerId, playerIds))
-    await db.delete(payments).where(inArray(payments.playerId, playerIds))
-    await db.delete(players).where(inArray(user.id, playerIds))
+    await db.delete(teamMembers).where(inArray(teamMembers.playerId, userIds))
+    await db.delete(teamPairings).where(inArray(teamPairings.playerId, userIds))
+    await db.delete(fixtureUnavailable).where(inArray(fixtureUnavailable.playerId, userIds))
+    await db.delete(feeNotes).where(inArray(feeNotes.playerId, userIds))
+    await db.delete(payments).where(inArray(payments.playerId, userIds))
   }
 
   // User-scoped rows.

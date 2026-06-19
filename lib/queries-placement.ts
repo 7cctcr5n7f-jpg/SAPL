@@ -5,10 +5,9 @@ import {
   teamEntries,
   clubs,
   teamMembers,
-  players,
   seasons,
   regions,
-  user as user,
+  user,
 } from "@/lib/db/schema"
 import { and, eq, asc } from "drizzle-orm"
 import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
@@ -105,7 +104,7 @@ export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
       userId: user.id,
     })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, user.id))
+    .innerJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
     .orderBy(asc(user.currentLi))
 
