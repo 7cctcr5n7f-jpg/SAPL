@@ -21,7 +21,7 @@ import { getAccessContext } from "@/lib/access"
 import { notifyTeam } from "@/lib/notify"
 
 async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
-  const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fixture] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fixture) return null
   // Super admins can edit any fixture's result.
   if (isAdmin) return fixture
@@ -124,7 +124,7 @@ async function canManageTeam(
 export async function setPlayerAvailability(
   fixtureId: number,
   teamId: number,
-  playerId: number,
+  playerId: string,
   unavailable: boolean,
 ) {
   const me = await getCurrentUser()
@@ -132,7 +132,7 @@ export async function setPlayerAvailability(
   if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
 
   // The team must actually be in this fixture.
-  const [fx] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fx] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fx || (fx.homeTeamId !== teamId && fx.awayTeamId !== teamId)) {
     return { error: "This team is not in that fixture." }
   }
@@ -156,7 +156,7 @@ export async function addPlayer(teamId: number, playerId: string) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return { error: "Team not found." }
 
   // One team per player per season: block if the player is already active on a
@@ -191,7 +191,7 @@ export async function addPlayer(teamId: number, playerId: string) {
     })
   }
 
-  const [player] = await db.select().from(user).where(eq(user.id, playerId)).limit(1)
+  const [player] = await db.select({ id: user.id }).from(user).where(eq(user.id, playerId)).limit(1)
   if (player) {
     await db
       .update(user)

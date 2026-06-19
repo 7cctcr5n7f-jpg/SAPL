@@ -61,7 +61,7 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
   await db.update(user).set({ name: `${firstName} ${lastName}`, updatedAt: new Date() }).where(eq(user.id, me.id))
 
   // Contact number and bio live on userMeta; upsert them.
-  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
+  const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
   if (meta) {
     await db.update(userMeta).set({ phone: phone || null, bio: bio || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
   } else {
@@ -96,7 +96,7 @@ export async function respondToInvite(membershipId: number, accept: boolean) {
       .set({ availability: "on_team", lookingForTeam: false, updatedAt: new Date() })
       .where(eq(user.id, me.id))
 
-    const [team] = await db.select().from(teams).where(eq(teams.id, m.teamId)).limit(1)
+    const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, m.teamId)).limit(1)
     if (team?.captainUserId) {
       await db.insert(notifications).values({
         userId: team.captainUserId,
@@ -126,7 +126,7 @@ export async function payTeamFee(teamId: number) {
     .limit(1)
   if (!member) return { error: "You are not an active member of this team." }
 
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return { error: "Team not found." }
   if (team.clubPaysFees) return { error: "Your club covers this team's fees." }
 
@@ -198,7 +198,7 @@ export async function adminUpdatePlayerRatings(input: {
     return { ok: false, error: "Playtomic rating must be between 0 and 7." }
   }
 
-  const [existing] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
+  const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
   // Non-league admins may only edit players within their own scope (assigned
@@ -254,7 +254,7 @@ export async function adminUpdatePlayer(input: {
   const access = await getAccessContext(me)
   if (!access.can("player_management")) return { ok: false, error: "Not authorised" }
 
-  const [existing] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
+  const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
   if (!existing) return { ok: false, error: "Player not found." }
 
   // Scope check: non-league admins may only edit players inside their scope.
@@ -360,7 +360,7 @@ export async function adminCreatePlayerProfile(input: {
   const access = await getAccessContext(me)
   if (!access.isLeagueAdmin) return { ok: false, error: "Only league admins can create player profiles." }
 
-  const [account] = await db.select().from(user).where(eq(user.id, input.userId)).limit(1)
+  const [account] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.userId)).limit(1)
   if (!account) return { ok: false, error: "User account not found." }
 
   // Guard against duplicates — user can only be a player once.

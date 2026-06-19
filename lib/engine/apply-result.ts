@@ -32,7 +32,7 @@ export type CategoryScoreInput = {
  * Idempotency: deletes any pre-existing matches for the fixture first.
  */
 export async function applyFixtureResult(fixtureId: number, categoryScores: CategoryScoreInput[]) {
-  const [fixtureRow] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fixtureRow] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fixtureRow) throw new Error("Fixture not found")
   if (fixtureRow.homeTeamId == null || fixtureRow.awayTeamId == null) {
     throw new Error("Cannot record a result before both teams are assigned")
@@ -41,7 +41,7 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
   const fixture = { ...fixtureRow, homeTeamId: fixtureRow.homeTeamId, awayTeamId: fixtureRow.awayTeamId }
 
   const [division] = fixture.divisionId
-    ? await db.select().from(divisions).where(eq(divisions.id, fixture.divisionId)).limit(1)
+    ? await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, fixture.divisionId)).limit(1)
     : [null]
 
   // 1. Score the fixture. Derive sets won + games from the entered set scores.
@@ -124,8 +124,8 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
   await recomputeRanks(fixture.divisionId)
 
   // 5. TPR update
-  const [homeTeam] = await db.select().from(teams).where(eq(teams.id, fixture.homeTeamId)).limit(1)
-  const [awayTeam] = await db.select().from(teams).where(eq(teams.id, fixture.awayTeamId)).limit(1)
+  const [homeTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.homeTeamId)).limit(1)
+  const [awayTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.awayTeamId)).limit(1)
   if (homeTeam && awayTeam) {
     const tpr = calculateTpr({
       homeTpr: homeTeam.tpr,
@@ -222,7 +222,7 @@ async function bumpStanding(args: {
 }
 
 async function recomputeRanks(divisionId: number) {
-  const rows = await db.select().from(standings).where(eq(standings.divisionId, divisionId))
+  const rows = await db.select({ id: standings.id }).from(standings).where(eq(standings.divisionId, divisionId))
   const sorted = [...rows].sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points
     if (b.wins !== a.wins) return b.wins - a.wins

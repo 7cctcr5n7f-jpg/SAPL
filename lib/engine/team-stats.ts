@@ -8,7 +8,7 @@ import { and, eq } from "drizzle-orm"
  * club. Safe to call after any roster or home-club mutation.
  */
 export async function recomputeTeamStats(teamId: number) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return
 
   const roster = await db
@@ -24,7 +24,7 @@ export async function recomputeTeamStats(teamId: number) {
   let saplRegion = team.saplRegion ?? null
   let regionId = team.regionId ?? null
   if (team.homeClubId) {
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, team.homeClubId)).limit(1)
+    const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, team.homeClubId)).limit(1)
     if (club) {
       saplRegion = club.saplRegion ?? saplRegion
       regionId = club.regionId ?? regionId

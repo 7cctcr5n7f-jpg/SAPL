@@ -199,7 +199,7 @@ export async function saveClub(input: ClubInput) {
 }
 
 export async function deleteClub(id: number) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.id, id)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, id)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
     await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
@@ -225,7 +225,7 @@ export async function setClubTeamCaptain(input: {
   teamId: number
   playerId: string | null
 }) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, input.clubId)).limit(1)
   if (!club) return { ok: false, error: "Venue not found" }
   try {
     await requireClubManager({ clubId: club.id, organisationId: club.organisationId })
@@ -233,7 +233,7 @@ export async function setClubTeamCaptain(input: {
     return { ok: false, error: (e as Error).message }
   }
 
-  const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team || team.homeClubId !== input.clubId || team.teamType !== "Club Team") {
     return { ok: false, error: "Team does not belong to this venue" }
   }
@@ -254,7 +254,7 @@ export async function setClubTeamCaptain(input: {
     return { ok: true }
   }
 
-  const [player] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
+  const [player] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
   if (!player) return { ok: false, error: "Player not found" }
 
   await db.update(teams).set({ captainUserId: player.id, updatedAt: new Date() }).where(eq(teams.id, team.id))

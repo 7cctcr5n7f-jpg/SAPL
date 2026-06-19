@@ -4,7 +4,7 @@ import { useState } from "react"
 import { updatePlayerSettings } from "@/lib/actions/player-settings"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 
@@ -52,21 +52,21 @@ export function MarketplaceSettings({ isPlayer, onMarketplace, isOnTeam }: Marke
       <CardContent className="space-y-6">
         {/* Player Status */}
         <div className="space-y-3">
-          <div className="flex items-center space-x-2">
-            <Checkbox
+          <div className="flex items-center justify-between">
+            <Label htmlFor="is-player" className="font-medium">
+              I am a player
+            </Label>
+            <Switch
               id="is-player"
               checked={localIsPlayer}
               onCheckedChange={(checked) => {
-                setLocalIsPlayer(checked as boolean)
+                setLocalIsPlayer(checked)
                 // If turning off player status, also turn off marketplace
                 if (!checked) {
                   setLocalOnMarketplace(false)
                 }
               }}
             />
-            <Label htmlFor="is-player" className="font-medium cursor-pointer">
-              I am a player
-            </Label>
           </div>
           <p className="text-sm text-muted-foreground ml-6">
             Mark yourself as a player if you want to join teams or search for opportunities.
@@ -74,21 +74,21 @@ export function MarketplaceSettings({ isPlayer, onMarketplace, isOnTeam }: Marke
         </div>
 
         {/* Marketplace Visibility */}
-        <div className="space-y-3 opacity-60 disabled:opacity-40" style={{ opacity: localIsPlayer ? 1 : 0.5 }}>
-          <div className="flex items-center space-x-2">
-            <Checkbox
+        <div className="space-y-3" style={{ opacity: localIsPlayer ? 1 : 0.5 }}>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="on-marketplace" className="font-medium">
+              Show me on the marketplace
+            </Label>
+            <Switch
               id="on-marketplace"
               checked={localOnMarketplace}
               onCheckedChange={(checked) => {
                 if (localIsPlayer) {
-                  setLocalOnMarketplace(checked as boolean)
+                  setLocalOnMarketplace(checked)
                 }
               }}
               disabled={!localIsPlayer || isOnTeam}
             />
-            <Label htmlFor="on-marketplace" className="font-medium cursor-pointer">
-              Show me on the marketplace
-            </Label>
           </div>
           <p className="text-sm text-muted-foreground ml-6">
             {isOnTeam

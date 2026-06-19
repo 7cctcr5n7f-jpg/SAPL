@@ -346,5 +346,5 @@ export async function getLeagueStats() {
 }
 
 export async function getPlayoffs(seasonId: number) {
-  return db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
+  return db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
 }

@@ -50,7 +50,7 @@ export type PairingCategory = { category: string; pairs: PairingSlot[][] }
 
 // Aggregate everything the pairings board needs for one team.
 export async function getTeamPairingData(teamId: number, categoryNames: string[]) {
-  const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return null
 
   // Active roster players.
@@ -134,14 +134,14 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 }
 
 export async function getPlayerByUserId(userId: string) {
-  const [p] = await db.select().from(user).where(eq(user.id, userId)).limit(1)
+  const [p] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1)
   return p ?? null
 }
 
 export async function getCurrentSeason() {
-  const [s] = await db.select().from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [s] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
   if (s) return s
-  const [latest] = await db.select().from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db.select({ id: seasons.id }).from(seasons).orderBy(desc(seasons.id)).limit(1)
   return latest ?? null
 }
 
@@ -936,7 +936,7 @@ export async function getTeamFixtures(teamId: number) {
 }
 
 export async function getCategories() {
-  return db.select().from(categories).orderBy(categories.sortOrder)
+  return db.select({ id: categories.id }).from(categories).orderBy(categories.sortOrder)
 }
 
 // Per-category set scores for a set of fixtures, used to pre-fill result edits.
@@ -954,7 +954,7 @@ export async function getFixtureScores(fixtureIds: number[]) {
 }
 
 export async function getDivisionTeams(divisionId: number) {
-  return db.select().from(teams).where(eq(teams.divisionId, divisionId)).orderBy(teams.name)
+  return db.select({ id: teams.id }).from(teams).where(eq(teams.divisionId, divisionId)).orderBy(teams.name)
 }
 
 // Free agents (marketplace) for captain invitations
@@ -1015,7 +1015,7 @@ export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
 // Org admin helpers ---------------------------------------------------------
 
 export async function getOrgByOwner(userId: string) {
-  const [o] = await db.select().from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
+  const [o] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
   return o ?? null
 }
 
@@ -1059,6 +1059,6 @@ export async function getScopedTeamRows(access: AccessContext) {
 }
 
 export async function getStandingForTeam(teamId: number) {
-  const [s] = await db.select().from(standings).where(eq(standings.teamId, teamId)).limit(1)
+  const [s] = await db.select({ id: standings.id }).from(standings).where(eq(standings.teamId, teamId)).limit(1)
   return s ?? null
 }

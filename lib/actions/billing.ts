@@ -18,7 +18,7 @@ async function requireLeagueAdmin() {
   return user
 }
 
-type FeeKey = { kind: "player" | "team"; teamId: number; playerId: number }
+type FeeKey = { kind: "player" | "team"; teamId: number; playerId: string }
 
 async function upsertNote(key: FeeKey, patch: Partial<typeof feeNotes.$inferInsert>, userId: string) {
   const [existing] = await db

@@ -34,7 +34,7 @@ export type SeasonValidation = {
 export async function validateSeason(seasonId: number): Promise<SeasonValidation> {
   const issues: ValidationIssue[] = []
 
-  const divs = await db.select().from(divisions).where(eq(divisions.seasonId, seasonId))
+  const divs = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
   const seasonFixtures = await db
     .select()
     .from(fixtures)

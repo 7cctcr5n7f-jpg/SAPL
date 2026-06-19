@@ -530,12 +530,12 @@ export async function createPlayerAccount(input: {
   // anything, so we never half-provision an account.
   let targetTeam: typeof teams.$inferSelect | null = null
   if (input.assignTeamId) {
-    const [t] = await db.select().from(teams).where(eq(teams.id, input.assignTeamId)).limit(1)
+    const [t] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.assignTeamId)).limit(1)
     if (!t) return { ok: false, error: "Selected team not found." }
     if (me.realRole === "captain") {
       if (t.captainUserId !== me.id) return { ok: false, error: "You can only add players to your own teams." }
     } else if (me.realRole === "org_admin") {
-      const [org] = await db.select().from(organisations).where(eq(organisations.id, t.organisationId ?? 0)).limit(1)
+      const [org] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, t.organisationId ?? 0)).limit(1)
       if (!org || org.ownerUserId !== me.id) return { ok: false, error: "You cannot add players to that team." }
     }
     targetTeam = t

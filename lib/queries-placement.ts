@@ -28,7 +28,7 @@ async function nameForUserId(userId: string | null): Promise<string | null> {
 }
 
 export async function getPlacementBoard(seasonId: number): Promise<PlacementBoardData | null> {
-  const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
 
   const divs = await db
     .select({

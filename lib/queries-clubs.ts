@@ -224,6 +224,6 @@ export async function getOrganisationOptions() {
 }
 
 export async function getClubBySlug(slug: string) {
-  const [club] = await db.select().from(clubs).where(eq(clubs.slug, slug)).limit(1)
+  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.slug, slug)).limit(1)
   return club ?? null
 }

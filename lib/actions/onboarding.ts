@@ -37,7 +37,7 @@ export async function createPlayerProfile(
   if (!firstName || !lastName) return { error: "First and last name are required." }
 
   // Ensure user_meta exists (default role: player)
-  const [existingMeta] = await db.select().from(userMeta).where(eq(userMeta.userId, currentUser.id)).limit(1)
+  const [existingMeta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, currentUser.id)).limit(1)
   if (existingMeta) {
     await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, currentUser.id))
   } else {

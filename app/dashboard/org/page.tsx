@@ -38,7 +38,7 @@ export default async function OrgPage() {
   // Admins, and club managers without an owned org, borrow a sample org so the
   // create-team dialog still has a context to attach new teams to.
   if (!org && (isAdminWide || user.isSuperAdmin || hasScopedAccess)) {
-    const [sample] = await db.select().from(organisations).orderBy(organisations.id).limit(1)
+    const [sample] = await db.select({ id: organisations.id }).from(organisations).orderBy(organisations.id).limit(1)
     org = sample ?? null
   }
 
@@ -69,7 +69,7 @@ export default async function OrgPage() {
 
   // Captain profiles (name + contact details so the row can show and edit them).
   type CaptainInfo = {
-    playerId: number
+    playerId: string
     name: string
     email: string | null
     phone: string | null
@@ -83,6 +83,7 @@ export default async function OrgPage() {
     const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, cid)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
     captainMap.set(cid, {
+      playerId: cid,
       name: `${p.firstName} ${p.lastName}`,
       email: u?.email ?? null,
       phone: m?.phone ?? null,
