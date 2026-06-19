@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, user as user, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
+import { user, userMeta, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
 import { eq, and, asc } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
