@@ -134,14 +134,36 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
 }
 
 export async function getPlayerByUserId(userId: string) {
-  const [p] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1)
+  const [p] = await db
+    .select({
+      id: user.id,
+      currentLi: user.currentLi,
+      highestLi: user.highestLi,
+      playtomicRating: user.playtomicRating,
+      playtomicUrl: user.playtomicUrl,
+      gender: user.gender,
+      lookingForTeam: user.lookingForTeam,
+      availability: user.availability,
+      avatarUrl: user.avatarUrl,
+    })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
   return p ?? null
 }
 
 export async function getCurrentSeason() {
-  const [s] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [s] = await db
+    .select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee })
+    .from(seasons)
+    .where(eq(seasons.isCurrent, true))
+    .limit(1)
   if (s) return s
-  const [latest] = await db.select({ id: seasons.id }).from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db
+    .select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee })
+    .from(seasons)
+    .orderBy(desc(seasons.id))
+    .limit(1)
   return latest ?? null
 }
 
