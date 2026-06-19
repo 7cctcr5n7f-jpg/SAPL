@@ -34,6 +34,7 @@ type RosterMember = {
   li: number
   status: string
   role: string
+  userRole?: string | null
   email?: string | null
   phone?: string | null
   playtomicRating?: string | number | null
@@ -629,8 +630,16 @@ function SquadWithFees({
 
             {/* Role/Status */}
             <div className="col-span-1 text-center">
-              {m.role === "captain" ? (
+              {m.userRole === "super_admin" ? (
+                <Badge variant="destructive" className="text-xs">Super Admin</Badge>
+              ) : m.userRole === "org_admin" ? (
+                <Badge variant="secondary" className="text-xs">Org Admin</Badge>
+              ) : m.userRole === "league_admin" ? (
+                <Badge variant="secondary" className="text-xs">League Admin</Badge>
+              ) : m.userRole === "captain" ? (
                 <Badge variant="default" className="text-xs">Captain</Badge>
+              ) : m.role === "captain" ? (
+                <Badge variant="default" className="text-xs">Team Captain</Badge>
               ) : m.role === "manager" ? (
                 <Badge variant="outline" className="text-xs">Manager</Badge>
               ) : m.role === "admin" ? (

@@ -869,7 +869,10 @@ export async function getTeamRoster(teamId: number): Promise<TeamRosterMember[]>
     // invited memberships should appear in the Captain Hub.
     .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
     .orderBy(desc(user.currentLi))
-  return rows as TeamRosterMember[]
+  return rows.map(r => ({
+    ...r,
+    userRole: r.meta?.role
+  })) as unknown as TeamRosterMember[]
 }
 
 /**

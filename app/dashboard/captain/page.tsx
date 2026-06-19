@@ -111,6 +111,7 @@ export default async function CaptainPage() {
           li: r.player.currentLi,
           status: r.membership.status,
           role: r.membership.role,
+          userRole: r.userRole,
           email: userEmail,
           phone: r.meta?.phone,
           playtomicRating: r.player.playtomicRating,
