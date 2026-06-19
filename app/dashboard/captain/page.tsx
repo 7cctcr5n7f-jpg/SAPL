@@ -9,7 +9,7 @@ import {
 } from "@/lib/queries-dashboard"
 import { getPlayerFee } from "@/lib/queries"
 import { db } from "@/lib/db"
-import { divisions, teams } from "@/lib/db/schema"
+import { divisions, teams, user as dbUser } from "@/lib/db/schema"
 import { eq, inArray } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { CaptainHub, type CaptainTeam } from "@/components/captain/captain-hub"
@@ -69,6 +69,11 @@ export default async function CaptainPage() {
     isFeatureCourt: c.isFeatureCourt,
   }))
 
+  // Get user email for roster players
+  const userEmailMap = new Map()
+  const users = await db.select({ id: dbUser.id, email: dbUser.email }).from(dbUser)
+  users.forEach((u) => userEmailMap.set(u.id, u.email))
+
   const teamsData: CaptainTeam[] = []
   for (const team of captainTeams) {
     const roster = await getTeamRoster(team.id)
@@ -97,14 +102,20 @@ export default async function CaptainPage() {
       pairingCategories: pairingData?.categories ?? [],
       pairingRoster: pairingData?.roster ?? [],
       pairingInvites: pairingData?.invites ?? [],
-      roster: roster.map((r) => ({
-        membershipId: r.membership.id,
-        playerId: r.player.id,
-        name: `${r.player.firstName} ${r.player.lastName}`,
-        li: r.player.currentLi,
-        status: r.membership.status,
-        role: r.membership.role,
-      })),
+      roster: roster.map((r) => {
+        const userEmail = userEmailMap.get(r.player.userId)
+        return {
+          membershipId: r.membership.id,
+          playerId: r.player.id,
+          name: `${r.player.firstName} ${r.player.lastName}`,
+          li: r.player.currentLi,
+          status: r.membership.status,
+          role: r.membership.role,
+          email: userEmail,
+          playtomicRating: r.player.playtomicRating,
+          playtomicUrl: r.player.playtomicUrl,
+        }
+      }),
       fixtures: fixtures.map((f) => ({
         id: f.id,
         week: f.week,

@@ -34,6 +34,9 @@ type RosterMember = {
   li: number
   status: string
   role: string
+  email?: string | null
+  playtomicRating?: string | number | null
+  playtomicUrl?: string | null
 }
 type FreeAgent = { playerId: number; name: string; li: number; city: string | null; email: string | null }
 type FixtureLite = {
@@ -538,7 +541,7 @@ function SquadWithFees({
         return (
           <div
             key={m.membershipId}
-            className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
           >
             {/* Paying checkbox — only for player-pays teams, active members only */}
             {!team.clubPaysFees && isActive && (
@@ -561,19 +564,49 @@ function SquadWithFees({
                 <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <p className="flex items-center gap-1 truncate text-sm font-medium">
-                  {meta?.gender === "female" ? (
-                    <Venus className="h-3.5 w-3.5 shrink-0 text-pink-500" aria-label="Female" />
-                  ) : (
-                    <Mars className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-label="Male" />
-                  )}
+                <p className="flex items-center gap-1 truncate font-medium">
                   <span className={cn("truncate", !team.clubPaysFees && isActive && !isPaying && "text-muted-foreground")}>
                     {m.name}
                   </span>
                 </p>
-                <p className="text-xs text-muted-foreground">LI {m.li.toFixed(1)}</p>
               </div>
             </div>
+
+            {/* LI Column */}
+            <div className="hidden shrink-0 text-center sm:block">
+              <p className="font-medium">{m.li.toFixed(1)}</p>
+              <p className="text-xs text-muted-foreground">LI</p>
+            </div>
+
+            {/* Playtomic Rating Column */}
+            {m.playtomicRating && (
+              <div className="hidden shrink-0 text-center sm:block">
+                <p className="font-medium">{m.playtomicRating}</p>
+                <p className="text-xs text-muted-foreground">PT</p>
+              </div>
+            )}
+
+            {/* Contact Column */}
+            {m.email && (
+              <div className="hidden shrink-0 text-xs sm:block">
+                <p className="font-medium">{m.email?.split("@")[0]}</p>
+              </div>
+            )}
+
+            {/* Playtomic URL */}
+            {m.playtomicUrl && (
+              <div className="shrink-0">
+                <a
+                  href={m.playtomicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline"
+                  title="View Playtomic profile"
+                >
+                  Playtomic
+                </a>
+              </div>
+            )}
 
             <div className="flex shrink-0 items-center gap-2">
               {/* Paid indicator */}
