@@ -29,7 +29,7 @@ const PAYING_PLAYERS_COUNT = 8
 
 type RosterMember = {
   membershipId: number
-  playerId: number
+  playerId: string
   name: string
   li: number
   status: string
@@ -38,7 +38,7 @@ type RosterMember = {
   playtomicRating?: string | number | null
   playtomicUrl?: string | null
 }
-type FreeAgent = { playerId: number; name: string; li: number; city: string | null; email: string | null }
+type FreeAgent = { playerId: string; name: string; li: number; city: string | null; email: string | null }
 type FixtureLite = {
   id: number
   week: number
@@ -418,7 +418,7 @@ export function CaptainHub({
   )
 }
 
-// ─── Squad + Fee selector ─────────────────────────────────────────────���────────
+// ─── Squad + Fee selector ─────────────────────────────────────────────�����────────
 
 function SquadWithFees({
   team,
@@ -431,7 +431,7 @@ function SquadWithFees({
   canEditRatings = false,
 }: {
   team: CaptainTeam
-  metaById: Map<number, PairingPlayer>
+  metaById: Map<string, PairingPlayer>
   playerFee: number
   pending: boolean
   onRemove: (membershipId: number) => void
@@ -442,14 +442,14 @@ function SquadWithFees({
   const active = team.roster.filter((m) => m.status !== "invited")
 
   // Default: first 8 active players pay; captain can toggle
-  const [payingIds, setPayingIds] = useState<Set<number>>(() => {
-    const defaultSet = new Set<number>()
+  const [payingIds, setPayingIds] = useState<Set<string>>(() => {
+    const defaultSet = new Set<string>()
     active.slice(0, PAYING_PLAYERS_COUNT).forEach((m) => defaultSet.add(m.playerId))
     return defaultSet
   })
 
   // Edit player ratings dialog state
-  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null)
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
   const [editLi, setEditLi] = useState("")
   const [editPlaytomicRating, setEditPlaytomicRating] = useState("")
   const [editPlaytomicUrl, setEditPlaytomicUrl] = useState("")
@@ -482,7 +482,7 @@ function SquadWithFees({
     })
   }
 
-  function togglePaying(playerId: number) {
+  function togglePaying(playerId: string) {
     setPayingIds((prev) => {
       const next = new Set(prev)
       if (next.has(playerId)) {

@@ -624,7 +624,7 @@ export const payments = pgTable(
     id: serial("id").primaryKey(),
     type: text("type").notNull().default("individual"), // individual | team | organisation
     payerUserId: text("payerUserId"),
-    playerId: integer("playerId"),
+    playerId: text("playerId"),
     teamId: integer("teamId"),
     organisationId: integer("organisationId"),
     seasonId: integer("seasonId"),

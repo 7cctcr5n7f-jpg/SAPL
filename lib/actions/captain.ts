@@ -152,7 +152,7 @@ export async function setPlayerAvailability(
   return { success: unavailable ? "Marked unavailable" : "Marked available" }
 }
 
-export async function addPlayer(teamId: number, playerId: number) {
+export async function addPlayer(teamId: number, playerId: string) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }

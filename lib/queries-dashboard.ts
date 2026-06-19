@@ -39,7 +39,7 @@ export async function getTeamUnavailability(teamId: number): Promise<Record<numb
 }
 
 export type PairingPlayer = {
-  playerId: number
+  playerId: string
   name: string
   li: number
   gender: string | null
@@ -89,11 +89,11 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   // board can show who is in the slot rather than silently rendering it empty.
   const rosterPlayerIds = new Set(roster.map((p) => p.playerId))
   const orphanIds = [...new Set(
-    slotRows.map((s) => s.playerId).filter((id): id is number => id != null && !rosterPlayerIds.has(id))
+    slotRows.map((s) => s.playerId).filter((id): id is string => id != null && !rosterPlayerIds.has(id))
   )]
   if (orphanIds.length > 0) {
     const orphanRows = await db
-      .select({ player: players })
+      .select({ player: user })
       .from(user)
       .where(inArray(user.id, orphanIds))
     for (const { player: p } of orphanRows) {
@@ -179,7 +179,7 @@ export async function getPlayerMemberships(playerId: string): Promise<RosterEntr
  * a season) is treated as unconstrained.
  */
 export async function getPlayerSeasonTeamConflict(
-  playerId: number,
+  playerId: string,
   seasonId: number | null,
   excludeTeamId: number,
 ): Promise<{ teamId: number; teamName: string } | null> {
@@ -958,7 +958,7 @@ export async function getFreeAgents(limit = 50) {
 }
 
 export type AddablePlayer = {
-  id: number
+  id: string
   firstName: string
   lastName: string
   currentLi: number
