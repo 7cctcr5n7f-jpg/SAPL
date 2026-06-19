@@ -15,9 +15,9 @@ import {
   type Permission,
 } from "@/lib/permissions"
 
-const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "league_admin", "super_admin"]
+const ASSIGNABLE: Role[] = ["player", "captain", "org_admin", "super_admin"]
 /** Roles only a main (super) admin may grant — prevents privilege escalation. */
-const PRIVILEGED_ROLES: Role[] = ["league_admin", "super_admin"]
+const PRIVILEGED_ROLES: Role[] = ["super_admin"]
 
 /**
  * Members management requires the League Management permission. Only a main
@@ -472,12 +472,12 @@ export async function createMember(input: {
   return { ok: true, password: res.password }
 }
 
-/** Roles allowed to add players: captains, org admins, league/main admins. */
+/** Roles allowed to add players: captains, org admins, super admins. */
 async function requirePlayerManager() {
   const me = await getCurrentUser()
   if (!me) throw new Error("Not authenticated")
   const role = me.realRole
-  if (role !== "captain" && role !== "org_admin" && role !== "league_admin" && role !== "super_admin") {
+  if (role !== "captain" && role !== "org_admin" && role !== "super_admin") {
     throw new Error("Captain or club admin access required")
   }
   return me

@@ -6,11 +6,10 @@ import { setActingRole } from "@/lib/actions/view-as"
 import { cn } from "@/lib/utils"
 import { Eye, Check, ChevronsUpDown, Loader2 } from "lucide-react"
 
-type Option = { value: "self" | "league_admin" | "org_admin" | "captain" | "player"; label: string; hint: string }
+type Option = { value: "self" | "org_admin" | "captain" | "player"; label: string; hint: string }
 
 const OPTIONS: Option[] = [
   { value: "self", label: "Main Admin", hint: "Full control" },
-  { value: "league_admin", label: "League Admin", hint: "Run the season" },
   { value: "org_admin", label: "Club Admin", hint: "Manage a club" },
   { value: "captain", label: "Captain", hint: "Run a team" },
   { value: "player", label: "Player", hint: "Compete" },

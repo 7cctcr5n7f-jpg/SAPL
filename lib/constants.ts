@@ -8,13 +8,12 @@ export const BRAND = {
   accent: "#E10600",
 }
 
-export type Role = "player" | "captain" | "org_admin" | "league_admin" | "super_admin"
+export type Role = "player" | "captain" | "org_admin" | "super_admin"
 
 export const ROLE_LABELS: Record<Role, string> = {
   player: "Player",
   captain: "Team Captain",
   org_admin: "Team Manager",
-  league_admin: "League Administrator",
   super_admin: "Super Administrator",
 }
 

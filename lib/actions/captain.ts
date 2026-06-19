@@ -23,7 +23,7 @@ import { notifyTeam } from "@/lib/notify"
 async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
   const [fixture] = await db.select().from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
   if (!fixture) return null
-  // Admins can edit any fixture's result.
+  // Super admins can edit any fixture's result.
   if (isAdmin) return fixture
   // Template fixtures with no teams assigned yet cannot have a result.
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) return null
@@ -46,7 +46,7 @@ export type SubmittedCategory = {
 export async function submitResult(fixtureId: number, categories: SubmittedCategory[]) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const isAdmin = me.isSuperAdmin || me.role === "league_admin"
+  const isAdmin = me.isSuperAdmin
   // getFixtureForUser enforces that the user can manage one of the teams in this
   // fixture (captain, owner, or team/club manager), so we don't gate on role here.
   const fixture = await getFixtureForUser(me, fixtureId, isAdmin)

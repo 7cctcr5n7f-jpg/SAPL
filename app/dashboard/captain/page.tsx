@@ -23,13 +23,13 @@ export default async function CaptainPage() {
   if (!access.can("captain_hub") && !access.can("team_management") && !access.isLeagueAdmin)
     redirect("/dashboard")
 
-  // League admins can select ANY team and enter scores
+  // Super admins can select ANY team and enter scores
   // Everyone else sees only their assigned teams
   let captainTeams: typeof teams.$inferSelect[] = []
   let isAdminSelectingTeams = false
 
   if (access.isLeagueAdmin) {
-    // Admins can see and manage all teams
+    // Super admins can see and manage all teams
     captainTeams = await db.select().from(teams).orderBy(teams.name)
     isAdminSelectingTeams = true
   } else if (access.teamIds.length > 0) {
@@ -140,7 +140,7 @@ export default async function CaptainPage() {
         title="Captain Hub"
         subtitle={
           isAdminSelectingTeams
-            ? "As league admin, you can manage scores for any team"
+            ? "As main admin, you can manage scores for any team"
             : "Manage your roster, submit lineups, and enter results"
         }
       />
@@ -151,6 +151,8 @@ export default async function CaptainPage() {
         canEdit={true}
         playerFee={playerFee}
         isLeagueAdmin={access.isLeagueAdmin}
+        isSuperAdmin={access.user.isSuperAdmin}
+        allTeams={isAdminSelectingTeams ? teamsData : undefined}
       />
     </div>
   )

@@ -23,7 +23,7 @@ import { syncDivisionFixtures } from "@/lib/fixtures-sync"
 import { TEAM_TYPES } from "@/lib/constants"
 
 export async function fetchTeamRoster(teamId: number): Promise<RosterEntry[]> {
-  await requireRole(["league_admin"])
+  await requireRole(["super_admin"])
   return getTeamRoster(teamId)
 }
 
@@ -32,7 +32,7 @@ export async function fetchTeamRoster(teamId: number): Promise<RosterEntry[]> {
  * Board roster panel.
  */
 export async function adminSetTeamType(teamId: number, teamType: string) {
-  await requireRole(["league_admin"])
+  await requireRole(["super_admin"])
   if (!TEAM_TYPES.includes(teamType as (typeof TEAM_TYPES)[number])) {
     return { ok: false, error: "Invalid team type" }
   }
@@ -48,7 +48,7 @@ export async function adminSetTeamType(teamId: number, teamType: string) {
  * fixtures/matches/results so the schedule stays intact (slots become open).
  */
 export async function adminDeleteTeam(teamId: number) {
-  await requireRole(["league_admin"])
+  await requireRole(["super_admin"])
 
   // Child rows that require a team (notNull FK) — remove them.
   await db.delete(teamMembers).where(eq(teamMembers.teamId, teamId))
@@ -101,7 +101,7 @@ export async function saveTeamPlacement(input: {
   slot: number | null
   sortOrder: number
 }) {
-  await requireRole(["league_admin"])
+  await requireRole(["super_admin"])
   const { seasonId, teamId, divisionId, slot, sortOrder } = input
 
   let regionId: number | null = null
@@ -162,7 +162,7 @@ export async function reindexDivisionColumn(input: {
   divisionId: number | null
   orderedTeamIds: number[]
 }) {
-  await requireRole(["league_admin"])
+  await requireRole(["super_admin"])
   const { seasonId, divisionId, orderedTeamIds } = input
 
   let regionId: number | null = null

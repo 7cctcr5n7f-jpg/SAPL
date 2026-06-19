@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { Menu, X } from "lucide-react"
 
 const NAV = [
-  { href: "/league-centre", label: "League Centre" },
+  { href: "/league-centre", dashboardHref: "/dashboard/league-centre", label: "League Centre" },
   { href: "/rankings", label: "Rankings" },
   { href: "/clubs", label: "Clubs" },
   { href: "/marketplace", label: "Marketplace" },
@@ -44,18 +44,22 @@ export function SiteHeader({
             ) : null}
           </div>
           <nav className="hidden items-center gap-6 lg:flex">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "text-sm font-medium uppercase tracking-wide transition-colors hover:text-primary",
-                  pathname.startsWith(item.href) ? "text-primary" : "text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV.map((item) => {
+              // For League Centre, redirect to dashboard version when logged in
+              const href = authed && item.dashboardHref ? item.dashboardHref : item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={href}
+                  className={cn(
+                    "text-sm font-medium uppercase tracking-wide transition-colors hover:text-primary",
+                    pathname.startsWith(item.href) ? "text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
         </div>
         <div className="hidden items-center gap-2 lg:flex">

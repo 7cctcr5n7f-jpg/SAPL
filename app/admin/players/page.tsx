@@ -12,7 +12,7 @@ export default async function AdminPlayersPage() {
   const players = await getManagedPlayers(access)
 
   // Only the top admins may permanently delete user accounts.
-  const canDelete = access.user.role === "league_admin" || access.user.role === "super_admin"
+  const canDelete = access.user.role === "super_admin"
 
   const subtitle = access.isLeagueAdmin
     ? "Every registered player with their team, LI and Playtomic rating. Edit LI and rating inline. Use Members & Roles to update personal details."

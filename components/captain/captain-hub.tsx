@@ -21,8 +21,9 @@ import { invitePlayerByEmail, cancelInvite } from "@/lib/actions/pairings"
 import { toast } from "sonner"
 import { fmtDate, fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check, Clock } from "lucide-react"
+import { Mail, UserPlus, X, DollarSign, Mars, Venus, ShieldCheck, Check, Clock, Edit2 } from "lucide-react"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
+import { adminUpdatePlayerRatings } from "@/lib/actions/player"
 
 const PAYING_PLAYERS_COUNT = 8
 
@@ -74,6 +75,8 @@ export function CaptainHub({
   canEdit = false,
   playerFee,
   isLeagueAdmin = false,
+  isSuperAdmin = false,
+  allTeams,
 }: {
   teams: CaptainTeam[]
   freeAgents: FreeAgent[]
@@ -81,9 +84,13 @@ export function CaptainHub({
   canEdit?: boolean
   playerFee: number
   isLeagueAdmin?: boolean
+  isSuperAdmin?: boolean
+  allTeams?: CaptainTeam[]
 }) {
-  const [activeId, setActiveId] = useState(teams[0]?.id ?? 0)
-  const team = teams.find((t) => t.id === activeId) ?? teams[0]
+  // Super admins can select any team from all teams; captains only their own
+  const selectableTeams = isSuperAdmin && allTeams ? allTeams : teams
+  const [activeId, setActiveId] = useState(selectableTeams[0]?.id ?? 0)
+  const team = selectableTeams.find((t) => t.id === activeId) ?? selectableTeams[0]
   const [pending, start] = useTransition()
   const router = useRouter()
   const [search, setSearch] = useState("")
@@ -166,10 +173,19 @@ export function CaptainHub({
 
   return (
     <div className="space-y-5">
+      {/* Header for super admins */}
+      {isSuperAdmin && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
+          <p className="text-sm text-primary font-medium">
+            As super admin, you can manage scores for any team
+          </p>
+        </div>
+      )}
+
       {/* Team selector */}
-      {teams.length > 1 && (
+      {selectableTeams.length > 1 && (
         <div className="flex flex-wrap gap-2">
-          {teams.map((t) => (
+          {selectableTeams.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveId(t.id)}
@@ -354,6 +370,7 @@ export function CaptainHub({
               onRemove={remove}
               onCancelInvite={cancelSquadInvite}
               isLeagueAdmin={isLeagueAdmin}
+              canEditRatings={canEdit}
             />
           </CardContent>
         </Card>
@@ -408,6 +425,7 @@ function SquadWithFees({
   onRemove,
   onCancelInvite,
   isLeagueAdmin,
+  canEditRatings = false,
 }: {
   team: CaptainTeam
   metaById: Map<number, PairingPlayer>
@@ -416,6 +434,7 @@ function SquadWithFees({
   onRemove: (membershipId: number) => void
   onCancelInvite: (inviteId: number) => void
   isLeagueAdmin: boolean
+  canEditRatings?: boolean
 }) {
   const active = team.roster.filter((m) => m.status !== "invited")
 
@@ -425,6 +444,40 @@ function SquadWithFees({
     active.slice(0, PAYING_PLAYERS_COUNT).forEach((m) => defaultSet.add(m.playerId))
     return defaultSet
   })
+
+  // Edit player ratings dialog state
+  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null)
+  const [editLi, setEditLi] = useState("")
+  const [editPlaytomicRating, setEditPlaytomicRating] = useState("")
+  const [editPlaytomicUrl, setEditPlaytomicUrl] = useState("")
+  const router = useRouter()
+  const [transitionPending, startTransition] = useTransition()
+
+  function openEditDialog(player: RosterMember) {
+    setEditingPlayerId(player.playerId)
+    setEditLi(player.li.toFixed(1))
+    setEditPlaytomicRating("")
+    setEditPlaytomicUrl("")
+  }
+
+  function savePlayerRatings() {
+    if (!editingPlayerId) return
+    startTransition(async () => {
+      const res = await adminUpdatePlayerRatings({
+        playerId: editingPlayerId,
+        currentLi: Math.min(7, Math.max(0, parseFloat(editLi) || 0)),
+        playtomicRating: editPlaytomicRating ? Math.min(7, Math.max(0, parseFloat(editPlaytomicRating))) : null,
+        playtomicUrl: editPlaytomicUrl || undefined,
+      })
+      if (res.ok) {
+        toast.success("Player rating updated")
+        setEditingPlayerId(null)
+        router.refresh()
+      } else {
+        toast.error(res.error || "Failed to update")
+      }
+    })
+  }
 
   function togglePaying(playerId: number) {
     setPayingIds((prev) => {
@@ -537,16 +590,29 @@ function SquadWithFees({
               ) : m.status === "invited" ? (
                 <Badge variant="secondary">Invited</Badge>
               ) : (
-                !isLeagueAdmin && (
-                  <button
-                    onClick={() => onRemove(m.membershipId)}
-                    disabled={pending}
-                    className="text-muted-foreground hover:text-destructive"
-                    aria-label={`Remove ${m.name}`}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )
+                <>
+                  {canEditRatings && (
+                    <button
+                      onClick={() => openEditDialog(m)}
+                      disabled={transitionPending}
+                      className="text-muted-foreground hover:text-primary"
+                      aria-label={`Edit ratings for ${m.name}`}
+                      title="Edit League Index & Playtomic rating"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  )}
+                  {!isLeagueAdmin && (
+                    <button
+                      onClick={() => onRemove(m.membershipId)}
+                      disabled={pending}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${m.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -587,6 +653,59 @@ function SquadWithFees({
           ))}
         </>
       )}
+
+      {/* Edit player ratings dialog */}
+      <Dialog open={editingPlayerId !== null} onOpenChange={(open) => !open && setEditingPlayerId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Player Rating</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">League Index (LI)</label>
+              <Input
+                type="number"
+                min="0"
+                max="7"
+                step="0.1"
+                value={editLi}
+                onChange={(e) => setEditLi(e.target.value)}
+                placeholder="0.0"
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Between 0.0 and 7.0</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Playtomic Rating</label>
+              <Input
+                type="number"
+                min="0"
+                max="7"
+                step="0.1"
+                value={editPlaytomicRating}
+                onChange={(e) => setEditPlaytomicRating(e.target.value)}
+                placeholder="Optional"
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Between 0.0 and 7.0 (optional)</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Playtomic URL</label>
+              <Input
+                type="url"
+                value={editPlaytomicUrl}
+                onChange={(e) => setEditPlaytomicUrl(e.target.value)}
+                placeholder="https://..."
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Player&apos;s Playtomic profile link (optional)</p>
+            </div>
+            <Button onClick={savePlayerRatings} disabled={transitionPending} className="w-full">
+              {transitionPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

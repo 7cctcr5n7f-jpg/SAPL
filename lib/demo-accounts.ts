@@ -38,14 +38,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     email: "superadmin@demo.sapl.co.za",
     blurb: "Full god-mode access — every league, club, member and admin control.",
   },
-  {
-    key: "league",
-    role: "league_admin",
-    label: "League Admin",
-    name: "Demo League Admin",
-    email: "league@demo.sapl.co.za",
-    blurb: "Run the whole competition — seasons, divisions, fixtures and members.",
-  },
+
   {
     key: "club",
     role: "org_admin",

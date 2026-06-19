@@ -32,7 +32,6 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "player", label: "Player" },
   { value: "captain", label: "Captain" },
   { value: "org_admin", label: "Club Admin" },
-  { value: "league_admin", label: "League Admin" },
   { value: "super_admin", label: "Main Admin" },
 ]
 
@@ -40,7 +39,6 @@ const ROLE_BADGE: Record<Role, string> = {
   player: "bg-secondary text-secondary-foreground",
   captain: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
   org_admin: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  league_admin: "bg-primary/15 text-primary",
   super_admin: "bg-primary text-primary-foreground",
 }
 

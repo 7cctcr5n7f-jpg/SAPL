@@ -4,12 +4,12 @@ import { userMeta, players } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies, headers } from "next/headers"
 
-export type Role = "player" | "captain" | "org_admin" | "league_admin" | "super_admin"
+export type Role = "player" | "captain" | "org_admin" | "super_admin"
 
 export const ACTING_ROLE_COOKIE = "sapl_acting_role"
 
 // Roles a super admin is allowed to impersonate (everything except themselves).
-export const IMPERSONATABLE_ROLES: Role[] = ["league_admin", "org_admin", "captain", "player"]
+export const IMPERSONATABLE_ROLES: Role[] = ["org_admin", "captain", "player"]
 
 export type CurrentUser = {
   id: string
@@ -84,5 +84,5 @@ export async function requireRole(roles: Role[]): Promise<CurrentUser> {
 }
 
 export function roleRank(role: Role): number {
-  return { player: 1, captain: 2, org_admin: 3, league_admin: 4, super_admin: 5 }[role]
+  return { player: 1, captain: 2, org_admin: 3, super_admin: 4 }[role]
 }

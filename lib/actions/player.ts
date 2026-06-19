@@ -195,7 +195,7 @@ export async function adminUpdatePlayerRatings(input: {
   playtomicUrl?: string | null
 }) {
   const me = await getCurrentUser()
-  const allowed = ["league_admin", "super_admin", "org_admin", "captain"]
+  const allowed = ["super_admin", "org_admin", "captain"]
   if (!me || !allowed.includes(me.role)) return { ok: false, error: "Not authorised" }
 
   if (input.currentLi < 0 || input.currentLi > 7) return { ok: false, error: "League Index must be between 0 and 7." }
@@ -421,7 +421,7 @@ export async function adminCreatePlayerProfile(input: {
  */
 export async function adminDeleteUsers(input: { userId?: string; all?: boolean }) {
   const me = await getCurrentUser()
-  if (!me || (me.role !== "league_admin" && me.role !== "super_admin")) {
+  if (!me || me.role !== "super_admin") {
     return { ok: false, error: "Not authorised" }
   }
 

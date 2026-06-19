@@ -108,7 +108,7 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   // their role is captain or above. Plain players should never receive
   // management permissions, even if their email coincidentally matches a
   // club's contact address.
-  const isElevatedRole = ["captain", "org_admin", "league_admin", "super_admin"].includes(user.role)
+  const isElevatedRole = ["captain", "org_admin", "super_admin"].includes(user.role)
   if (clubIds.length > 0 && !isLeagueAdmin && isElevatedRole) {
     permissions.add("club_management")
     permissions.add("fixture_management")

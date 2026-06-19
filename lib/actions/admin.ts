@@ -35,8 +35,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 async function requireAdmin() {
   const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
-  if (user.realRole !== "league_admin" && user.realRole !== "super_admin") {
-    throw new Error("League admin access required")
+  if (user.realRole !== "super_admin") {
+    throw new Error("Super admin access required")
   }
   return user
 }
