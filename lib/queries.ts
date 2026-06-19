@@ -267,17 +267,17 @@ export async function getTeamDetail(teamId: number) {
   const roster = await db
     .select({
       memberId: teamMembers.id,
-      playerId: userTable.id,
-      firstName: userTable.firstName,
-      lastName: userTable.lastName,
+      playerId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
       gender: players.gender,
-      currentLi: userTable.currentLi,
+      currentLi: user.currentLi,
       currentTpr: players.currentTpr,
       role: teamMembers.role,
       status: teamMembers.status,
     })
     .from(teamMembers)
-    .leftJoin(players, eq(teamMembers.playerId, userTable.id))
+    .leftJoin(players, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
 
   const history = await db
@@ -313,9 +313,9 @@ export async function getPrizePool() {
 export async function getFreeAgents() {
   return db
     .select()
-    .from(userTable)
+    .from(user)
     .where(eq(players.lookingForTeam, true))
-    .orderBy(desc(userTable.currentLi))
+    .orderBy(desc(user.currentLi))
     .limit(200)
 }
 
@@ -330,7 +330,7 @@ export async function getClubOptions() {
 export async function getLeagueStats() {
   const [teamCount] = await db.select({ c: sql<number>`count(*)::int` }).from(teams)
   const [orgCount] = await db.select({ c: sql<number>`count(*)::int` }).from(organisations)
-  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(userTable)
+  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(user)
   const [fixtureCount] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(fixtures)

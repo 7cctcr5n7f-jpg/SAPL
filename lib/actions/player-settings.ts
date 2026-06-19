@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { user as userTable } from "@/lib/db/schema"
+import { user as user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -32,13 +32,13 @@ export async function updatePlayerSettings(input: {
   }
 
   await db
-    .update(userTable)
+    .update(user)
     .set({
       isPlayer: input.isPlayer,
       onMarketplace: input.isPlayer && input.onMarketplace, // Can only be on marketplace if a player
       updatedAt: new Date(),
     })
-    .where(eq(userTable.id, user.id))
+    .where(eq(user.id, user.id))
 
   revalidatePath("/dashboard/profile")
   revalidatePath("/marketplace")

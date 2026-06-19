@@ -1,12 +1,12 @@
 import { db } from "@/lib/db"
-import { teams, organisations, clubs, fixtures, user as userTable, teamMembers, divisions } from "@/lib/db/schema"
+import { teams, organisations, clubs, fixtures, user as user, teamMembers, divisions } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, ne, isNotNull, sql } from "drizzle-orm"
 import { SAPL_REGIONS } from "@/lib/constants"
 
 /** Headline + founding counts for the live stats band. */
 export async function getLandingStats() {
-  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(userTable)
+  const [playerCount] = await db.select({ c: sql<number>`count(*)::int` }).from(user)
   const [teamCount] = await db.select({ c: sql<number>`count(*)::int` }).from(teams)
   const [venueCount] = await db.select({ c: sql<number>`count(*)::int` }).from(clubs)
   const [matchCount] = await db

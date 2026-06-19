@@ -364,12 +364,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         .select({
           teamId: teamPairings.teamId,
           category: teamPairings.category,
-          firstName: userTable.firstName,
-          lastName: userTable.lastName,
-          currentLi: userTable.currentLi,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          currentLi: user.currentLi,
         })
         .from(teamPairings)
-        .innerJoin(players, eq(teamPairings.playerId, userTable.id))
+        .innerJoin(players, eq(teamPairings.playerId, user.id))
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
 

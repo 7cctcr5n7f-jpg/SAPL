@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, user as userTable, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
+import { user, userMeta, user as user, teams, teamMembers, organisations, clubs } from "@/lib/db/schema"
 import { eq, and, asc } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -61,8 +61,8 @@ export async function listMembers(): Promise<MemberRow[]> {
       phone: userMeta.phone,
       role: userMeta.role,
       permissions: userMeta.permissions,
-      firstName: userTable.firstName,
-      lastName: userTable.lastName,
+      firstName: user.firstName,
+      lastName: user.lastName,
       createdAt: user.createdAt,
     })
     .from(user)
@@ -409,13 +409,13 @@ async function ensurePlayerProfile(
     bio: extra?.bio?.trim() || null,
   }
 
-  const [existing] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1)
   if (existing) {
     // Reuse an existing profile but apply the details supplied here.
     await db
-      .update(userTable)
+      .update(user)
       .set({ firstName: firstName || "New", lastName: lastName || "Player", isPlayer: true, ...profileValues, updatedAt: new Date() })
-      .where(eq(userTable.id, existing.id))
+      .where(eq(user.id, existing.id))
     return existing.id
   }
 }
@@ -546,7 +546,7 @@ export async function createPlayerAccount(input: {
     } else {
       await db.insert(teamMembers).values({ teamId: targetTeam.id, playerId, role: "member", status: "active" })
     }
-    await db.update(userTable).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(userTable.id, playerId))
+    await db.update(user).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(user.id, playerId))
     await recomputeTeamStats(targetTeam.id)
   }
 

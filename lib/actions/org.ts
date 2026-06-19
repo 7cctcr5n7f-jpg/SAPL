@@ -191,7 +191,7 @@ export async function updateTeamRegistration(input: {
   }
   if (input.managerPlayerId !== undefined) {
     if (input.managerPlayerId) {
-      const [p] = await db.select().from(userTable).where(eq(userTable.id, input.managerPlayerId)).limit(1)
+      const [p] = await db.select().from(user).where(eq(user.id, input.managerPlayerId)).limit(1)
       patch.managerUserId = p?.userId ?? null
     } else {
       patch.managerUserId = null
@@ -221,7 +221,7 @@ export async function assignCaptain(formData: FormData) {
     return { ok: false, error: "You cannot manage this team." }
   }
 
-  const [player] = await db.select().from(userTable).where(eq(userTable.id, playerId)).limit(1)
+  const [player] = await db.select().from(user).where(eq(user.id, playerId)).limit(1)
   if (!player?.userId) return { ok: false, error: "Player has no linked account" }
 
   await db.update(teams).set({ captainUserId: player.userId }).where(eq(teams.id, teamId))
@@ -288,13 +288,13 @@ export async function updateCaptainContact(input: {
   const lastName = input.lastName.trim()
   if (!firstName || !lastName) return { ok: false, error: "First and last name are required." }
 
-  const [player] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
+  const [player] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
   if (!player?.userId) return { ok: false, error: "Captain not found." }
 
   await db
     .update(players)
     .set({ firstName, lastName, updatedAt: new Date() })
-    .where(eq(userTable.id, input.playerId))
+    .where(eq(user.id, input.playerId))
 
   const phone = input.phone?.trim() || null
   const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, player.userId)).limit(1)
@@ -492,7 +492,7 @@ export async function setMarketplaceListing(listed: boolean) {
       availability: listed ? "available" : "unavailable",
       updatedAt: new Date(),
     })
-    .where(eq(userTable.id, user.playerId))
+    .where(eq(user.id, user.playerId))
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/profile")
   return { ok: true }

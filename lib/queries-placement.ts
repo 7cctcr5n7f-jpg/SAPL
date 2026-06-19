@@ -8,7 +8,7 @@ import {
   players,
   seasons,
   regions,
-  user as userTable,
+  user as user,
 } from "@/lib/db/schema"
 import { and, eq, asc } from "drizzle-orm"
 import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
@@ -19,12 +19,12 @@ export type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "
 async function nameForUserId(userId: string | null): Promise<string | null> {
   if (!userId) return null
   const [p] = await db
-    .select({ first: userTable.firstName, last: userTable.lastName })
-    .from(userTable)
-    .where(eq(userTable.id, userId))
+    .select({ first: user.firstName, last: user.lastName })
+    .from(user)
+    .where(eq(user.id, userId))
     .limit(1)
   if (p) return `${p.first} ${p.last}`
-  const [u] = await db.select({ name: userTable.name }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  const [u] = await db.select({ name: user.name }).from(user).where(eq(user.id, userId)).limit(1)
   return u?.name ?? null
 }
 
@@ -98,16 +98,16 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
 export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
   const rows = await db
     .select({
-      playerId: userTable.id,
-      first: userTable.firstName,
-      last: userTable.lastName,
-      li: userTable.currentLi,
-      userId: userTable.id,
+      playerId: user.id,
+      first: user.firstName,
+      last: user.lastName,
+      li: user.currentLi,
+      userId: user.id,
     })
     .from(teamMembers)
-    .innerJoin(players, eq(teamMembers.playerId, userTable.id))
+    .innerJoin(players, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
-    .orderBy(asc(userTable.currentLi))
+    .orderBy(asc(user.currentLi))
 
   const [team] = await db.select({ captainUserId: teams.captainUserId }).from(teams).where(eq(teams.id, teamId)).limit(1)
 

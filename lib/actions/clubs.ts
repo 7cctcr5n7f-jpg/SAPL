@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { clubs, organisations, teams, teamMembers, user as userTable, userMeta } from "@/lib/db/schema"
+import { clubs, organisations, teams, teamMembers, user as user, userMeta } from "@/lib/db/schema"
 import { and, asc, eq, ne } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -254,7 +254,7 @@ export async function setClubTeamCaptain(input: {
     return { ok: true }
   }
 
-  const [player] = await db.select().from(userTable).where(eq(userTable.id, input.playerId)).limit(1)
+  const [player] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
   if (!player) return { ok: false, error: "Player not found" }
 
   await db.update(teams).set({ captainUserId: player.id, updatedAt: new Date() }).where(eq(teams.id, team.id))

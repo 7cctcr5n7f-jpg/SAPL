@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/session"
 import { getPlayerByUserId } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { userMeta, user as userTable, teamMembers } from "@/lib/db/schema"
+import { userMeta, user as user, teamMembers } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { ProfileForm } from "@/components/dashboard/profile-form"
@@ -17,9 +17,9 @@ export default async function ProfilePage() {
   
   // Get user data with player flags
   const [userData] = await db
-    .select({ isPlayer: userTable.isPlayer, onMarketplace: userTable.onMarketplace })
-    .from(userTable)
-    .where(eq(userTable.id, me.id))
+    .select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace })
+    .from(user)
+    .where(eq(user.id, me.id))
     .limit(1)
   
   // Check if user is on a team

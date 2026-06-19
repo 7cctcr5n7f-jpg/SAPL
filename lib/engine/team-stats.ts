@@ -12,9 +12,9 @@ export async function recomputeTeamStats(teamId: number) {
   if (!team) return
 
   const roster = await db
-    .select({ li: userTable.currentLi })
+    .select({ li: user.currentLi })
     .from(teamMembers)
-    .innerJoin(players, eq(userTable.id, teamMembers.playerId))
+    .innerJoin(players, eq(user.id, teamMembers.playerId))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
 
   const playerCount = roster.length

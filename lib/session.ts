@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { userMeta, user as userTable } from "@/lib/db/schema"
+import { userMeta, user as user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies, headers } from "next/headers"
 
@@ -49,7 +49,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   let isPlayer = false
   let onMarketplace = false
   try {
-    const [userData] = await db.select({ isPlayer: userTable.isPlayer, onMarketplace: userTable.onMarketplace }).from(userTable).where(eq(userTable.id, session.user.id)).limit(1)
+    const [userData] = await db.select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace }).from(user).where(eq(user.id, session.user.id)).limit(1)
     isPlayer = userData?.isPlayer ?? false
     onMarketplace = userData?.onMarketplace ?? false
   } catch (err) {

@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { user as userTable, userMeta } from "@/lib/db/schema"
+import { user as user, userMeta } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -66,7 +66,7 @@ export async function createPlayerProfile(
     updatedAt: new Date(),
   }
 
-  await db.update(userTable).set(values).where(eq(userTable.id, user.id))
+  await db.update(user).set(values).where(eq(user.id, user.id))
 
   // Auto-join any teams that invited this email address.
   try {

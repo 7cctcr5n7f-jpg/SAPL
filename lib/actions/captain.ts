@@ -6,7 +6,7 @@ import {
   fixtures,
   teams,
   teamMembers,
-  user as userTable,
+  user as user,
   notifications,
   fixtureUnavailable,
 } from "@/lib/db/schema"
@@ -191,12 +191,12 @@ export async function addPlayer(teamId: number, playerId: number) {
     })
   }
 
-  const [player] = await db.select().from(userTable).where(eq(userTable.id, playerId)).limit(1)
+  const [player] = await db.select().from(user).where(eq(user.id, playerId)).limit(1)
   if (player) {
     await db
-      .update(userTable)
+      .update(user)
       .set({ availability: "on_team", lookingForTeam: false, onMarketplace: false, updatedAt: new Date() })
-      .where(eq(userTable.id, playerId))
+      .where(eq(user.id, playerId))
     await db.insert(notifications).values({
       userId: player.id,
       type: "team_invite",

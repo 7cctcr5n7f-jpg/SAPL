@@ -9,7 +9,7 @@ import {
   getUnassignedPlayers,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, user as userTable, user as authUser, userMeta, payments } from "@/lib/db/schema"
+import { organisations, user as user, user as authUser, userMeta, payments } from "@/lib/db/schema"
 import { eq, and, desc } from "drizzle-orm"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage } from "@/lib/queries-clubs"
@@ -78,7 +78,7 @@ export default async function OrgPage() {
   const captainMap = new Map<string, CaptainInfo>()
   for (const cid of captainIds) {
     if (captainMap.has(cid)) continue
-    const [p] = await db.select().from(userTable).where(eq(userTable.id, cid)).limit(1)
+    const [p] = await db.select().from(user).where(eq(user.id, cid)).limit(1)
     if (!p) continue
     const [u] = await db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, cid)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)
