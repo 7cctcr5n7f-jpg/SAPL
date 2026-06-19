@@ -4,7 +4,6 @@ import { db } from "@/lib/db"
 import {
   teams,
   organisations,
-  players,
   teamMembers,
   userMeta,
   clubs,
@@ -16,7 +15,7 @@ import {
   payments,
   fixtures,
   regions,
-  user as authUser,
+  user,
 } from "@/lib/db/schema"
 import { eq, and, ne, sql } from "drizzle-orm"
 import { isSeasonLocked } from "@/lib/season-lock"
@@ -131,7 +130,7 @@ export async function updateTeamRegistration(input: {
   teamType?: string
   homeClubId?: number | null
   saplRegion?: string | null
-  managerPlayerId?: number | null
+  managerPlayerId?: string | null
   clubPaysFees?: boolean
   ownerEmail?: string | null
 }) {
@@ -192,7 +191,7 @@ export async function updateTeamRegistration(input: {
   if (input.managerPlayerId !== undefined) {
     if (input.managerPlayerId) {
       const [p] = await db.select().from(user).where(eq(user.id, input.managerPlayerId)).limit(1)
-      patch.managerUserId = p?.userId ?? null
+      patch.managerUserId = p?.id ?? null
     } else {
       patch.managerUserId = null
     }
@@ -208,35 +207,35 @@ export async function updateTeamRegistration(input: {
 
 export async function assignCaptain(formData: FormData) {
   const teamId = Number(formData.get("teamId"))
-  const playerId = Number(formData.get("playerId"))
+  const playerId = String(formData.get("playerId"))
   const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
   // Authorise via the access context so org owners, league admins AND club/team
   // managers who have this team in their scope can assign a captain. (Using
   // requireOrgOwner here would reject club managers and throw.)
-  const user = await getCurrentUser()
-  if (!user) return { ok: false, error: "Not authenticated" }
-  const access = await getAccessContext(user)
+  const currentUser = await getCurrentUser()
+  if (!currentUser) return { ok: false, error: "Not authenticated" }
+  const access = await getAccessContext(currentUser)
   if (!access.can("team_management") || !access.canManageTeam(teamId)) {
     return { ok: false, error: "You cannot manage this team." }
   }
 
   const [player] = await db.select().from(user).where(eq(user.id, playerId)).limit(1)
-  if (!player?.userId) return { ok: false, error: "Player has no linked account" }
+  if (!player?.id) return { ok: false, error: "Player not found" }
 
-  await db.update(teams).set({ captainUserId: player.userId }).where(eq(teams.id, teamId))
+  await db.update(teams).set({ captainUserId: player.id }).where(eq(teams.id, teamId))
   // Only elevate to "captain" if the user is currently a plain player (or has
   // no meta row yet). Never downgrade league_admin / super_admin / org_admin.
   const adminRoles = ["league_admin", "super_admin", "org_admin"]
   const [existingMeta] = await db
     .select({ role: userMeta.role })
     .from(userMeta)
-    .where(eq(userMeta.userId, player.userId))
+    .where(eq(userMeta.userId, player.id))
     .limit(1)
   if (!existingMeta) {
-    await db.insert(userMeta).values({ userId: player.userId, role: "captain" })
+    await db.insert(userMeta).values({ userId: player.id, role: "captain" })
   } else if (!adminRoles.includes(existingMeta.role ?? "")) {
-    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.userId))
+    await db.update(userMeta).set({ role: "captain" }).where(eq(userMeta.userId, player.id))
   }
   // ensure roster membership
   const [m] = await db
@@ -251,7 +250,7 @@ export async function assignCaptain(formData: FormData) {
   }
 
   await notify({
-    userId: player.userId,
+    userId: player.id,
     scope: "user",
     type: "captain_assigned",
     title: "You are now a team captain",
@@ -271,7 +270,7 @@ export async function assignCaptain(formData: FormData) {
  */
 export async function updateCaptainContact(input: {
   teamId: number
-  playerId: number
+  playerId: string
   firstName: string
   lastName: string
   phone: string | null
@@ -289,19 +288,18 @@ export async function updateCaptainContact(input: {
   if (!firstName || !lastName) return { ok: false, error: "First and last name are required." }
 
   const [player] = await db.select().from(user).where(eq(user.id, input.playerId)).limit(1)
-  if (!player?.userId) return { ok: false, error: "Captain not found." }
+  if (!player?.id) return { ok: false, error: "Captain not found." }
 
   await db
-    .update(players)
+    .update(user)
     .set({ firstName, lastName, updatedAt: new Date() })
     .where(eq(user.id, input.playerId))
 
-  const phone = input.phone?.trim() || null
-  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, player.userId)).limit(1)
+  const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, player.id)).limit(1)
   if (meta) {
-    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, player.userId))
+    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, player.id))
   } else {
-    await db.insert(userMeta).values({ userId: player.userId, phone })
+    await db.insert(userMeta).values({ userId: player.id, phone })
   }
 
   revalidatePath("/dashboard/org")
@@ -361,8 +359,8 @@ export async function deleteTeam(teamId: number) {
     const [owner] = await db
       .select({ userId: userMeta.userId })
       .from(userMeta)
-      .innerJoin(authUser, eq(authUser.id, userMeta.userId))
-      .where(sql`lower(${authUser.email}) = ${team.ownerEmail.trim().toLowerCase()}`)
+      .innerJoin(user, eq(user.id, userMeta.userId))
+      .where(sql`lower(${user.email}) = ${team.ownerEmail.trim().toLowerCase()}`)
       .limit(1)
     if (owner) await revokeTeamOwnerPermissionsIfOrphaned(owner.userId, team.ownerEmail)
   }
@@ -483,16 +481,16 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
  * by the Overview "List yourself on the Marketplace" control.
  */
 export async function setMarketplaceListing(listed: boolean) {
-  const user = await getCurrentUser()
-  if (!user?.playerId) return { ok: false, error: "Complete your player profile first." }
+  const currentUser = await getCurrentUser()
+  if (!currentUser?.isPlayer) return { ok: false, error: "Complete your player profile first." }
   await db
-    .update(players)
+    .update(user)
     .set({
       lookingForTeam: listed,
       availability: listed ? "available" : "unavailable",
       updatedAt: new Date(),
     })
-    .where(eq(user.id, user.playerId))
+    .where(eq(user.id, currentUser.id))
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/profile")
   return { ok: true }
