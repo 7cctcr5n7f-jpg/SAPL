@@ -9,7 +9,7 @@ import {
   getUnassignedPlayers,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, user as user, user as authUser, userMeta, payments } from "@/lib/db/schema"
+import { organisations, user as userTable, userMeta, payments } from "@/lib/db/schema"
 import { eq, and, desc } from "drizzle-orm"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage } from "@/lib/queries-clubs"
@@ -38,7 +38,7 @@ export default async function OrgPage() {
   // Admins, and club managers without an owned org, borrow a sample org so the
   // create-team dialog still has a context to attach new teams to.
   if (!org && (isAdminWide || user.isSuperAdmin || hasScopedAccess)) {
-    const [sample] = await db.select({ id: organisations.id }).from(organisations).orderBy(organisations.id).limit(1)
+    const [sample] = await db.select({ id: organisations.id, ownerUserId: organisations.ownerUserId }).from(organisations).orderBy(organisations.id).limit(1)
     org = sample ?? null
   }
 
@@ -79,9 +79,9 @@ export default async function OrgPage() {
   for (const cid of captainIds) {
     if (captainMap.has(cid)) continue
     const [p] = await db
-      .select({ firstName: user.firstName, lastName: user.lastName, email: user.email })
-      .from(user)
-      .where(eq(user.id, cid))
+      .select({ firstName: userTable.firstName, lastName: userTable.lastName, email: userTable.email })
+      .from(userTable)
+      .where(eq(userTable.id, cid))
       .limit(1)
     if (!p) continue
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, cid)).limit(1)

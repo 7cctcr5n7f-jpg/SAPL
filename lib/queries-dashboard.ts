@@ -971,7 +971,11 @@ export async function getUnassignedPlayers(
 
 export async function getTeamFixtures(teamId: number) {
   const rows = await db
-    .select()
+    .select({
+      id: fixtures.id, week: fixtures.week, fixtureDate: fixtures.fixtureDate,
+      homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId,
+      venueId: fixtures.venueId, status: fixtures.status, divisionId: fixtures.divisionId,
+    })
     .from(fixtures)
     .where(or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)))
     .orderBy(fixtures.week)
@@ -993,7 +997,7 @@ export async function getTeamFixtures(teamId: number) {
 }
 
 export async function getCategories() {
-  return db.select({ id: categories.id }).from(categories).orderBy(categories.sortOrder)
+  return db.select({ id: categories.id, name: categories.name, sortOrder: categories.sortOrder }).from(categories).orderBy(categories.sortOrder)
 }
 
 // Per-category set scores for a set of fixtures, used to pre-fill result edits.
@@ -1023,7 +1027,11 @@ export async function getDivisionTeams(divisionId: number) {
 // Free agents (marketplace) for captain invitations
 export async function getFreeAgents(limit = 50) {
   return db
-    .select()
+    .select({
+      id: user.id, firstName: user.firstName, lastName: user.lastName,
+      currentLi: user.currentLi, playtomicRating: user.playtomicRating,
+      gender: user.gender, city: user.city, email: user.email,
+    })
     .from(user)
     .where(eq(user.lookingForTeam, true))
     .orderBy(desc(user.currentLi))
