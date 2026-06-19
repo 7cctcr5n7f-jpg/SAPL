@@ -736,6 +736,15 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
   // A non-admin with no teams in scope manages nobody.
   if (scopedTeamIds && scopedTeamIds.length === 0) return []
 
+  let whereCondition
+  if (scopedTeamIds === null) {
+    // League admin: see all players
+    whereCondition = eq(user.isPlayer, true)
+  } else {
+    // Scoped admin/captain: only players from their teams
+    whereCondition = and(eq(user.isPlayer, true), teams.id.inArray(scopedTeamIds))
+  }
+
   const rows = await db
     .select({
       playerId: user.id,
@@ -754,6 +763,7 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
     .leftJoin(teamMembers, and(eq(teamMembers.playerId, user.id), eq(teamMembers.status, "active")))
     .leftJoin(teams, eq(teamMembers.teamId, teams.id))
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .where(whereCondition)
     .orderBy(user.firstName, user.lastName)
 
   const byPlayer = new Map<string, ManagedPlayer & { userId: string }>()
