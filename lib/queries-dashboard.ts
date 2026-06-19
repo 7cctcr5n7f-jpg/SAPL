@@ -1082,25 +1082,51 @@ export async function getOrgByOwner(userId: string) {
   return o ?? null
 }
 
+// Shared team+division field shape used by all three team-row queries below.
+const teamRowFields = {
+  team: {
+    id: teams.id,
+    name: teams.name,
+    divisionId: teams.divisionId,
+    seasonId: teams.seasonId,
+    organisationId: teams.organisationId,
+    captainUserId: teams.captainUserId,
+    homeClubId: teams.homeClubId,
+    teamType: teams.teamType,
+    clubPaysFees: teams.clubPaysFees,
+    managerUserId: teams.managerUserId,
+    ownerEmail: teams.ownerEmail,
+    avgLi: teams.avgLi,
+    tpr: teams.tpr,
+    playerCount: teams.playerCount,
+    maxPlayers: teams.maxPlayers,
+    saplRegion: teams.saplRegion,
+  },
+  division: {
+    id: divisions.id,
+    name: divisions.name,
+    level: divisions.level,
+    seasonId: divisions.seasonId,
+  },
+}
+
 export async function getOrgTeams(orgId: number) {
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .where(eq(teams.organisationId, orgId))
     .orderBy(teams.name)
-  return rows
 }
 
 // League/super admins manage every team, not just one org's. Returns the same
 // shape as getOrgTeams so the Team Admin page can render either set.
 export async function getAllTeamsForAdmin() {
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .orderBy(teams.name)
-  return rows
 }
 
 // Teams a club manager may manage in Team Admin: every team within their access
@@ -1112,16 +1138,25 @@ export async function getScopedTeamRows(access: AccessContext) {
   // null means "no restriction" (league admin) — callers handle that separately.
   if (scopedTeamIds === null) return getAllTeamsForAdmin()
   if (scopedTeamIds.length === 0) return []
-  const rows = await db
-    .select({ team: teams, division: divisions })
+  return db
+    .select(teamRowFields)
     .from(teams)
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
     .where(inArray(teams.id, scopedTeamIds))
     .orderBy(teams.name)
-  return rows
 }
 
 export async function getStandingForTeam(teamId: number) {
-  const [s] = await db.select({ id: standings.id }).from(standings).where(eq(standings.teamId, teamId)).limit(1)
+  const [s] = await db
+    .select({
+      id: standings.id,
+      played: standings.played,
+      wins: standings.wins,
+      points: standings.points,
+      rank: standings.rank,
+    })
+    .from(standings)
+    .where(eq(standings.teamId, teamId))
+    .limit(1)
   return s ?? null
 }
