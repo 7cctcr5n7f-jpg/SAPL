@@ -20,7 +20,7 @@ import {
   regions,
   clubs,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne, isNotNull, sql } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 
@@ -640,8 +640,8 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
 
     result.push({
       kind: "team",
-      // Negative id keeps the row key unique and clearly non-player.
-      playerId: -t.teamId,
+      // Negative-team-id string keeps the row key unique and clearly non-player.
+      playerId: String(-t.teamId),
       playerName: ownerName,
       email,
       phone,
@@ -760,14 +760,13 @@ export async function getManagedPlayers(access: AccessContext): Promise<ManagedP
 
   let whereCondition
   if (scopedTeamIds === null) {
-    // League admin: see all players and admin users
-    whereCondition = sql`${user.isPlayer} = true OR ${user.role} IN ('super_admin', 'org_admin', 'league_admin')`
+    // League admin: see every user (players AND admin-only accounts). Their real
+    // League Index, Playtomic rating and team memberships pull through via the
+    // joins below — so admins like Ruan show full data, not an empty placeholder.
+    whereCondition = undefined
   } else {
-    // Scoped admin/captain: only players from their teams or admins on those teams
-    whereCondition = and(
-      sql`(${user.isPlayer} = true OR ${user.role} IN ('org_admin', 'captain'))`,
-      teams.id.inArray(scopedTeamIds)
-    )
+    // Scoped admin/captain: only users who belong to a team within their scope.
+    whereCondition = inArray(teams.id, scopedTeamIds)
   }
 
   const rows = await db

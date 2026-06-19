@@ -350,7 +350,7 @@ export const teamPairings = pgTable(
     category: text("category").notNull(), // e.g. "Mens Beginner"
     pairIndex: integer("pairIndex").notNull().default(1), // 1 or 2 (which block)
     slotIndex: integer("slotIndex").notNull().default(1), // 1 or 2 (player in the pair)
-    playerId: integer("playerId"), // null = empty slot
+    playerId: text("playerId"), // user id; null = empty slot
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -465,7 +465,7 @@ export const fixtureUnavailable = pgTable(
     id: serial("id").primaryKey(),
     fixtureId: integer("fixtureId").notNull(),
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(),
+    playerId: text("playerId").notNull(), // user id
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (t) => ({
@@ -772,7 +772,7 @@ export const feeNotes = pgTable(
     id: serial("id").primaryKey(),
     kind: text("kind").notNull(), // player | team
     teamId: integer("teamId").notNull(),
-    playerId: integer("playerId").notNull(), // negative for team-funded rows
+    playerId: text("playerId").notNull(), // user id for player rows; "-<teamId>" sentinel for team-funded rows
     note: text("note"),
     lastReminderAt: timestamp("lastReminderAt"),
     reminderCount: integer("reminderCount").notNull().default(0),

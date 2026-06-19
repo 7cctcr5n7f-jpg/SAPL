@@ -277,7 +277,7 @@ export async function getTeamDetail(teamId: number) {
       status: teamMembers.status,
     })
     .from(teamMembers)
-    .leftJoin(players, eq(teamMembers.playerId, user.id))
+    .leftJoin(user, eq(teamMembers.playerId, user.id))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
 
   const history = await db
