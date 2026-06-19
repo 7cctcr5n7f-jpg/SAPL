@@ -418,7 +418,7 @@ export function CaptainHub({
   )
 }
 
-// ─── Squad + Fee selector ──────────────────────────────────────────────────────
+// ─── Squad + Fee selector ─────────────────────────────────────────────���────────
 
 function SquadWithFees({
   team,
@@ -533,6 +533,18 @@ function SquadWithFees({
       {team.roster.length === 0 && (
         <p className="text-sm text-muted-foreground">No players yet. Add free agents to build your squad.</p>
       )}
+      {/* Header row */}
+      <div className="grid grid-cols-12 gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground mb-2">
+        {!team.clubPaysFees && <div className="col-span-1 text-center">Paid</div>}
+        <div className={!team.clubPaysFees ? "col-span-3" : "col-span-4"}>Player</div>
+        <div className="col-span-1 text-center">LI</div>
+        <div className="col-span-1 text-center">PT</div>
+        <div className="col-span-2">Contact</div>
+        <div className="col-span-1 text-center">Role</div>
+        <div className="col-span-2 text-right">Actions</div>
+      </div>
+
+      {/* Data rows */}
       {team.roster.map((m) => {
         const meta = metaById.get(m.playerId)
         const isPaying = team.clubPaysFees ? (meta?.paid ?? true) : payingIds.has(m.playerId)
@@ -541,94 +553,103 @@ function SquadWithFees({
         return (
           <div
             key={m.membershipId}
-            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            className="grid grid-cols-12 gap-2 rounded-md border border-border px-3 py-3 text-sm items-center hover:bg-muted/20 transition-colors"
           >
-            {/* Paying checkbox — only for player-pays teams, active members only */}
-            {!team.clubPaysFees && isActive && (
-              <button
-                onClick={() => togglePaying(m.playerId)}
-                aria-label={isPaying ? "Remove from paying" : "Mark as paying"}
-                className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors",
-                  isPaying
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-slate-300 bg-white text-transparent hover:border-primary",
+            {/* Paying checkbox */}
+            {!team.clubPaysFees && (
+              <div className="col-span-1 flex justify-center">
+                {isActive && (
+                  <button
+                    onClick={() => togglePaying(m.playerId)}
+                    aria-label={isPaying ? "Remove from paying" : "Mark as paying"}
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center rounded border-2 transition-colors",
+                      isPaying
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-slate-300 bg-white text-transparent hover:border-primary",
+                    )}
+                  >
+                    <Check className="h-3 w-3" />
+                  </button>
                 )}
-              >
-                <Check className="h-3 w-3" />
-              </button>
+              </div>
             )}
 
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="flex items-center gap-1 truncate font-medium">
-                  <span className={cn("truncate", !team.clubPaysFees && isActive && !isPaying && "text-muted-foreground")}>
+            {/* Player Name */}
+            <div className={!team.clubPaysFees ? "col-span-3" : "col-span-4"}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="h-7 w-7 shrink-0">
+                  <AvatarFallback className="text-xs">{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className={cn("truncate font-medium", !team.clubPaysFees && isActive && !isPaying && "text-muted-foreground")}>
                     {m.name}
-                  </span>
-                </p>
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* LI Column */}
-            <div className="hidden shrink-0 text-center sm:block">
-              <p className="font-medium">{m.li.toFixed(1)}</p>
-              <p className="text-xs text-muted-foreground">LI</p>
+            {/* LI */}
+            <div className="col-span-1 text-center font-medium">
+              {m.li.toFixed(1)}
             </div>
 
-            {/* Playtomic Rating Column */}
-            {m.playtomicRating && (
-              <div className="hidden shrink-0 text-center sm:block">
-                <p className="font-medium">{m.playtomicRating}</p>
-                <p className="text-xs text-muted-foreground">PT</p>
-              </div>
-            )}
+            {/* Playtomic Rating */}
+            <div className="col-span-1 text-center">
+              {m.playtomicRating ? (
+                <span className="font-medium">{m.playtomicRating}</span>
+              ) : (
+                <span className="text-muted-foreground text-xs">—</span>
+              )}
+            </div>
 
-            {/* Contact Column */}
-            {m.email && (
-              <div className="hidden shrink-0 text-xs sm:block">
-                <p className="font-medium">{m.email?.split("@")[0]}</p>
-              </div>
-            )}
+            {/* Contact Info */}
+            <div className="col-span-2 text-xs">
+              {m.email || m.playtomicUrl ? (
+                <div className="space-y-0.5">
+                  {m.email && <div className="truncate">{m.email}</div>}
+                  {m.playtomicUrl && (
+                    <a
+                      href={m.playtomicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-xs"
+                      title="View Playtomic profile"
+                    >
+                      Playtomic
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </div>
 
-            {/* Playtomic URL */}
-            {m.playtomicUrl && (
-              <div className="shrink-0">
-                <a
-                  href={m.playtomicUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline"
-                  title="View Playtomic profile"
-                >
-                  Playtomic
-                </a>
-              </div>
-            )}
-
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Paid indicator */}
-              {team.clubPaysFees && (
+            {/* Role/Status */}
+            <div className="col-span-1 text-center">
+              {m.role === "captain" ? (
+                <Badge variant="default" className="text-xs">Captain</Badge>
+              ) : m.status === "invited" ? (
+                <Badge variant="secondary" className="text-xs">Invited</Badge>
+              ) : team.clubPaysFees ? (
                 <span
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-600"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-600 text-xs"
                   title="Covered by club"
                 >
-                  <DollarSign className="h-3.5 w-3.5" />
+                  <DollarSign className="h-3 w-3" />
                 </span>
-              )}
-              {m.role === "captain" ? (
-                <Badge>Captain</Badge>
-              ) : m.status === "invited" ? (
-                <Badge variant="secondary">Invited</Badge>
-              ) : (
+              ) : null}
+            </div>
+
+            {/* Actions */}
+            <div className="col-span-2 flex justify-end gap-1">
+              {m.status !== "invited" && (
                 <>
                   {canEditRatings && (
                     <button
                       onClick={() => openEditDialog(m)}
                       disabled={transitionPending}
-                      className="text-muted-foreground hover:text-primary"
+                      className="p-1 text-muted-foreground hover:text-primary transition-colors rounded hover:bg-muted"
                       aria-label={`Edit ratings for ${m.name}`}
                       title="Edit League Index & Playtomic rating"
                     >
@@ -639,8 +660,9 @@ function SquadWithFees({
                     <button
                       onClick={() => onRemove(m.membershipId)}
                       disabled={pending}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded hover:bg-muted"
                       aria-label={`Remove ${m.name}`}
+                      title="Remove player"
                     >
                       <X className="h-4 w-4" />
                     </button>
