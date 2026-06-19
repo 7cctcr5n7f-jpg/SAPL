@@ -27,7 +27,9 @@ export default async function DashboardOverview() {
   const me = await getCurrentUser()
   if (!me) return null
   const access = await getAccessContext(me)
-  const player = me.isPlayer ? await getPlayerByUserId(me.id) : null
+  // Load player data for everyone — admins also have LI, ratings, and teams.
+  // isPlayer=false only gates the onboarding redirect, not whether data exists.
+  const player = await getPlayerByUserId(me.id)
   const memberships = player ? await getPlayerMemberships(me.id) : []
   const payments = player ? await getPlayerPayments(me.id, me.id) : []
   const teamFees = player ? await getPlayerTeamFees(me.id) : []

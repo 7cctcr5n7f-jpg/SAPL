@@ -43,7 +43,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
 
-  const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
+  const [meta] = await db.select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
   
   // Try to fetch player status, but gracefully handle missing columns during migration
   let isPlayer = false
