@@ -42,17 +42,16 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 /**
  * Default permissions for each role, exactly per the SAPL brief.
  * - player: none (Overview/League Centre/Profile are always available)
- * - captain: player, billing, fixture, captain_hub
- * - org_admin (Club Admin): everything except league_management
+ * - captain: fixture, captain_hub (player_management removed — league admin only)
+ * - org_admin (Club Admin): club, team, fixture, captain_hub (player_management removed — league admin only)
  * - league_admin / super_admin: everything
  */
 export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
   player: [],
-  captain: ["player_management", "fixture_management", "captain_hub"],
+  captain: ["fixture_management", "captain_hub"],
   org_admin: [
     "club_management",
     "team_management",
-    "player_management",
     "fixture_management",
     "captain_hub",
   ],
@@ -63,12 +62,11 @@ export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
 /**
  * Permissions automatically granted to a self-service Team Owner — someone who
  * created their own team from the dashboard. This mirrors a club admin's powers
- * minus club_management and league_management, scoped (by the access layer) to
+ * minus club_management, league_management, and player_management, scoped (by the access layer) to
  * the teams they own. Granted on team creation and revoked when they own none.
  */
 export const TEAM_OWNER_PERMISSIONS: Permission[] = [
   "team_management",
-  "player_management",
   "fixture_management",
   "captain_hub",
 ]

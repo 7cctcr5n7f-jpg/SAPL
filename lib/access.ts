@@ -112,7 +112,7 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   if (clubIds.length > 0 && !isLeagueAdmin && isElevatedRole) {
     permissions.add("club_management")
     permissions.add("fixture_management")
-    permissions.add("player_management")
+    // Player Management is league admin only — removed from club managers, captains, and team owners
     permissions.add("team_management")
     permissions.add("captain_hub")
   }
