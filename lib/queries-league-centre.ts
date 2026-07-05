@@ -105,6 +105,12 @@ export type LCFixture = {
   homeFormItems: FormItem[]
   awayFormItems: FormItem[]
   joinUrl: string | null
+  /** Per-category booking link, keyed by category. Only present once published. */
+  joinUrlByCategory: Record<string, string>
+  /** Per-category court + start time, keyed by category. */
+  courtInfoByCategory: Record<string, { court: string | null; time: string | null }>
+  /** Whether an admin has published this fixture to players. */
+  published: boolean
   mine: boolean
   homePlayers: Record<string, string[]>
   awayPlayers: Record<string, string[]>
@@ -330,6 +336,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
       // Fall back to the host club's booking link when the fixture has none.
       playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
+      published: fixtures.published,
+      courtLinks: fixtures.courtLinks,
+      courtAssignments: fixtures.courtAssignments,
       homePoints: fixtures.homePoints,
       awayPoints: fixtures.awayPoints,
       homeSetsWon: fixtures.homeSetsWon,
@@ -537,8 +546,17 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         })(),
         homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
         awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
-        // Never expose booking links publicly — only to eligible logged-in players.
-        joinUrl: mine && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
+        // Never expose booking links publicly — only to eligible logged-in players,
+        // and only once an admin has published the fixture.
+        joinUrl: mine && f.published && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
+        joinUrlByCategory:
+          mine && f.published && f.status !== "completed"
+            ? ((f.courtLinks ?? {}) as Record<string, string>)
+            : {},
+        courtInfoByCategory: f.published
+          ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
+          : {},
+        published: !!f.published,
         mine,
         homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
         awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},

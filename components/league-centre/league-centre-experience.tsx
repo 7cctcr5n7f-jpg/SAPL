@@ -709,16 +709,28 @@ function FixtureBreakdown({
                 ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
                 : fixture.mine
 
-            const showJoin = fixture.mine && !isCompleted && !!fixture.joinUrl
+            // Prefer the per-category booking link; fall back to the fixture-level one.
+            const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? fixture.joinUrl
+            const courtInfo = fixture.courtInfoByCategory?.[category]
+            const showJoin = fixture.mine && !isCompleted && !!categoryJoinUrl
             const showScore = fixture.mine && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
                 {/* Category badge + score detail */}
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
-                    {category}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      {category}
+                    </span>
+                    {(courtInfo?.court || courtInfo?.time) && (
+                      <span className="text-[10px] font-medium text-slate-500">
+                        {courtInfo.court ? `Court ${courtInfo.court}` : ""}
+                        {courtInfo.court && courtInfo.time ? " · " : ""}
+                        {courtInfo.time ?? ""}
+                      </span>
+                    )}
+                  </div>
                   {rubber?.scoreDetail && (
                     <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
                   )}
@@ -831,7 +843,7 @@ function FixtureBreakdown({
                     )}
                     {showJoin && (
                       <a
-                        href={fixture.joinUrl!}
+                        href={categoryJoinUrl!}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
