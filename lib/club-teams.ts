@@ -35,6 +35,7 @@ export async function reconcileClubTeams(clubId: number) {
   const [club] = await db
     .select({
       id: clubs.id,
+      organisationId: clubs.organisationId,
       name: clubs.name,
       teamsEntering: clubs.teamsEntering,
       regionId: clubs.regionId,
