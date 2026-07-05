@@ -444,12 +444,25 @@ export const fixtures = pgTable(
     // Per-court booking links, keyed by category (e.g. "Mens Advanced").
     // Each category rubber plays on its own court so it gets its own booking.
     courtLinks: jsonb("courtLinks").$type<Record<string, string>>().notNull().default({}),
+    // Per-category court number + start time, keyed by category. Lets an admin
+    // stagger sessions across courts (e.g. court 1 @ 17:00, court 2 @ 18:30).
+    courtAssignments: jsonb("courtAssignments")
+      .$type<Record<string, { court: string | null; time: string | null }>>()
+      .notNull()
+      .default({}),
     status: text("status").notNull().default("scheduled"), // scheduled | completed | disputed
+    // Publish gate: a fixture is invisible to players (League Centre) until an
+    // admin publishes it. Only then do Join Match + booking links appear.
+    published: boolean("published").notNull().default(false),
+    publishedAt: timestamp("publishedAt"),
+    publishedByUserId: text("publishedByUserId"),
     homePoints: integer("homePoints"),
     awayPoints: integer("awayPoints"),
     homeSetsWon: integer("homeSetsWon"),
     awaySetsWon: integer("awaySetsWon"),
     winnerTeamId: integer("winnerTeamId"),
+    // Last operator to edit scheduling/results, for the console audit trail.
+    updatedByUserId: text("updatedByUserId"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },

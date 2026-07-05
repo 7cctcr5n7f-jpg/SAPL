@@ -8,6 +8,7 @@ import { getAccessContext } from "@/lib/access"
 import { revalidatePath } from "next/cache"
 import { notifyTeam } from "@/lib/notify"
 import { CATEGORY_RULES } from "@/lib/constants"
+import { canPublish, type CourtAssignments, type CourtLinks } from "@/lib/fixtures-ops"
 
 // Courts a single fixture (tie) consumes — one per category.
 const COURTS_PER_FIXTURE = CATEGORY_RULES.length
@@ -212,6 +213,156 @@ export async function setFixtureVenue(fixtureId: number, venueClubId: number | n
     "Fixture venue updated",
     venue ? `Your match night is now hosted at ${venue}. Tap to view.` : "Your match night venue was cleared.",
   )
+
+  revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// League Operations Console: per-category scheduling + publish workflow
+// ---------------------------------------------------------------------------
+
+/** Resolve the acting user and confirm they may edit this fixture's booking. */
+async function authorizeFixtureEdit(fixtureId: number) {
+  const user = await requireUser()
+  const access = await getAccessContext(user)
+  if (access.isLeagueAdmin) return { user, ok: true as const }
+  if (!access.can("fixture_management")) return { user, ok: false as const }
+  const [fx] = await db
+    .select({ venueClubId: fixtures.venueClubId })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fx || fx.venueClubId == null || !access.canManageClub(fx.venueClubId)) {
+    return { user, ok: false as const }
+  }
+  return { user, ok: true as const }
+}
+
+/**
+ * Save the court number, start time and booking link for a single category of a
+ * fixture. Court + time live in `courtAssignments`, the link in `courtLinks`.
+ */
+export async function saveCategoryAssignment(
+  fixtureId: number,
+  category: string,
+  input: { court?: string | null; time?: string | null; link?: string | null },
+) {
+  const auth = await authorizeFixtureEdit(fixtureId)
+  if (!auth.ok) return { ok: false, error: "Not authorised to edit this fixture" }
+
+  const [fx] = await db
+    .select({ courtAssignments: fixtures.courtAssignments, courtLinks: fixtures.courtLinks })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fx) return { ok: false, error: "Fixture not found" }
+
+  const nextAssignments: CourtAssignments = { ...(fx.courtAssignments ?? {}) }
+  const court = input.court != null ? String(input.court).trim() || null : nextAssignments[category]?.court ?? null
+  const timeRaw = input.time != null ? input.time.trim() : nextAssignments[category]?.time ?? null
+  const time = timeRaw && /^\d{1,2}:\d{2}$/.test(timeRaw) ? timeRaw : timeRaw || null
+  nextAssignments[category] = { court, time }
+
+  const nextLinks: CourtLinks = { ...(fx.courtLinks ?? {}) }
+  let linkAdded = false
+  if (input.link !== undefined) {
+    const normalized = normalizeUrl(input.link ?? "")
+    if (normalized) {
+      nextLinks[category] = normalized
+      linkAdded = true
+    } else {
+      delete nextLinks[category]
+    }
+  }
+
+  await db
+    .update(fixtures)
+    .set({
+      courtAssignments: nextAssignments,
+      courtLinks: nextLinks,
+      updatedByUserId: auth.user.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(fixtures.id, fixtureId))
+
+  if (linkAdded) {
+    await notifyFixtureTeams(
+      fixtureId,
+      "fixture_ready",
+      "Your fixture is ready to book",
+      `A Playtomic court link was added for ${category}. Tap to view and join.`,
+    )
+  }
+
+  revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
+  return { ok: true }
+}
+
+/** Publish a fixture so players can see it and join in League Centre. */
+export async function publishFixture(fixtureId: number) {
+  const auth = await authorizeFixtureEdit(fixtureId)
+  if (!auth.ok) return { ok: false, error: "Not authorised to publish this fixture" }
+
+  const [fx] = await db
+    .select({
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      venueClubId: fixtures.venueClubId,
+      matchDate: fixtures.matchDate,
+      status: fixtures.status,
+      published: fixtures.published,
+      courtAssignments: fixtures.courtAssignments,
+      courtLinks: fixtures.courtLinks,
+    })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fx) return { ok: false, error: "Fixture not found" }
+
+  const gate = canPublish(fx)
+  if (!gate.ok) return { ok: false, error: gate.reason ?? "Fixture is not ready to publish." }
+
+  await db
+    .update(fixtures)
+    .set({
+      published: true,
+      publishedAt: new Date(),
+      publishedByUserId: auth.user.id,
+      updatedByUserId: auth.user.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(fixtures.id, fixtureId))
+
+  await notifyFixtureTeams(
+    fixtureId,
+    "fixture_ready",
+    "Your fixture is live",
+    "Your match night has been published. Tap to view your categories and join.",
+  )
+
+  revalidatePath("/dashboard/fixtures")
+  revalidatePath("/league-centre")
+  return { ok: true }
+}
+
+/** Unpublish a fixture, hiding it from players again. */
+export async function unpublishFixture(fixtureId: number) {
+  const auth = await authorizeFixtureEdit(fixtureId)
+  if (!auth.ok) return { ok: false, error: "Not authorised to unpublish this fixture" }
+
+  await db
+    .update(fixtures)
+    .set({
+      published: false,
+      publishedAt: null,
+      publishedByUserId: null,
+      updatedByUserId: auth.user.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(fixtures.id, fixtureId))
 
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/league-centre")

@@ -1,10 +1,22 @@
 import { db } from "@/lib/db"
-import { fixtures, teams, divisions, clubs, teamMembers, organisations, regions } from "@/lib/db/schema"
+import { fixtures, teams, divisions, clubs, regions, user, results, matches, seasons } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, eq, inArray } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
 import type { CurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
+import { parseScoreDetail } from "@/lib/engine/scoring"
+import { deriveOpsStatus, type CourtAssignments, type CourtLinks } from "@/lib/fixtures-ops"
+
+export type FixtureCategoryMatch = {
+  category: string
+  homeSetsWon: number
+  awaySetsWon: number
+  scoreDetail: string | null
+  winnerTeamId: number | null
+  /** Parsed set scores for prefilling the inline result editor. */
+  sets: { home: number; away: number }[]
+}
 
 export type DashboardFixture = {
   id: number
@@ -28,17 +40,36 @@ export type DashboardFixture = {
   venueClubName: string | null
   venueCourts: number | null
   playtomicUrl: string | null
-  courtLinks: Record<string, string>
+  courtLinks: CourtLinks
+  courtAssignments: CourtAssignments
+  published: boolean
+  publishedAt: Date | string | null
+  publishedByName: string | null
+  updatedAt: Date | string | null
+  updatedByName: string | null
+  resultEnteredByName: string | null
+  resultEnteredAt: Date | string | null
   homePoints: number | null
   awayPoints: number | null
   winnerTeamId: number | null
   mine: boolean
   canEditLink: boolean
+  /** The four category rubbers with any entered scores, in display order. */
+  matches: FixtureCategoryMatch[]
 }
 
-export type FixtureScope = "all" | "club" | "team" | "none"
+export type FixtureScope = "all" | "club" | "none"
 
 export type HostClub = { id: number; name: string; courts: number | null }
+
+export type FixtureHealth = {
+  total: number
+  completed: number
+  awaitingResults: number
+  missingLinks: number
+  readyToPublish: number
+  published: number
+}
 
 export type DashboardFixturesResult = {
   seasonName: string | null
@@ -46,11 +77,15 @@ export type DashboardFixturesResult = {
   canManageVenue: boolean
   fixtures: DashboardFixture[]
   clubs: HostClub[]
+  health: FixtureHealth
 }
 
 async function baseFixtures(seasonId: number) {
   const home = alias(teams, "home")
   const away = alias(teams, "away")
+  const publisher = alias(user, "publisher")
+  const updater = alias(user, "updater")
+  const submitter = alias(user, "submitter")
   return db
     .select({
       id: fixtures.id,
@@ -75,6 +110,14 @@ async function baseFixtures(seasonId: number) {
       venueCourts: clubs.courts,
       playtomicUrl: fixtures.playtomicUrl,
       courtLinks: fixtures.courtLinks,
+      courtAssignments: fixtures.courtAssignments,
+      published: fixtures.published,
+      publishedAt: fixtures.publishedAt,
+      publishedByName: publisher.name,
+      updatedAt: fixtures.updatedAt,
+      updatedByName: updater.name,
+      resultEnteredByName: submitter.name,
+      resultEnteredAt: results.approvedAt,
       homePoints: fixtures.homePoints,
       awayPoints: fixtures.awayPoints,
       winnerTeamId: fixtures.winnerTeamId,
@@ -85,89 +128,156 @@ async function baseFixtures(seasonId: number) {
     .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
     .leftJoin(regions, eq(divisions.regionId, regions.id))
     .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
+    .leftJoin(publisher, eq(fixtures.publishedByUserId, publisher.id))
+    .leftJoin(updater, eq(fixtures.updatedByUserId, updater.id))
+    .leftJoin(results, eq(results.fixtureId, fixtures.id))
+    .leftJoin(submitter, eq(results.submittedByUserId, submitter.id))
     .where(eq(fixtures.seasonId, seasonId))
     .orderBy(asc(fixtures.week), asc(divisions.level), asc(fixtures.matchDate))
 }
 
+/** Loads every category match for a set of fixtures, grouped by fixture id. */
+async function matchesByFixture(fixtureIds: number[]): Promise<Map<number, FixtureCategoryMatch[]>> {
+  const map = new Map<number, FixtureCategoryMatch[]>()
+  if (fixtureIds.length === 0) return map
+  const rows = await db
+    .select({
+      fixtureId: matches.fixtureId,
+      category: matches.category,
+      homeSetsWon: matches.homeSetsWon,
+      awaySetsWon: matches.awaySetsWon,
+      scoreDetail: matches.scoreDetail,
+      winnerTeamId: matches.winnerTeamId,
+    })
+    .from(matches)
+    .where(inArray(matches.fixtureId, fixtureIds))
+  for (const r of rows) {
+    const list = map.get(r.fixtureId) ?? []
+    list.push({
+      category: r.category,
+      homeSetsWon: r.homeSetsWon,
+      awaySetsWon: r.awaySetsWon,
+      scoreDetail: r.scoreDetail,
+      winnerTeamId: r.winnerTeamId,
+      sets: parseScoreDetail(r.scoreDetail),
+    })
+    map.set(r.fixtureId, list)
+  }
+  return map
+}
+
+export function computeFixtureHealth(list: DashboardFixture[]): FixtureHealth {
+  const health: FixtureHealth = {
+    total: list.length,
+    completed: 0,
+    awaitingResults: 0,
+    missingLinks: 0,
+    readyToPublish: 0,
+    published: 0,
+  }
+  for (const f of list) {
+    const info = deriveOpsStatus(f)
+    if (f.published) health.published++
+    switch (info.status) {
+      case "completed":
+        health.completed++
+        break
+      case "awaiting_result":
+        health.awaitingResults++
+        break
+      case "ready_to_publish":
+        health.readyToPublish++
+        break
+      case "missing_links":
+      case "planned":
+        health.missingLinks++
+        break
+    }
+  }
+  return health
+}
+
 /**
- * Role-aware fixtures for the dashboard:
- *  - league/super admin: every fixture, can edit venue + Playtomic link
- *  - club admin (org owner): fixtures hosted at their club(s) or involving their
- *    teams, can edit the Playtomic link (their duty)
- *  - captain/player: only fixtures for teams they belong to, view + join link
+ * Admin-only fixtures for the League Operations Console:
+ *  - league/super admin: every fixture, full edit rights
+ *  - club manager: fixtures hosted at their club(s) or involving their teams,
+ *    may edit booking details for fixtures hosted at their own clubs
+ * Captains/players do NOT use this route — they use League Centre.
  */
 export async function getDashboardFixtures(user: CurrentUser): Promise<DashboardFixturesResult> {
+  const empty: DashboardFixturesResult = {
+    seasonName: null,
+    scope: "none",
+    canManageVenue: false,
+    fixtures: [],
+    clubs: [],
+    health: computeFixtureHealth([]),
+  }
   const season = await getCurrentSeason()
-  if (!season) return { seasonName: null, scope: "none", canManageVenue: false, fixtures: [], clubs: [] }
+  if (!season) return empty
+  const [seasonRow] = await db.select({ name: seasons.name }).from(seasons).where(eq(seasons.id, season.id)).limit(1)
+  const seasonName = seasonRow?.name ?? null
+
+  const access = await getAccessContext(user)
+  const isClubManager = access.can("club_management") && access.clubIds.length > 0
+  if (!access.isLeagueAdmin && !isClubManager) return empty
 
   const rows = await baseFixtures(season.id)
-  const access = await getAccessContext(user)
+  const mMap = await matchesByFixture(rows.map((r) => r.id))
+  const withMatches = (
+    f: (typeof rows)[number],
+    extra: { mine: boolean; canEditLink: boolean },
+  ): DashboardFixture => ({
+    ...f,
+    courtLinks: (f.courtLinks ?? {}) as CourtLinks,
+    courtAssignments: (f.courtAssignments ?? {}) as CourtAssignments,
+    matches: mMap.get(f.id) ?? [],
+    ...extra,
+  })
 
   if (access.isLeagueAdmin) {
     const hostClubs = await db
       .select({ id: clubs.id, name: clubs.name, courts: clubs.courts })
       .from(clubs)
       .orderBy(asc(clubs.name))
+    const list = rows.map((f) => withMatches(f, { mine: true, canEditLink: true }))
     return {
-      seasonName: season.name,
+      seasonName,
       scope: "all",
       canManageVenue: true,
       clubs: hostClubs,
-      fixtures: rows.map((f) => ({ ...f, mine: true, canEditLink: true })),
+      fixtures: list,
+      health: computeFixtureHealth(list),
     }
   }
 
-  // Club manager: the user has assigned clubs. They see fixtures hosted at those
-  // clubs and fixtures involving teams homed at those clubs, and may edit booking
-  // links for fixtures hosted at their own clubs.
-  if (access.can("club_management") && access.clubIds.length > 0) {
-    const clubIds = new Set(access.clubIds)
-    // Teams homed at the assigned clubs (so "their" teams include club teams).
-    const homedTeams = await db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(inArray(teams.homeClubId, access.clubIds))
-    const teamIds = new Set<number>([...access.teamIds, ...homedTeams.map((t) => t.id)])
-    const visible = rows.filter(
-      (f) =>
-        (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
+  // Club manager: fixtures hosted at their clubs or involving teams homed there.
+  const clubIds = new Set(access.clubIds)
+  const homedTeams = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(inArray(teams.homeClubId, access.clubIds))
+  const teamIds = new Set<number>([...access.teamIds, ...homedTeams.map((t) => t.id)])
+  const visible = rows.filter(
+    (f) =>
+      (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
+      (f.homeTeamId != null && teamIds.has(f.homeTeamId)) ||
+      (f.awayTeamId != null && teamIds.has(f.awayTeamId)),
+  )
+  const list = visible.map((f) =>
+    withMatches(f, {
+      mine:
         (f.homeTeamId != null && teamIds.has(f.homeTeamId)) ||
         (f.awayTeamId != null && teamIds.has(f.awayTeamId)),
-    )
-    return {
-      seasonName: season.name,
-      scope: "club",
-      canManageVenue: false,
-      clubs: [],
-      fixtures: visible.map((f) => ({
-        ...f,
-        mine: (f.homeTeamId != null && teamIds.has(f.homeTeamId)) || (f.awayTeamId != null && teamIds.has(f.awayTeamId)),
-        // A club manager may only edit booking links for fixtures hosted at one
-        // of their own clubs — not matches their team plays away at another venue.
-        canEditLink: f.venueClubId != null && clubIds.has(f.venueClubId),
-      })),
-    }
-  }
-
-  // Team owner / captain / player: only fixtures for teams they own, captain or
-  // belong to. Owner/captain/manual assignments come from the access context;
-  // roster memberships are added on top for players.
-  const myTeamIds = new Set<number>(access.teamIds)
-  if (user.playerId) {
-    const memberships = await db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .where(and(eq(teamMembers.playerId, user.playerId), eq(teamMembers.status, "active")))
-    memberships.forEach((m) => myTeamIds.add(m.teamId))
-  }
-  const visible = rows.filter(
-    (f) => (f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) || (f.awayTeamId != null && myTeamIds.has(f.awayTeamId)),
+      canEditLink: f.venueClubId != null && clubIds.has(f.venueClubId),
+    }),
   )
   return {
-    seasonName: season.name,
-    scope: "team",
+    seasonName,
+    scope: "club",
     canManageVenue: false,
     clubs: [],
-    fixtures: visible.map((f) => ({ ...f, mine: true, canEditLink: false })),
+    fixtures: list,
+    health: computeFixtureHealth(list),
   }
 }
