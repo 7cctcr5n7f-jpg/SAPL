@@ -9,7 +9,7 @@ import {
   regions,
   user,
 } from "@/lib/db/schema"
-import { and, eq, asc } from "drizzle-orm"
+import { and, eq, asc, count } from "drizzle-orm"
 import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
 
 export { PLACEMENT_SLOTS } from "@/lib/placement-types"
@@ -28,7 +28,7 @@ async function nameForUserId(userId: string | null): Promise<string | null> {
 }
 
 export async function getPlacementBoard(seasonId: number): Promise<PlacementBoardData | null> {
-  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id, name: seasons.name }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
 
   const divs = await db
     .select({
@@ -46,16 +46,20 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
   const divIds = new Set(divs.map((d) => d.id))
 
   // All active teams + their entry for this season (if any).
+  // Count live active team members instead of trusting the stale playerCount column.
   const rows = await db
     .select({
       team: teams,
       club: clubs,
       entry: teamEntries,
+      livePlayerCount: count(teamMembers.playerId),
     })
     .from(teams)
     .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
     .leftJoin(teamEntries, and(eq(teamEntries.teamId, teams.id), eq(teamEntries.seasonId, seasonId)))
+    .leftJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.status, "active")))
     .where(eq(teams.status, "active"))
+    .groupBy(teams.id, clubs.id, teamEntries.id)
     .orderBy(asc(teams.name))
 
   const boardTeams: BoardTeam[] = []
@@ -71,7 +75,7 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
       teamType: r.team.teamType,
       logoUrl: r.team.logoUrl,
       avgLi: r.team.avgLi,
-      playerCount: r.team.playerCount,
+      playerCount: r.livePlayerCount,
       maxPlayers: r.team.maxPlayers,
       // Fall back to the home club's region when the team's own region is unset
       // so teams aren't hidden by the board's region filter.
