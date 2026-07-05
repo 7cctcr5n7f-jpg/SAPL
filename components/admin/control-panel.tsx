@@ -580,7 +580,7 @@ function ConfigureDivisionsDialog({
                       className="font-medium text-foreground hover:text-primary"
                       title="Toggle all divisions in this region"
                     >
-                      {row.name.replace("Tshwane ", "")}
+                      {(row.name ?? "No region").replace("Tshwane ", "")}
                     </button>
                   </td>
                   {DIVISIONS.map((d) => {

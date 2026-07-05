@@ -49,7 +49,7 @@ export default async function DashboardOverview() {
   const outstanding =
     payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
   const feesPaid = outstanding <= 0
-  const isCaptain = overviewTeam?.role === "captain" || access.canCaptainHub
+  const isCaptain = overviewTeam?.role === "captain" || access.isLeagueAdmin
 
   if (!player) {
     return (

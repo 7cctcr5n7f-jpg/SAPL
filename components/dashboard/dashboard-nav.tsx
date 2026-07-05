@@ -15,7 +15,6 @@ import {
   ClipboardList,
   Building2,
   CreditCard,
-  Megaphone,
   ShieldCheck,
   Swords,
   CalendarDays,
@@ -36,7 +35,6 @@ const ICONS = {
   results: ClipboardList,
   org: Building2,
   payments: CreditCard,
-  announce: Megaphone,
   admin: ShieldCheck,
   fixtures: CalendarDays,
   playoffs: Swords,
@@ -54,8 +52,6 @@ export function DashboardNav({
   isSuperAdmin = false,
   actingRole = null,
   permissions,
-  canCaptainHub = false,
-  canManageMembers = false,
 }: {
   role: string
   name: string
@@ -64,59 +60,40 @@ export function DashboardNav({
   actingRole?: string | null
   /** Effective granular permissions for the current (possibly impersonated) view. */
   permissions: string[]
-  /** Captain Hub is only shown when the user captains or owns a team. */
-  canCaptainHub?: boolean
-  /** Members & Roles is gated by league_management (and not while previewing). */
-  canManageMembers?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
 
   const has = (p: string) => permissions.includes(p)
+  const isLeagueAdmin = has("league_management")
 
-  const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
+  let items: NavItem[]
 
-  // League Centre — always available within dashboard, stays in dashboard layout
-  items.push({ href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings })
-
-  if (canCaptainHub) {
-    items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
-  }
-
-  if (has("fixture_management")) {
-    items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
-  }
-
-  if (has("billing_management")) {
-    items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
-  }
-
-  // Player Management is league admins only
-  if (has("league_management")) {
-    items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
-  }
-
-  if (has("team_management")) {
-    items.push({ href: "/dashboard/org", label: "Team Management", icon: ICONS.org })
-  }
-
-  if (has("club_management")) {
-    items.push({ href: "/admin/clubs", label: "Club Management", icon: ICONS.venues })
-  }
-
-  if (has("league_management")) {
-    items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
-    items.push({ href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce })
-    items.push({ href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors })
+  if (isLeagueAdmin) {
+    // --- League Admin: competition management ---
+    // No generic "Dashboard" item — /admin redirects to /admin/seasons.
+    items = [
+      { href: "/admin/seasons", label: "Seasons", icon: ICONS.rankings },
+      { href: "/dashboard/fixtures", label: "Fixtures", icon: ICONS.fixtures },
+      { href: "/admin/teams", label: "Teams", icon: ICONS.roster },
+      { href: "/admin/clubs", label: "Clubs", icon: ICONS.venues },
+      { href: "/admin/members", label: "Members", icon: ICONS.members },
+      { href: "/admin/billing", label: "Payments", icon: ICONS.payments },
+      { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.results },
+      { href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors },
+    ]
     // Demo Controls only appear in the Demo Environment deployment.
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
       items.push({ href: "/admin/demo", label: "Demo Controls", icon: ICONS.demo })
     }
-  }
-
-  // Members & Roles is league-management only (hidden while previewing a role).
-  if (canManageMembers) {
-    items.push({ href: "/admin/members", label: "Members & Roles", icon: ICONS.members })
+  } else {
+    // --- Player / team owner (unified simple menu) ---
+    items = [
+      { href: "/dashboard", label: "Home", icon: ICONS.dashboard },
+      { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings },
+      { href: "/dashboard/org", label: "My Team", icon: ICONS.org },
+      { href: "/dashboard/profile", label: "Settings", icon: ICONS.profile },
+    ]
   }
 
   async function signOut() {
@@ -150,8 +127,8 @@ export function DashboardNav({
         </div>
       ) : null}
 
-      {/* Active = the single nav item whose href best (longest) matches the path,
-          so /admin/clubs highlights "Venues" only, not "League Control" (/admin). */}
+      {/* Active = the single nav item whose href best (longest) matches the current
+          path. e.g. /admin/clubs/42 highlights "Clubs" not "Seasons". */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {items.map((item) => {
           const matches = items

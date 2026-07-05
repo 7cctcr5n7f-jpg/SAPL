@@ -8,8 +8,9 @@ import {
   seasons,
   regions,
   user,
+  players,
 } from "@/lib/db/schema"
-import { and, eq, asc } from "drizzle-orm"
+import { and, eq, asc, count, avg, sql } from "drizzle-orm"
 import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
 
 export { PLACEMENT_SLOTS } from "@/lib/placement-types"
@@ -28,7 +29,7 @@ async function nameForUserId(userId: string | null): Promise<string | null> {
 }
 
 export async function getPlacementBoard(seasonId: number): Promise<PlacementBoardData | null> {
-  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db.select({ id: seasons.id, name: seasons.name }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
 
   const divs = await db
     .select({
@@ -46,16 +47,23 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
   const divIds = new Set(divs.map((d) => d.id))
 
   // All active teams + their entry for this season (if any).
+  // Count live active team members and compute average Playtomic rating instead
+  // of trusting the stale playerCount / avgLi denormalised columns.
   const rows = await db
     .select({
       team: teams,
       club: clubs,
       entry: teamEntries,
+      livePlayerCount: count(teamMembers.playerId),
+      liveAvgRating: avg(players.playtomicRating),
     })
     .from(teams)
     .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
     .leftJoin(teamEntries, and(eq(teamEntries.teamId, teams.id), eq(teamEntries.seasonId, seasonId)))
+    .leftJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.status, "active")))
+    .leftJoin(players, eq(players.userId, teamMembers.playerId))
     .where(eq(teams.status, "active"))
+    .groupBy(teams.id, clubs.id, teamEntries.id)
     .orderBy(asc(teams.name))
 
   const boardTeams: BoardTeam[] = []
@@ -70,9 +78,11 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
       name: r.team.name,
       teamType: r.team.teamType,
       logoUrl: r.team.logoUrl,
-      avgLi: r.team.avgLi,
-      playerCount: r.team.playerCount,
-      maxPlayers: r.team.maxPlayers,
+      playerCount: r.livePlayerCount,
+      // Cap at 8 regardless of the stale DB column (schema default is 8).
+      maxPlayers: Math.min(r.team.maxPlayers ?? 8, 8),
+      // Live average Playtomic rating from actual team members.
+      avgLi: r.liveAvgRating != null ? parseFloat(r.liveAvgRating as unknown as string) : 0,
       // Fall back to the home club's region when the team's own region is unset
       // so teams aren't hidden by the board's region filter.
       saplRegion: r.team.saplRegion ?? r.club?.saplRegion ?? null,

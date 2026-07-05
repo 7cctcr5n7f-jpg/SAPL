@@ -37,8 +37,6 @@ export type AccessContext = {
   can(permission: Permission): boolean
   canManageClub(clubId: number): boolean
   canManageTeam(teamId: number): boolean
-  /** Captain Hub is visible when the user captains or owns at least one team. */
-  canCaptainHub: boolean
 }
 
 type OverrideShape = { add: number[]; remove: number[] }
@@ -160,13 +158,6 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     .map(([id, info]) => ({ teamId: id, teamName: info.name, source: info.source }))
   const teamIds = teamAssignments.map((t) => t.teamId)
 
-  // Captain Hub is available to anyone who can manage a team: captains and team
-  // owners (auto), plus club/team managers manually assigned to a team. They get
-  // the full captain experience for the teams in their scope.
-  const canCaptainHub =
-    (permissions.has("captain_hub") || permissions.has("team_management")) &&
-    (teamIds.length > 0 || isLeagueAdmin)
-
   return {
     user,
     permissions,
@@ -178,7 +169,6 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     can: (permission: Permission) => permissions.has(permission),
     canManageClub: (clubId: number) => isLeagueAdmin || clubIds.includes(clubId),
     canManageTeam: (teamId: number) => isLeagueAdmin || teamIds.includes(teamId),
-    canCaptainHub,
   }
 }
 

@@ -1,32 +1,35 @@
 "use client"
 
-import { Fragment, useState, useTransition } from "react"
+import { useCallback, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   setMemberRole,
   sendMemberResetEmail,
   setMemberTempPassword,
-  createMember,
-  updateMemberDetails,
+  updateMemberRating,
+  updateMemberTeam,
+  updateMemberStatus,
   type MemberRow,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Mail, KeyRound, Loader2, Copy, Check, X, UserPlus, ChevronDown, SlidersHorizontal, Pencil } from "lucide-react"
-import { MemberDetailPanel } from "@/components/admin/member-detail-panel"
+  Mail,
+  KeyRound,
+  Loader2,
+  Pencil,
+  UserCircle,
+  ChevronDown,
+  X,
+  Check,
+} from "lucide-react"
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 type Role = MemberRow["role"]
+type FilterKey = "region" | "division" | "club" | "team" | "role" | "paymentStatus" | "status"
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "player", label: "Player" },
@@ -35,47 +38,425 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "super_admin", label: "Main Admin" },
 ]
 
+const STATUSES: { value: MemberRow["status"]; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "suspended", label: "Suspended" },
+]
+
 const ROLE_BADGE: Record<Role, string> = {
   player: "bg-secondary text-secondary-foreground",
-  captain: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
-  org_admin: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  super_admin: "bg-primary text-primary-foreground",
+  captain: "bg-sky-100 text-sky-700",
+  org_admin: "bg-amber-100 text-amber-700",
+  super_admin: "bg-primary/10 text-primary font-semibold",
 }
 
-const roleLabel = (r: Role) => ROLES.find((x) => x.value === r)?.label ?? r
+const STATUS_DOT: Record<MemberRow["status"], string> = {
+  active: "bg-emerald-500",
+  inactive: "bg-slate-300",
+  suspended: "bg-red-500",
+}
 
-function fmtDate(iso: string) {
+const PAYMENT_BADGE: Record<string, { label: string; cls: string }> = {
+  paid: { label: "Paid", cls: "bg-emerald-100 text-emerald-700" },
+  pending: { label: "Pending", cls: "bg-amber-100 text-amber-700" },
+  outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700" },
+}
+
+const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: string }> = {
+  linked: { label: "Linked", cls: "text-emerald-600" },
+  invited: { label: "Invited", cls: "text-amber-600" },
+  not_registered: { label: "Not registered", cls: "text-slate-400" },
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—"
   return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-export function MembersTable({ members, currentUserId }: { members: MemberRow[]; currentUserId: string }) {
-  const router = useRouter()
-  const [query, setQuery] = useState("")
-  const [pendingId, setPendingId] = useState<string | null>(null)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [editingMember, setEditingMember] = useState<MemberRow | null>(null)
-  const [, startTransition] = useTransition()
-  const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
+function roleLabel(r: Role) {
+  return ROLES.find((x) => x.value === r)?.label ?? r
+}
 
-  const filtered = members.filter((m) => {
-    const q = query.toLowerCase()
-    return m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
-  })
+// ─── Inline-edit cells ──────────────────────────────────────────────────────
 
-  function changeRole(m: MemberRow, role: Role) {
-    if (role === m.role) return
-    setPendingId(m.id)
-    startTransition(async () => {
-      const res = await setMemberRole(m.id, role)
-      setPendingId(null)
-      if (res.ok) {
-        toast.success(`${m.name} is now ${roleLabel(role)}`)
-        router.refresh()
-      } else {
-        toast.error(res.error ?? "Could not update role")
-      }
+function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(member.playtomicRating != null ? String(member.playtomicRating) : "")
+  const [pending, start] = useTransition()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function open() {
+    setVal(member.playtomicRating != null ? String(member.playtomicRating) : "")
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  function save() {
+    const n = val.trim() === "" ? null : parseFloat(val)
+    if (n !== null && (isNaN(n) || n < 0 || n > 7)) {
+      toast.error("Rating must be 0–7")
+      return
+    }
+    start(async () => {
+      const res = await updateMemberRating(member.id, n)
+      if (res.ok) { setEditing(false); onSaved() }
+      else toast.error("Could not save rating")
     })
   }
+
+  function onKey(e: React.KeyboardEvent) {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === "Enter") save()
+    if (e.key === "Escape") setEditing(false)
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={open}
+        className="group flex items-center gap-1 rounded px-1.5 py-0.5 text-sm tabular-nums hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        title="Click to edit"
+      >
+        {member.playtomicRating != null ? member.playtomicRating.toFixed(2) : <span className="text-muted-foreground">—</span>}
+        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        ref={inputRef}
+        type="number"
+        step="0.01"
+        min="0"
+        max="7"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={onKey}
+        onBlur={save}
+        disabled={pending}
+        className="w-16 rounded border border-primary bg-background px-1.5 py-0.5 text-sm tabular-nums focus:outline-none"
+      />
+      {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+    </div>
+  )
+}
+
+function TeamCell({
+  member,
+  allTeams,
+  onSaved,
+}: {
+  member: MemberRow
+  allTeams: { id: number; name: string }[]
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [search, setSearch] = useState("")
+  const [pending, start] = useTransition()
+  const ref = useRef<HTMLDivElement>(null)
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    const options = [{ id: 0, name: "No Team" }, ...allTeams]
+    return q ? options.filter((t) => t.name.toLowerCase().includes(q)) : options
+  }, [search, allTeams])
+
+  function select(teamId: number) {
+    const newId = teamId === 0 ? null : teamId
+    start(async () => {
+      const res = await updateMemberTeam(member.id, newId)
+      if (res.ok) { setEditing(false); setSearch(""); onSaved() }
+      else toast.error("Could not update team")
+    })
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="group flex items-center gap-1 rounded px-1.5 py-0.5 text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-left max-w-[160px] truncate"
+        title={member.teamName ?? "No Team"}
+      >
+        <span className="truncate">{member.teamName ?? <span className="text-muted-foreground">No Team</span>}</span>
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
+      </button>
+    )
+  }
+
+  return (
+    <div ref={ref} className="relative z-20">
+      <input
+        autoFocus
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search teams…"
+        className="w-44 rounded border border-primary bg-background px-2 py-1 text-sm focus:outline-none"
+        onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setSearch("") } }}
+      />
+      <div className="absolute left-0 top-full mt-1 w-52 max-h-52 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+        {filtered.slice(0, 20).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => select(t.id)}
+            disabled={pending}
+            className={cn(
+              "flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted/60 text-left",
+              t.id === (member.teamId ?? 0) && "bg-primary/10 font-medium",
+            )}
+          >
+            {pending ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+            {t.name}
+          </button>
+        ))}
+        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No teams found</p>}
+      </div>
+    </div>
+  )
+}
+
+function RoleCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: boolean; onSaved: () => void }) {
+  const [pending, start] = useTransition()
+  const router = useRouter()
+
+  if (isSelf) {
+    return (
+      <span className={cn("inline-block rounded px-2 py-0.5 text-xs font-semibold", ROLE_BADGE[member.role])}>
+        {roleLabel(member.role)}
+      </span>
+    )
+  }
+
+  return (
+    <select
+      value={member.role}
+      disabled={pending}
+      onChange={(e) => {
+        const role = e.target.value as Role
+        start(async () => {
+          const res = await setMemberRole(member.id, role)
+          if (res.ok) { toast.success(`${member.name} is now ${roleLabel(role)}`); onSaved() }
+          else toast.error(res.error ?? "Could not update role")
+        })
+      }}
+      className="h-7 rounded border border-input bg-background px-1.5 text-xs disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-primary"
+    >
+      {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+    </select>
+  )
+}
+
+function StatusCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: boolean; onSaved: () => void }) {
+  const [pending, start] = useTransition()
+
+  if (isSelf) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs">
+        <span className={cn("h-2 w-2 rounded-full shrink-0", STATUS_DOT[member.status])} />
+        {member.status}
+      </span>
+    )
+  }
+
+  return (
+    <select
+      value={member.status}
+      disabled={pending}
+      onChange={(e) => {
+        const status = e.target.value as MemberRow["status"]
+        start(async () => {
+          const res = await updateMemberStatus(member.id, status)
+          if (res.ok) onSaved()
+          else toast.error("Could not update status")
+        })
+      }}
+      className="h-7 rounded border border-input bg-background px-1.5 text-xs disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-primary"
+    >
+      {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+    </select>
+  )
+}
+
+// ─── Summary cards ───────────────────────────────────────────────────────────
+
+type StatCard = {
+  label: string
+  value: number
+  filterKey?: FilterKey
+  filterValue?: string
+  dot?: string
+}
+
+function SummaryCards({
+  members,
+  activeFilter,
+  onFilter,
+}: {
+  members: MemberRow[]
+  activeFilter: { key: FilterKey; value: string } | null
+  onFilter: (key: FilterKey, value: string) => void
+}) {
+  const cards: StatCard[] = [
+    { label: "Total Members", value: members.length },
+    { label: "Assigned to Teams", value: members.filter((m) => m.teamId != null).length, filterKey: "team", filterValue: "__assigned__", dot: "bg-emerald-500" },
+    { label: "Unassigned", value: members.filter((m) => m.teamId == null).length, filterKey: "team", filterValue: "__unassigned__", dot: "bg-amber-400" },
+    { label: "Paid", value: members.filter((m) => m.paymentStatus === "paid").length, filterKey: "paymentStatus", filterValue: "paid", dot: "bg-emerald-500" },
+    { label: "Outstanding", value: members.filter((m) => m.paymentStatus === "outstanding").length, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
+    { label: "Linked Accounts", value: members.filter((m) => m.accountLinked === "linked").length, filterKey: "status", filterValue: "__linked__", dot: "bg-emerald-500" },
+    { label: "Not Registered", value: members.filter((m) => m.accountLinked === "not_registered").length, filterKey: "status", filterValue: "__not_registered__", dot: "bg-slate-300" },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      {cards.map((c) => {
+        const isActive = activeFilter != null && activeFilter.key === c.filterKey && activeFilter.value === c.filterValue
+        const clickable = c.filterKey != null
+        return (
+          <button
+            key={c.label}
+            type="button"
+            disabled={!clickable}
+            onClick={() => c.filterKey && onFilter(c.filterKey, c.filterValue!)}
+            className={cn(
+              "rounded-lg border p-3 text-left transition-colors",
+              clickable ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : "cursor-default",
+              isActive ? "border-primary bg-primary/5" : "border-border bg-card",
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              {c.dot && <span className={cn("h-2 w-2 rounded-full shrink-0", c.dot)} />}
+              <span className="text-xs text-muted-foreground leading-tight">{c.label}</span>
+            </div>
+            <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">{c.value}</div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Filter bar ───────────────────────────────────────────────────────────────
+
+function uniq(arr: (string | null)[]): string[] {
+  return [...new Set(arr.filter(Boolean) as string[])].sort()
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: string[]
+  onChange: (v: string) => void
+}) {
+  if (options.length === 0) return null
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+    >
+      <option value="">{label}</option>
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function MembersTable({
+  members: initialMembers,
+  allTeams,
+  currentUserId,
+}: {
+  members: MemberRow[]
+  allTeams: { id: number; name: string }[]
+  currentUserId: string
+}) {
+  const router = useRouter()
+  const [members, setMembers] = useState<MemberRow[]>(initialMembers)
+  const [query, setQuery] = useState("")
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
+  const [, startTransition] = useTransition()
+
+  // Filters
+  const [filters, setFilters] = useState<Partial<Record<FilterKey, string>>>({})
+  const [summaryFilter, setSummaryFilter] = useState<{ key: FilterKey; value: string } | null>(null)
+
+  function refresh() { router.refresh() }
+
+  // Optimistic update helper
+  function patch(id: string, update: Partial<MemberRow>) {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, ...update } : m))
+  }
+
+  // Filter options derived from data
+  const filterOptions = useMemo(() => ({
+    region: uniq(members.map((m) => m.regionName)),
+    division: uniq(members.map((m) => m.divisionName)),
+    club: uniq(members.map((m) => m.clubName)),
+    team: uniq(members.map((m) => m.teamName)),
+    role: uniq(members.map((m) => roleLabel(m.role))),
+    paymentStatus: ["Paid", "Pending", "Outstanding"],
+    status: ["Active", "Inactive", "Suspended"],
+  }), [members])
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase()
+    return members.filter((m) => {
+      // Quick search
+      if (q) {
+        const haystack = [m.name, m.email, m.phone ?? "", m.teamName ?? ""].join(" ").toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      // Summary card filter
+      if (summaryFilter) {
+        const { key, value } = summaryFilter
+        if (key === "team") {
+          if (value === "__assigned__" && m.teamId == null) return false
+          if (value === "__unassigned__" && m.teamId != null) return false
+        } else if (key === "paymentStatus") {
+          if (m.paymentStatus !== value) return false
+        } else if (key === "status") {
+          if (value === "__linked__" && m.accountLinked !== "linked") return false
+          if (value === "__not_registered__" && m.accountLinked !== "not_registered") return false
+        }
+      }
+      // Dropdown filters
+      if (filters.region && m.regionName !== filters.region) return false
+      if (filters.division && m.divisionName !== filters.division) return false
+      if (filters.club && m.clubName !== filters.club) return false
+      if (filters.team && m.teamName !== filters.team) return false
+      if (filters.role && roleLabel(m.role) !== filters.role) return false
+      if (filters.paymentStatus) {
+        const map: Record<string, string> = { Paid: "paid", Pending: "pending", Outstanding: "outstanding" }
+        if (m.paymentStatus !== (map[filters.paymentStatus] ?? "")) return false
+      }
+      if (filters.status) {
+        const map: Record<string, string> = { Active: "active", Inactive: "inactive", Suspended: "suspended" }
+        if (m.status !== (map[filters.status] ?? "")) return false
+      }
+      return true
+    })
+  }, [members, query, filters, summaryFilter])
+
+  function handleSummaryFilter(key: FilterKey, value: string) {
+    setSummaryFilter((prev) => (prev?.key === key && prev.value === value ? null : { key, value }))
+  }
+
+  function clearFilters() {
+    setFilters({})
+    setSummaryFilter(null)
+    setQuery("")
+  }
+
+  const hasFilters = query || summaryFilter || Object.values(filters).some(Boolean)
 
   function emailReset(m: MemberRow) {
     setPendingId(m.id)
@@ -92,565 +473,220 @@ export function MembersTable({ members, currentUserId }: { members: MemberRow[];
     startTransition(async () => {
       const res = await setMemberTempPassword(m.id)
       setPendingId(null)
-      if (res.ok && res.password) {
-        setPwModal({ name: m.name, email: m.email, password: res.password })
-      } else {
-        toast.error(res.error ?? "Could not set password")
-      }
+      if (res.ok && res.password) setPwModal({ name: m.name, email: m.email, password: res.password })
+      else toast.error(res.error ?? "Could not set password")
     })
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name or email..."
-          className="sm:max-w-sm"
-        />
-        <AddMemberDialog onCreated={(data) => setPwModal(data)} />
+      {/* Summary cards */}
+      <SummaryCards members={members} activeFilter={summaryFilter} onFilter={handleSummaryFilter} />
+
+      {/* Search + filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, email, phone, team…"
+            className="h-8 w-64 pr-7 text-sm"
+          />
+          {query && (
+            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        <FilterSelect label="Region" value={filters.region ?? ""} options={filterOptions.region} onChange={(v) => setFilters((f) => ({ ...f, region: v || undefined }))} />
+        <FilterSelect label="Division" value={filters.division ?? ""} options={filterOptions.division} onChange={(v) => setFilters((f) => ({ ...f, division: v || undefined }))} />
+        <FilterSelect label="Club" value={filters.club ?? ""} options={filterOptions.club} onChange={(v) => setFilters((f) => ({ ...f, club: v || undefined }))} />
+        <FilterSelect label="Team" value={filters.team ?? ""} options={filterOptions.team} onChange={(v) => setFilters((f) => ({ ...f, team: v || undefined }))} />
+        <FilterSelect label="Role" value={filters.role ?? ""} options={filterOptions.role} onChange={(v) => setFilters((f) => ({ ...f, role: v || undefined }))} />
+        <FilterSelect label="Payment" value={filters.paymentStatus ?? ""} options={filterOptions.paymentStatus} onChange={(v) => setFilters((f) => ({ ...f, paymentStatus: v || undefined }))} />
+        <FilterSelect label="Status" value={filters.status ?? ""} options={filterOptions.status} onChange={(v) => setFilters((f) => ({ ...f, status: v || undefined }))} />
+
+        {hasFilters && (
+          <button onClick={clearFilters} className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {filtered.length} of {members.length}
+        </span>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "member" : "members"}
-      </p>
-
-      {/* Mobile / tablet: stacked cards */}
-      <div className="flex flex-col gap-3 lg:hidden">
-        {filtered.map((m) => {
-          const isSelf = m.id === currentUserId
-          const busy = pendingId === m.id
-          return (
-            <div key={m.id} className="rounded-lg border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium text-foreground">
-                    {m.name}
-                    {isSelf ? <span className="ml-2 text-xs text-muted-foreground">(you)</span> : null}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">{m.email}</div>
-                  {m.phone ? <div className="text-xs text-muted-foreground">{m.phone}</div> : null}
-                  {m.playerName && m.playerName !== m.name ? (
-                    <div className="truncate text-xs text-muted-foreground">Player: {m.playerName}</div>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">{fmtDate(m.createdAt)}</span>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingMember(m)} aria-label="Edit details">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Role</label>
-                {isSelf ? (
-                  <span
-                    className={cn(
-                      "inline-block rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
-                      ROLE_BADGE[m.role],
-                    )}
-                  >
-                    {roleLabel(m.role)}
-                  </span>
-                ) : (
-                  <select
-                    value={m.role}
-                    disabled={busy}
-                    onChange={(e) => changeRole(m, e.target.value as Role)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => emailReset(m)}>
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                  <span className="ml-1.5">Email reset</span>
-                </Button>
-                <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => tempPassword(m)}>
-                  <KeyRound className="h-3.5 w-3.5" />
-                  <span className="ml-1.5">Temp password</span>
-                </Button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setExpandedId(expandedId === m.id ? null : m.id)}
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background py-2 text-xs font-medium text-foreground"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                Permissions &amp; assignments
-                <ChevronDown
-                  className={cn("h-3.5 w-3.5 transition-transform", expandedId === m.id && "rotate-180")}
-                />
-              </button>
-              {expandedId === m.id ? (
-                <div className="mt-3 -mx-4 -mb-4 overflow-hidden rounded-b-lg">
-                  <MemberDetailPanel userId={m.id} isSelf={isSelf} />
-                </div>
-              ) : null}
-            </div>
-          )
-        })}
-        {filtered.length === 0 ? (
-          <p className="rounded-lg border border-border bg-card px-4 py-10 text-center text-muted-foreground">
-            No members match &ldquo;{query}&rdquo;.
-          </p>
-        ) : null}
-      </div>
-
-      {/* Desktop: table */}
-      <div className="hidden overflow-x-auto rounded-lg border border-border lg:block">
+      {/* Spreadsheet table */}
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-secondary/40 text-left">
-              <th className="px-4 py-3 font-semibold">Member</th>
-              <th className="px-4 py-3 font-semibold">Role</th>
-              <th className="px-4 py-3 font-semibold">Joined</th>
-              <th className="px-4 py-3 text-right font-semibold">Actions</th>
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-border bg-secondary/60 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <th className="px-3 py-2.5 w-8" />
+              <th className="px-3 py-2.5 min-w-[160px]">Name</th>
+              <th className="px-3 py-2.5 min-w-[180px]">Email</th>
+              <th className="px-3 py-2.5 min-w-[110px]">Mobile</th>
+              <th className="px-3 py-2.5 min-w-[100px]">Role</th>
+              <th className="px-3 py-2.5 min-w-[160px]">Team</th>
+              <th className="px-3 py-2.5 min-w-[120px]">Club</th>
+              <th className="px-3 py-2.5 min-w-[90px]">Region</th>
+              <th className="px-3 py-2.5 min-w-[100px]">Division</th>
+              <th className="px-3 py-2.5 min-w-[70px] text-right">PT Rating</th>
+              <th className="px-3 py-2.5 min-w-[90px]">Payment</th>
+              <th className="px-3 py-2.5 min-w-[100px]">Account</th>
+              <th className="px-3 py-2.5 min-w-[90px]">Last Login</th>
+              <th className="px-3 py-2.5 min-w-[90px]">Status</th>
+              <th className="px-3 py-2.5 min-w-[100px] text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((m) => {
               const isSelf = m.id === currentUserId
               const busy = pendingId === m.id
-              const expanded = expandedId === m.id
+              const payment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
+              const acct = ACCOUNT_BADGE[m.accountLinked]
+
               return (
-                <Fragment key={m.id}>
-                  <tr className="border-b border-border last:border-0 data-[expanded=true]:border-0" data-expanded={expanded}>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">
-                        {m.name}
-                        {isSelf ? <span className="ml-2 text-xs text-muted-foreground">(you)</span> : null}
+                <tr
+                  key={m.id}
+                  className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                >
+                  {/* Avatar */}
+                  <td className="px-3 py-2">
+                    {m.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.avatarUrl} alt={m.name} className="h-7 w-7 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center">
+                        <UserCircle className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div className="text-xs text-muted-foreground">{m.email}</div>
-                      {m.phone ? <div className="text-xs text-muted-foreground">{m.phone}</div> : null}
-                      {m.playerName && m.playerName !== m.name ? (
-                        <div className="text-xs text-muted-foreground">Player: {m.playerName}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isSelf ? (
-                        <span
-                          className={cn(
-                            "inline-block rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
-                            ROLE_BADGE[m.role],
-                          )}
-                        >
-                          {roleLabel(m.role)}
-                        </span>
-                      ) : (
-                        <select
-                          value={m.role}
-                          disabled={busy}
-                          onChange={(e) => changeRole(m, e.target.value as Role)}
-                          className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r.value} value={r.value}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(m.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMember(m)} aria-label="Edit details">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => emailReset(m)}>
-                          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                          <span className="ml-1.5">Email reset</span>
-                        </Button>
-                        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => tempPassword(m)}>
-                          <KeyRound className="h-3.5 w-3.5" />
-                          <span className="ml-1.5">Temp password</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={expanded ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => setExpandedId(expanded ? null : m.id)}
-                          aria-label="Permissions and assignments"
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                          <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                  {expanded ? (
-                    <tr className="border-b border-border last:border-0">
-                      <td colSpan={4} className="p-0">
-                        <MemberDetailPanel userId={m.id} isSelf={isSelf} />
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
+                    )}
+                  </td>
+
+                  {/* Name */}
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-foreground leading-tight">
+                      {m.name}
+                      {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
+                    </div>
+                    {m.playerName && m.playerName !== m.name && (
+                      <div className="text-[11px] text-muted-foreground leading-tight">{m.playerName}</div>
+                    )}
+                  </td>
+
+                  {/* Email */}
+                  <td className="px-3 py-2 text-muted-foreground max-w-[200px]">
+                    <span className="truncate block" title={m.email}>{m.email}</span>
+                  </td>
+
+                  {/* Mobile */}
+                  <td className="px-3 py-2 text-muted-foreground tabular-nums text-xs">
+                    {m.phone ?? <span className="text-border">—</span>}
+                  </td>
+
+                  {/* Role — inline select */}
+                  <td className="px-3 py-2">
+                    <RoleCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
+                  </td>
+
+                  {/* Team — inline searchable dropdown */}
+                  <td className="px-3 py-2">
+                    <TeamCell
+                      member={m}
+                      allTeams={allTeams}
+                      onSaved={() => { patch(m.id, {}); refresh() }}
+                    />
+                  </td>
+
+                  {/* Club */}
+                  <td className="px-3 py-2 text-xs text-muted-foreground max-w-[130px]">
+                    <span className="truncate block" title={m.clubName ?? ""}>{m.clubName ?? <span className="text-border">—</span>}</span>
+                  </td>
+
+                  {/* Region */}
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {m.regionName ?? <span className="text-border">—</span>}
+                  </td>
+
+                  {/* Division */}
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {m.divisionName ?? <span className="text-border">—</span>}
+                  </td>
+
+                  {/* PT Rating — inline numeric */}
+                  <td className="px-3 py-2 text-right">
+                    <RatingCell member={m} onSaved={() => { patch(m.id, {}); refresh() }} />
+                  </td>
+
+                  {/* Payment status */}
+                  <td className="px-3 py-2">
+                    {payment ? (
+                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", payment.cls)}>{payment.label}</span>
+                    ) : (
+                      <span className="text-xs text-border">—</span>
+                    )}
+                  </td>
+
+                  {/* Account linked */}
+                  <td className="px-3 py-2">
+                    <span className={cn("text-xs", acct.cls)}>{acct.label}</span>
+                  </td>
+
+                  {/* Last login */}
+                  <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {fmtDate(m.lastLoginAt)}
+                  </td>
+
+                  {/* Status — inline select */}
+                  <td className="px-3 py-2">
+                    <StatusCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
+                  </td>
+
+                  {/* Row actions */}
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => emailReset(m)}
+                        title="Resend welcome / reset email"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
+                      >
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => tempPassword(m)}
+                        title="Set temp password"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               )
             })}
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
-                  No members match &ldquo;{query}&rdquo;.
+                <td colSpan={15} className="px-4 py-12 text-center text-muted-foreground">
+                  {hasFilters ? "No members match the current filters." : "No members yet."}
                 </td>
               </tr>
-            ) : null}
+            )}
           </tbody>
         </table>
       </div>
 
-      {editingMember ? (
-        <EditMemberDialog
-          member={editingMember}
-          onClose={() => setEditingMember(null)}
-          onSaved={() => { setEditingMember(null); router.refresh() }}
-        />
-      ) : null}
-
-      {pwModal ? <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} /> : null}
+      {/* Temp password modal */}
+      {pwModal && <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} />}
     </div>
   )
 }
 
-function EditMemberDialog({
-  member,
-  onClose,
-  onSaved,
-}: {
-  member: MemberRow
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [name, setName] = useState(member.name)
-  const [phone, setPhone] = useState(member.phone ?? "")
-  const [gender, setGender] = useState("")
-  const [city, setCity] = useState("")
-  const [province, setProvince] = useState("")
-  const [li, setLi] = useState("")
-  const [playtomicUrl, setPlaytomicUrl] = useState("")
-  const [isPlayer, setIsPlayer] = useState(member.playerName ? true : false)
-  const [expandAdvanced, setExpandAdvanced] = useState(false)
-  const [pending, startTransition] = useTransition()
-
-  function submit() {
-    if (!name.trim()) return toast.error("Name is required.")
-    startTransition(async () => {
-      const res = await updateMemberDetails(member.id, {
-        name,
-        phone: phone || null,
-        gender: gender || null,
-        city: city || null,
-        province: province || null,
-        currentLi: li ? parseFloat(li) : null,
-        playtomicUrl: playtomicUrl || null,
-        isPlayer,
-      })
-      if (res.ok) {
-        toast.success("Details updated")
-        onSaved()
-      } else {
-        toast.error(res.error ?? "Could not update details")
-      }
-    })
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit member details</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          {/* Basic info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-name">Full name</Label>
-              <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input id="edit-email" value={member.email} disabled className="opacity-60" />
-            </div>
-          </div>
-
-          {/* Contact & Player toggle */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-phone">Contact number</Label>
-              <Input id="edit-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPlayer}
-                  onChange={(e) => setIsPlayer(e.target.checked)}
-                  className="rounded border-2 border-input"
-                />
-                <span className="text-sm font-medium">Mark as player</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Player profile fields (show when isPlayer is true) */}
-          {isPlayer && (
-            <>
-              <div className="space-y-1.5 pt-2 border-t">
-                <p className="text-sm font-semibold text-muted-foreground">Player Profile</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-gender">Gender</Label>
-                  <select
-                    id="edit-gender"
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="">Select gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-li">League Index (LI)</Label>
-                  <Input
-                    id="edit-li"
-                    type="number"
-                    step="0.1"
-                    value={li}
-                    onChange={(e) => setLi(e.target.value)}
-                    placeholder="e.g., 7.5"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-city">City</Label>
-                  <Input id="edit-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="—" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-province">Province</Label>
-                  <Input id="edit-province" value={province} onChange={(e) => setProvince(e.target.value)} placeholder="—" />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-playtomic">Playtomic URL</Label>
-                <Input
-                  id="edit-playtomic"
-                  value={playtomicUrl}
-                  onChange={(e) => setPlaytomicUrl(e.target.value)}
-                  placeholder="https://playtomic.io/..."
-                />
-              </div>
-            </>
-          )}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={pending} onClick={submit}>
-            {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-            Save changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AddMemberDialog({
-  onCreated,
-}: {
-  onCreated: (data: { name: string; email: string; password: string }) => void
-}) {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [pending, startTransition] = useTransition()
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [email, setEmail] = useState("")
-  const [role, setRole] = useState<Role>("player")
-  const [gender, setGender] = useState("")
-  const [li, setLi] = useState("")
-  const [city, setCity] = useState("")
-  const [province, setProvince] = useState("")
-
-  function reset() {
-    setFirstName("")
-    setLastName("")
-    setEmail("")
-    setRole("player")
-    setGender("")
-    setLi("")
-    setCity("")
-    setProvince("")
-  }
-
-  function submit() {
-    if (!firstName.trim() || !email.trim()) {
-      toast.error("First name and email are required.")
-      return
-    }
-    startTransition(async () => {
-      const res = await createMember({ firstName, lastName, email, role })
-      if (res.ok && res.password) {
-        // After creating the member, update with player profile if role is player/captain
-        if ((role === "player" || role === "captain") && (gender || li || city || province)) {
-          await updateMemberDetails(res.userId, {
-            gender: gender || null,
-            city: city || null,
-            province: province || null,
-            currentLi: li ? parseFloat(li) : null,
-            isPlayer: true,
-          })
-        }
-        toast.success(`${firstName} added as ${roleLabel(role)}`)
-        onCreated({ name: `${firstName} ${lastName}`.trim(), email: email.trim().toLowerCase(), password: res.password })
-        setOpen(false)
-        reset()
-        router.refresh()
-      } else {
-        toast.error(res.error ?? "Could not create member")
-      }
-    })
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o)
-        if (!o) reset()
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button type="button">
-            <UserPlus className="mr-1.5 h-4 w-4" /> Add member
-          </Button>
-        }
-      />
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add a member</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First name</Label>
-              <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last name</Label>
-              <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="role">Role</Label>
-            <select
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              A temporary password is generated automatically. You can share it after creating the member.
-            </p>
-          </div>
-
-          {/* Player profile fields if role is player or captain */}
-          {(role === "player" || role === "captain") && (
-            <>
-              <div className="space-y-2 pt-4 border-t">
-                <p className="text-sm font-semibold text-muted-foreground">Player Profile (optional)</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <select
-                    id="gender"
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Select gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="li">League Index (LI)</Label>
-                  <Input
-                    id="li"
-                    type="number"
-                    step="0.1"
-                    value={li}
-                    onChange={(e) => setLi(e.target.value)}
-                    placeholder="e.g., 7.5"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="province">Province</Label>
-                  <Input id="province" value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Optional" />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={submit} disabled={pending}>
-            {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-            Create member
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
+// ─── Temp password modal ─────────────────────────────────────────────────────
 
 function TempPasswordModal({
   data,
@@ -661,48 +697,32 @@ function TempPasswordModal({
 }) {
   const [copied, setCopied] = useState(false)
 
-  async function copy() {
-    await navigator.clipboard.writeText(data.password)
+  function copy() {
+    navigator.clipboard.writeText(data.password)
     setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl">
+        <div className="flex items-start justify-between">
           <div>
-            <h2 className="heading text-xl text-foreground">Temporary password set</h2>
-            <p className="mt-1 text-sm text-muted-foreground text-pretty">
-              Share this with <span className="text-foreground">{data.name}</span> ({data.email}). They should change it
-              after signing in.
-            </p>
+            <p className="font-semibold">Temporary password set</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{data.name} · {data.email}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
-            <X className="h-5 w-5" />
+          <button onClick={onClose} className="ml-4 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
           </button>
         </div>
-
-        <div className="mt-5 flex items-center gap-2 rounded-md border border-border bg-background p-3">
-          <code className="flex-1 break-all font-mono text-base text-foreground">{data.password}</code>
-          <Button type="button" size="sm" variant="secondary" onClick={copy}>
-            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-            <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
-          </Button>
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+          <code className="flex-1 font-mono text-sm">{data.password}</code>
+          <button onClick={copy} className="text-muted-foreground hover:text-foreground" title="Copy">
+            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <KeyRound className="h-4 w-4" />}
+          </button>
         </div>
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          This password is shown once. If you lose it, just generate a new one.
-        </p>
-
-        <div className="mt-5 flex justify-end">
-          <Button type="button" onClick={onClose}>
-            Done
-          </Button>
-        </div>
+        <p className="mt-3 text-xs text-muted-foreground">Share this password securely. The member should change it on first login.</p>
+        <Button className="mt-4 w-full" onClick={onClose}>Done</Button>
       </div>
     </div>
   )

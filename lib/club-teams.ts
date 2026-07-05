@@ -32,7 +32,18 @@ function teamName(base: string, index: number, total: number) {
  * Idempotent: safe to call on every club save and on season creation.
  */
 export async function reconcileClubTeams(clubId: number) {
-  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, clubId)).limit(1)
+  const [club] = await db
+    .select({
+      id: clubs.id,
+      organisationId: clubs.organisationId,
+      name: clubs.name,
+      teamsEntering: clubs.teamsEntering,
+      regionId: clubs.regionId,
+      saplRegion: clubs.saplRegion,
+    })
+    .from(clubs)
+    .where(eq(clubs.id, clubId))
+    .limit(1)
   if (!club) return
 
   const base = club.name.trim()

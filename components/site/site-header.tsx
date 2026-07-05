@@ -11,12 +11,10 @@ import { Menu, X } from "lucide-react"
 
 const NAV = [
   { href: "/league-centre", dashboardHref: "/dashboard/league-centre", label: "League Centre" },
-  { href: "/rankings", label: "Rankings" },
   { href: "/clubs", label: "Clubs" },
   { href: "/marketplace", label: "Marketplace" },
+  { href: "/rules", label: "League Format" },
   { href: "/sponsors", label: "Sponsors" },
-  { href: "/rules", label: "Rules" },
-  { href: "/faq", label: "FAQ" },
 ]
 
 type HeaderUser = { name: string; email: string; role: string }

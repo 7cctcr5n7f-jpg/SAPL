@@ -92,7 +92,7 @@ export function MarketplaceSettings({ isPlayer, onMarketplace, isOnTeam }: Marke
           </div>
           <p className="text-sm text-muted-foreground ml-6">
             {isOnTeam
-              ? "You cannot be on the marketplace while you&apos;re part of a team. Leave your team first."
+              ? "You cannot be on the marketplace while you're part of a team. Leave your team first."
               : "Allow captains to discover your profile when looking for players to join their team."}
           </p>
         </div>

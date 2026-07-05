@@ -4,11 +4,10 @@ import { LeaveTeamButton } from "@/components/dashboard/leave-team-button"
 import { Building2 } from "lucide-react"
 
 // SECTION 5 — My Team. A compact record card: club, division, position, W/L.
+// The section heading is provided by the parent page for consistent spacing.
 export function MyTeamCard({ team }: { team: PlayerOverviewTeam }) {
   return (
-    <section>
-      <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">My Team</h2>
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0">
             <p className="truncate font-serif text-lg font-bold leading-tight">{team.teamName}</p>
@@ -32,16 +31,15 @@ export function MyTeamCard({ team }: { team: PlayerOverviewTeam }) {
         </div>
         <div className="flex items-center justify-end gap-1 border-t border-border px-4 py-2">
           <Link
-            href={`/teams/${team.teamId}`}
+            href="/dashboard/org"
             className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-secondary"
           >
             <Building2 className="h-3.5 w-3.5" />
-            View Team
+            Manage Team
           </Link>
           {team.role !== "captain" && <LeaveTeamButton membershipId={team.membershipId} className="text-xs" />}
         </div>
       </div>
-    </section>
   )
 }
 
