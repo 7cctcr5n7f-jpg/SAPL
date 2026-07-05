@@ -15,7 +15,6 @@ import {
   ClipboardList,
   Building2,
   CreditCard,
-  Megaphone,
   ShieldCheck,
   Swords,
   CalendarDays,
@@ -36,7 +35,6 @@ const ICONS = {
   results: ClipboardList,
   org: Building2,
   payments: CreditCard,
-  announce: Megaphone,
   admin: ShieldCheck,
   fixtures: CalendarDays,
   playoffs: Swords,
@@ -82,7 +80,6 @@ export function DashboardNav({
       { href: "/admin/members", label: "Members", icon: ICONS.members },
       { href: "/admin/billing", label: "Payments", icon: ICONS.payments },
       { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.results },
-      { href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce },
       { href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors },
     ]
     // Demo Controls only appear in the Demo Environment deployment.
