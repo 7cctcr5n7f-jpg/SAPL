@@ -18,6 +18,7 @@ import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
 import { getAccessContext } from "@/lib/access"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { TeamFullError } from "@/lib/team-errors"
 
 // ---------------------------------------------------------------------------
 // Permission helper: who may manage a team's pairings / invites?
@@ -290,14 +291,6 @@ export async function cancelInvite(inviteId: number) {
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return { success: "Invite cancelled." }
-}
-
-// Thrown when a roster is already at the hard cap of 8 active players.
-export class TeamFullError extends Error {
-  constructor() {
-    super(`This team already has the maximum of ${TEAM_SQUAD_SIZE} players.`)
-    this.name = "TeamFullError"
-  }
 }
 
 // Add a player to a team roster (idempotent) and optionally fill a pairing slot.

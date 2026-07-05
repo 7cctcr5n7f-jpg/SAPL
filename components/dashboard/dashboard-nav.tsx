@@ -77,7 +77,7 @@ export function DashboardNav({
       { href: "/admin", label: "Dashboard", icon: ICONS.admin },
       { href: "/admin?tab=seasons", label: "Seasons", icon: ICONS.rankings },
       { href: "/admin/fixtures", label: "Fixtures", icon: ICONS.fixtures },
-      { href: "/admin?tab=placement", label: "Teams", icon: ICONS.roster },
+      { href: "/admin/teams", label: "Teams", icon: ICONS.roster },
       { href: "/admin/clubs", label: "Clubs", icon: ICONS.venues },
       { href: "/admin/members", label: "Members", icon: ICONS.members },
       { href: "/admin/billing", label: "Payments", icon: ICONS.payments },
