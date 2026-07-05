@@ -17,6 +17,9 @@ export default async function MarketplacePage() {
     city: p.city,
     province: p.province,
     currentLi: p.currentLi,
+    playtomicRating: p.playtomicRating,
+    playtomicUrl: p.playtomicUrl,
+    avatarUrl: p.avatarUrl,
     bio: p.bio,
     preferredFormats: (p.preferredFormats ?? []) as string[],
     preferredClubIds: (p.preferredClubIds ?? []) as number[],
@@ -30,8 +33,8 @@ export default async function MarketplacePage() {
         <Button render={<Link href="/sign-up" />}>List Yourself</Button>
       </div>
       <p className="mt-3 max-w-2xl text-muted-foreground">
-        Captains scouting for their roster — these players are available and looking for a team this season. Browse Men
-        and Ladies, then filter by preferred club.
+        Captains scouting for their roster — these players are available and looking for a team this season. Search by
+        name, filter by category or preferred club, and check each player&apos;s Playtomic rating.
       </p>
 
       <MarketplaceBoard agents={agents} clubs={clubs} />
