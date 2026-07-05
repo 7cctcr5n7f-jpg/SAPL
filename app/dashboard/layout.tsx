@@ -23,8 +23,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           isSuperAdmin={me.isSuperAdmin}
           actingRole={me.actingRole}
           permissions={[...access.permissions]}
-          canCaptainHub={access.canCaptainHub}
-          canManageMembers={access.permissions.has("league_management") && !me.actingRole}
         />
       </div>
       <main className="flex-1 overflow-y-auto">

@@ -54,8 +54,6 @@ export function DashboardNav({
   isSuperAdmin = false,
   actingRole = null,
   permissions,
-  canCaptainHub = false,
-  canManageMembers = false,
 }: {
   role: string
   name: string
@@ -64,10 +62,6 @@ export function DashboardNav({
   actingRole?: string | null
   /** Effective granular permissions for the current (possibly impersonated) view. */
   permissions: string[]
-  /** Captain Hub is only shown when the user captains or owns a team. */
-  canCaptainHub?: boolean
-  /** Members & Roles is gated by league_management (and not while previewing). */
-  canManageMembers?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()

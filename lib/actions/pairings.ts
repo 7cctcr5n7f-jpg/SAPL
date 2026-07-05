@@ -17,6 +17,7 @@ import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
 import { getAccessContext } from "@/lib/access"
+import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 
 // ---------------------------------------------------------------------------
 // Permission helper: who may manage a team's pairings / invites?
@@ -25,7 +26,11 @@ import { getAccessContext } from "@/lib/access"
 //  - league / super admins
 // ---------------------------------------------------------------------------
 async function canManageTeam(me: CurrentUser, teamId: number) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
   if (!team) return null
   const access = await getAccessContext(me)
   if (access.isLeagueAdmin) return team
@@ -58,7 +63,11 @@ export async function setPairingSlot(input: {
       (p) => !(p.category === input.category && p.slotIndex === input.slotIndex),
     )
     if (elsewhere) {
-      const [p] = await db.select({ id: user.id }).from(user).where(eq(user.id, input.playerId)).limit(1)
+      const [p] = await db
+        .select({ id: user.id, firstName: user.firstName, lastName: user.lastName })
+        .from(user)
+        .where(eq(user.id, input.playerId))
+        .limit(1)
       const who = p ? `${p.firstName} ${p.lastName}` : "That player"
       return { error: `${who} is already assigned to ${elsewhere.category}. Clear that slot first.` }
     }
@@ -163,7 +172,11 @@ export async function invitePlayerByEmail(input: {
   if (!email || !email.includes("@")) return { error: "Enter a valid email address." }
 
   // Does a registered user with a player profile already exist for this email?
-  const [existingUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
+  const [existingUser] = await db
+    .select({ id: user.id, isPlayer: user.isPlayer, firstName: user.firstName, lastName: user.lastName })
+    .from(user)
+    .where(eq(user.email, email))
+    .limit(1)
   let existingPlayer = existingUser
 
   if (existingPlayer && existingPlayer.isPlayer) {
@@ -175,11 +188,16 @@ export async function invitePlayerByEmail(input: {
       }
     }
     // Immediate add for an existing player — no approval needed.
-    await joinTeam(input.teamId, existingPlayer.id, {
-      category: input.category,
-      pairIndex: input.pairIndex,
-      slotIndex: input.slotIndex,
-    })
+    try {
+      await joinTeam(input.teamId, existingPlayer.id, {
+        category: input.category,
+        pairIndex: input.pairIndex,
+        slotIndex: input.slotIndex,
+      })
+    } catch (err) {
+      if (err instanceof TeamFullError) return { error: err.message }
+      throw err
+    }
     await db.insert(notifications).values({
       userId: existingPlayer.id,
       type: "team_invite",
@@ -258,7 +276,17 @@ export async function cancelInvite(inviteId: number) {
   return { success: "Invite cancelled." }
 }
 
+// Thrown when a roster is already at the hard cap of 8 active players.
+export class TeamFullError extends Error {
+  constructor() {
+    super(`This team already has the maximum of ${TEAM_SQUAD_SIZE} players.`)
+    this.name = "TeamFullError"
+  }
+}
+
 // Add a player to a team roster (idempotent) and optionally fill a pairing slot.
+// Enforces the hard cap of 8 active players — throws TeamFullError when the
+// roster is full and the player isn't already an active member.
 async function joinTeam(
   teamId: number,
   playerId: string,
@@ -269,6 +297,17 @@ async function joinTeam(
     .from(teamMembers)
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, playerId)))
     .limit(1)
+
+  const isAlreadyActive = member?.status === "active"
+  if (!isAlreadyActive) {
+    // Adding a net-new active member — enforce the 8-player hard cap.
+    const active = await db
+      .select({ id: teamMembers.id })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
+    if (active.length >= TEAM_SQUAD_SIZE) throw new TeamFullError()
+  }
+
   if (member) {
     if (member.status !== "active") {
       await db
@@ -325,7 +364,11 @@ export async function resolvePendingInvites(email: string, playerId: string) {
     .where(and(eq(teamInvites.email, normalized), eq(teamInvites.status, "pending")))
 
   for (const invite of pending) {
-    const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+    const [team] = await db
+      .select({ id: teams.id, seasonId: teams.seasonId })
+      .from(teams)
+      .where(eq(teams.id, invite.teamId))
+      .limit(1)
     // Respect "one team per player per season": if the player has already been
     // joined to another team in this season (e.g. an earlier pending invite),
     // skip this one and leave it pending so a captain/player can resolve it.
@@ -333,11 +376,18 @@ export async function resolvePendingInvites(email: string, playerId: string) {
       const conflict = await getPlayerSeasonTeamConflict(playerId, team.seasonId, invite.teamId)
       if (conflict) continue
     }
-    await joinTeam(invite.teamId, playerId, {
-      category: invite.category ?? undefined,
-      pairIndex: invite.pairIndex ?? undefined,
-      slotIndex: invite.slotIndex ?? undefined,
-    })
+    try {
+      await joinTeam(invite.teamId, playerId, {
+        category: invite.category ?? undefined,
+        pairIndex: invite.pairIndex ?? undefined,
+        slotIndex: invite.slotIndex ?? undefined,
+      })
+    } catch (err) {
+      // Team filled up before this invite resolved — leave it pending so a
+      // manager can make room or cancel it later.
+      if (err instanceof TeamFullError) continue
+      throw err
+    }
     await db
       .update(teamInvites)
       .set({ status: "accepted", acceptedAt: new Date() })

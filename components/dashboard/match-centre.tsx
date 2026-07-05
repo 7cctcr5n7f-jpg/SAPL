@@ -231,12 +231,10 @@ export function MatchCentre({
   matches,
   details = {},
   isCaptain,
-  captainHref = "/dashboard/captain",
 }: {
   matches: DashboardFixture[]
   details?: Record<number, FixtureDetail>
   isCaptain: boolean
-  captainHref?: string
 }) {
   const [scoreFixture, setScoreFixture] = useState<DashboardFixture | null>(null)
 
