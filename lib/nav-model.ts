@@ -24,6 +24,11 @@ export type NavIcon =
   | "sponsors"
   | "faq"
   | "contact"
+  | "seasons"
+  | "fixtures"
+  | "members"
+  | "payments"
+  | "settings"
   | "login"
   | "register"
   | "logout"
@@ -47,20 +52,31 @@ export type NavModel = {
 }
 
 // --- Shared destinations -------------------------------------------------
-const OVERVIEW: NavItem = { label: "Overview", icon: "overview", href: "/dashboard" }
+// Player-facing
+const HOME: NavItem = { label: "Home", icon: "home", href: "/dashboard" }
 const LEAGUE_CENTRE: NavItem = { label: "League Centre", icon: "league", href: "/league-centre" }
-const RANKINGS: NavItem = { label: "Rankings", icon: "rankings", href: "/rankings" }
-const ALERTS: NavItem = { label: "Alerts", icon: "alerts", href: "/dashboard/notifications" }
-const CAPTAIN_HUB: NavItem = { label: "Captain Hub", icon: "captain", href: "/dashboard/captain" }
-const TEAM_MGMT: NavItem = { label: "Team Management", icon: "team", href: "/dashboard/org" }
-const CLUB_MGMT: NavItem = { label: "Club Management", icon: "club", href: "/admin/clubs" }
-const PROFILE: NavItem = { label: "Profile", icon: "profile", href: "/dashboard/profile" }
-const RULES: NavItem = { label: "Rules", icon: "rules", href: "/rules" }
+const MY_TEAM: NavItem = { label: "My Team", icon: "team", href: "/dashboard/org" }
+const SETTINGS: NavItem = { label: "Settings", icon: "settings", href: "/dashboard/profile" }
+
+// Public marketing
+const PUBLIC_HOME: NavItem = { label: "Home", icon: "home", href: "/" }
+const CLUBS: NavItem = { label: "Clubs", icon: "clubs", href: "/clubs" }
 const MARKETPLACE: NavItem = { label: "Marketplace", icon: "marketplace", href: "/marketplace" }
+const LEAGUE_FORMAT: NavItem = { label: "League Format", icon: "rules", href: "/rules" }
 const SPONSORS: NavItem = { label: "Sponsors", icon: "sponsors", href: "/sponsors" }
+
+// Admin
+const ADMIN_DASHBOARD: NavItem = { label: "Dashboard", icon: "admin", href: "/admin" }
+const ADMIN_SEASONS: NavItem = { label: "Seasons", icon: "seasons", href: "/admin?tab=seasons" }
+const ADMIN_FIXTURES: NavItem = { label: "Fixtures", icon: "fixtures", href: "/admin/fixtures" }
+const ADMIN_TEAMS: NavItem = { label: "Teams", icon: "team", href: "/admin?tab=placement" }
+const ADMIN_CLUBS: NavItem = { label: "Clubs", icon: "club", href: "/admin/clubs" }
+const ADMIN_MEMBERS: NavItem = { label: "Members", icon: "members", href: "/admin/members" }
+const ADMIN_PAYMENTS: NavItem = { label: "Payments", icon: "payments", href: "/admin/billing" }
+
 const LOGOUT: NavItem = { label: "Logout", icon: "logout", action: "logout" }
 
-/** Remove duplicate destinations (the brief lists Rankings twice for some roles). */
+/** Remove duplicate destinations. */
 function dedupe(items: NavItem[]): NavItem[] {
   const seen = new Set<string>()
   return items.filter((i) => {
@@ -81,89 +97,35 @@ export function buildNavModel(user: CurrentUser | null, access: AccessContext | 
   if (!user || !access) {
     return {
       authed: false,
-      primary: [
-        { label: "Home", icon: "home", href: "/" },
-        LEAGUE_CENTRE,
-        { label: "Clubs", icon: "clubs", href: "/clubs" },
-        RANKINGS,
-      ],
-      more: [
-        RULES,
-        MARKETPLACE,
-        SPONSORS,
-        { label: "FAQ", icon: "faq", href: "/faq" },
-        { label: "Contact", icon: "contact", href: "/contact" },
-      ],
+      primary: [PUBLIC_HOME, LEAGUE_CENTRE, CLUBS, MARKETPLACE],
+      more: [LEAGUE_FORMAT, SPONSORS],
     }
   }
 
   const isLeagueAdmin = access.permissions.has("league_management")
-  const hasClubMgmt = access.permissions.has("club_management")
-  const hasTeamMgmt = access.permissions.has("team_management")
-  const canCaptain = access.canCaptainHub
 
-  // --- League / super admin: full management reach ---
+  // --- League / super admin: competition management ---
   if (isLeagueAdmin) {
     return {
       authed: true,
-      primary: [OVERVIEW, LEAGUE_CENTRE, { label: "League", icon: "admin", href: "/admin" }, ALERTS],
+      primary: [ADMIN_DASHBOARD, LEAGUE_CENTRE, ADMIN_FIXTURES, ADMIN_MEMBERS],
       more: dedupe([
-        { label: "Players", icon: "team", href: "/admin/players" },
-        CLUB_MGMT,
-        { label: "Members", icon: "profile", href: "/admin/members" },
-        { label: "Fixtures", icon: "captain", href: "/dashboard/fixtures" },
-        { label: "Communications", icon: "alerts", href: "/admin/broadcasts" },
+        ADMIN_SEASONS,
+        ADMIN_TEAMS,
+        ADMIN_CLUBS,
+        ADMIN_PAYMENTS,
         SPONSORS,
-        RANKINGS,
-        RULES,
-        MARKETPLACE,
-        PROFILE,
+        SETTINGS,
         LOGOUT,
       ]),
     }
   }
 
-  // --- Club / venue owner ---
-  if (hasClubMgmt) {
-    const primary = [OVERVIEW, LEAGUE_CENTRE, CLUB_MGMT]
-    // If they also own/manage a team, surface Team Management in the bar.
-    if (hasTeamMgmt) primary.push(TEAM_MGMT)
-    primary.push(ALERTS)
-    return {
-      authed: true,
-      primary,
-      more: dedupe([PROFILE, RANKINGS, MARKETPLACE, RULES, ...(hasTeamMgmt ? [] : [TEAM_MGMT]), LOGOUT]),
-    }
-  }
-
-  // --- Team owner ---
-  if (hasTeamMgmt) {
-    return {
-      authed: true,
-      primary: [OVERVIEW, LEAGUE_CENTRE, CAPTAIN_HUB, TEAM_MGMT, ALERTS],
-      more: dedupe([PROFILE, RANKINGS, MARKETPLACE, RULES, LOGOUT]),
-    }
-  }
-
-  // --- Captain ---
-  if (canCaptain) {
-    return {
-      authed: true,
-      primary: [OVERVIEW, LEAGUE_CENTRE, CAPTAIN_HUB, ALERTS],
-      more: dedupe([PROFILE, RANKINGS, RULES, MARKETPLACE, LOGOUT]),
-    }
-  }
-
-  // --- Player (default) ---
+  // --- Player / team owner / captain (unified simple menu) ---
+  // Per the V1 redesign every signed-in non-admin gets the same four items.
   return {
     authed: true,
-    primary: [OVERVIEW, LEAGUE_CENTRE, RANKINGS, ALERTS],
-    more: dedupe([
-      { label: "Player Profile", icon: "profile", href: "/dashboard/profile" },
-      RULES,
-      MARKETPLACE,
-      RANKINGS,
-      LOGOUT,
-    ]),
+    primary: [HOME, LEAGUE_CENTRE, MY_TEAM, SETTINGS],
+    more: dedupe([MARKETPLACE, LEAGUE_FORMAT, SPONSORS, LOGOUT]),
   }
 }

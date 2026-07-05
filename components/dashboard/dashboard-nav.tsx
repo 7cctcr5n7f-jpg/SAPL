@@ -73,50 +73,36 @@ export function DashboardNav({
   const router = useRouter()
 
   const has = (p: string) => permissions.includes(p)
+  const isLeagueAdmin = has("league_management")
 
-  const items: NavItem[] = [{ href: "/dashboard", label: "Overview", icon: ICONS.dashboard }]
+  let items: NavItem[]
 
-  // League Centre — always available within dashboard, stays in dashboard layout
-  items.push({ href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings })
-
-  if (canCaptainHub) {
-    items.push({ href: "/dashboard/captain", label: "Captain Hub", icon: ICONS.results })
-  }
-
-  if (has("fixture_management")) {
-    items.push({ href: "/dashboard/fixtures", label: "Fixture Management", icon: ICONS.fixtures })
-  }
-
-  if (has("billing_management")) {
-    items.push({ href: "/admin/billing", label: "Billing Management", icon: ICONS.payments })
-  }
-
-  // Player Management is league admins only
-  if (has("league_management")) {
-    items.push({ href: "/admin/players", label: "Player Management", icon: ICONS.roster })
-  }
-
-  if (has("team_management")) {
-    items.push({ href: "/dashboard/org", label: "Team Management", icon: ICONS.org })
-  }
-
-  if (has("club_management")) {
-    items.push({ href: "/admin/clubs", label: "Club Management", icon: ICONS.venues })
-  }
-
-  if (has("league_management")) {
-    items.push({ href: "/admin", label: "League Management", icon: ICONS.admin })
-    items.push({ href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce })
-    items.push({ href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors })
+  if (isLeagueAdmin) {
+    // --- League Admin: competition management ---
+    items = [
+      { href: "/admin", label: "Dashboard", icon: ICONS.admin },
+      { href: "/admin?tab=seasons", label: "Seasons", icon: ICONS.rankings },
+      { href: "/admin/fixtures", label: "Fixtures", icon: ICONS.fixtures },
+      { href: "/admin?tab=placement", label: "Teams", icon: ICONS.roster },
+      { href: "/admin/clubs", label: "Clubs", icon: ICONS.venues },
+      { href: "/admin/members", label: "Members", icon: ICONS.members },
+      { href: "/admin/billing", label: "Payments", icon: ICONS.payments },
+      { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.results },
+      { href: "/admin/broadcasts", label: "Communications", icon: ICONS.announce },
+      { href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors },
+    ]
     // Demo Controls only appear in the Demo Environment deployment.
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
       items.push({ href: "/admin/demo", label: "Demo Controls", icon: ICONS.demo })
     }
-  }
-
-  // Members & Roles is league-management only (hidden while previewing a role).
-  if (canManageMembers) {
-    items.push({ href: "/admin/members", label: "Members & Roles", icon: ICONS.members })
+  } else {
+    // --- Player / team owner (unified simple menu) ---
+    items = [
+      { href: "/dashboard", label: "Home", icon: ICONS.dashboard },
+      { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings },
+      { href: "/dashboard/org", label: "My Team", icon: ICONS.org },
+      { href: "/dashboard/profile", label: "Settings", icon: ICONS.profile },
+    ]
   }
 
   async function signOut() {
