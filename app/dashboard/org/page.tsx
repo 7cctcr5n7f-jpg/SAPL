@@ -53,9 +53,13 @@ export default async function MyTeamPage({
     )
   }
 
-  // A player may manage their own team when they captain/own it or otherwise
-  // hold management rights over it (club managers, team owners).
-  const canManage = access.canManageTeam(data.team.id)
+  // A player may manage their own team's roster only when they hold a
+  // team-management permission (captain / owner / club manager) AND that
+  // specific team is in their scope. This mirrors canManageTeam() in the
+  // roster server actions so the UI never offers controls the action rejects.
+  const canManage =
+    (access.can("captain_hub") || access.can("team_management")) &&
+    access.canManageTeam(data.team.id)
 
   return (
     <div className="space-y-6">

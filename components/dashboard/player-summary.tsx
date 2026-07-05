@@ -95,10 +95,10 @@ export function PlayerSummary({
         </Link>
         {team && (
           <Link
-            href={`/teams/${team.teamId}`}
+            href="/dashboard/org"
             className="flex-1 flex items-center justify-center px-4 py-2 rounded-lg bg-primary text-background font-semibold text-sm hover:bg-primary/90 transition-colors"
           >
-            View Team
+            My Team
           </Link>
         )}
       </div>
