@@ -2,6 +2,9 @@ import Link from "next/link"
 import { requirePermissionPage } from "@/lib/access"
 import { getAdminSummary, getSeasonsWithDivisions, getRegions, getPlayoffs, getPlayoffVenues } from "@/lib/queries-admin"
 import { getPlacementBoard } from "@/lib/queries-placement"
+import { getCurrentSeason } from "@/lib/queries"
+import { getSeasonReadiness } from "@/lib/team-readiness"
+import { SeasonReadinessSummary } from "@/components/admin/season-readiness-summary"
 import { db } from "@/lib/db"
 import { seasons as seasonsTable } from "@/lib/db/schema"
 import { desc } from "drizzle-orm"
@@ -30,11 +33,13 @@ export default async function AdminPage({
   await requirePermissionPage("league_management")
   const activeTab: TabId = TABS.some((t) => t.id === sp.tab) ? (sp.tab as TabId) : "seasons"
 
-  const [summary, seasons, regions] = await Promise.all([
+  const [summary, seasons, regions, currentSeason] = await Promise.all([
     getAdminSummary(),
     getSeasonsWithDivisions(),
     getRegions(),
+    getCurrentSeason(),
   ])
+  const readiness = currentSeason ? await getSeasonReadiness(currentSeason.id) : null
 
   return (
     <div className="space-y-6">
@@ -44,6 +49,8 @@ export default async function AdminPage({
         <Stat label="Registered Teams" value={summary.teamCount} />
         <Stat label="Total Fixtures" value={summary.fixtureCount} />
       </div>
+
+      {readiness && readiness.totalTeams > 0 && <SeasonReadinessSummary readiness={readiness} />}
 
       <div className="flex gap-1 border-b border-border">
         {TABS.map((t) => {

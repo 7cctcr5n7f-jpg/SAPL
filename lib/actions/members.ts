@@ -48,6 +48,14 @@ export type MemberRow = {
   createdAt: string
   /** True when this member has an explicit permission override (vs role defaults). */
   hasPermissionOverride: boolean
+  // Player profile fields, folded in so the unified Members editor can view and
+  // edit them without a separate Player Management page.
+  gender: string | null
+  city: string | null
+  province: string | null
+  currentLi: number | null
+  playtomicRating: number | null
+  playtomicUrl: string | null
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
@@ -64,6 +72,12 @@ export async function listMembers(): Promise<MemberRow[]> {
       firstName: user.firstName,
       lastName: user.lastName,
       createdAt: user.createdAt,
+      gender: user.gender,
+      city: user.city,
+      province: user.province,
+      currentLi: user.currentLi,
+      playtomicRating: user.playtomicRating,
+      playtomicUrl: user.playtomicUrl,
     })
     .from(user)
     .leftJoin(userMeta, eq(userMeta.userId, user.id))
@@ -78,6 +92,12 @@ export async function listMembers(): Promise<MemberRow[]> {
     playerName: r.firstName ? `${r.firstName} ${r.lastName ?? ""}`.trim() : null,
     createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
     hasPermissionOverride: r.permissions != null,
+    gender: r.gender ?? null,
+    city: r.city ?? null,
+    province: r.province ?? null,
+    currentLi: r.currentLi ?? null,
+    playtomicRating: r.playtomicRating ?? null,
+    playtomicUrl: r.playtomicUrl ?? null,
   }))
 }
 
@@ -119,6 +139,7 @@ export async function updateMemberDetails(
     city?: string | null
     province?: string | null
     currentLi?: number | null
+    playtomicRating?: number | null
     playtomicUrl?: string | null
     isPlayer?: boolean
   },
@@ -140,6 +161,7 @@ export async function updateMemberDetails(
   if (input.city !== undefined) userUpdate.city = input.city?.trim() || null
   if (input.province !== undefined) userUpdate.province = input.province || null
   if (input.currentLi !== undefined) userUpdate.currentLi = input.currentLi ?? 0
+  if (input.playtomicRating !== undefined) userUpdate.playtomicRating = input.playtomicRating
   if (input.playtomicUrl !== undefined) userUpdate.playtomicUrl = input.playtomicUrl?.trim() || null
   if (input.isPlayer !== undefined) userUpdate.isPlayer = input.isPlayer
 

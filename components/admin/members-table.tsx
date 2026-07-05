@@ -334,11 +334,12 @@ function EditMemberDialog({
 }) {
   const [name, setName] = useState(member.name)
   const [phone, setPhone] = useState(member.phone ?? "")
-  const [gender, setGender] = useState("")
-  const [city, setCity] = useState("")
-  const [province, setProvince] = useState("")
-  const [li, setLi] = useState("")
-  const [playtomicUrl, setPlaytomicUrl] = useState("")
+  const [gender, setGender] = useState(member.gender ?? "")
+  const [city, setCity] = useState(member.city ?? "")
+  const [province, setProvince] = useState(member.province ?? "")
+  const [li, setLi] = useState(member.currentLi != null ? String(member.currentLi) : "")
+  const [rating, setRating] = useState(member.playtomicRating != null ? String(member.playtomicRating) : "")
+  const [playtomicUrl, setPlaytomicUrl] = useState(member.playtomicUrl ?? "")
   const [isPlayer, setIsPlayer] = useState(member.playerName ? true : false)
   const [expandAdvanced, setExpandAdvanced] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -353,6 +354,7 @@ function EditMemberDialog({
         city: city || null,
         province: province || null,
         currentLi: li ? parseFloat(li) : null,
+        playtomicRating: rating ? parseFloat(rating) : null,
         playtomicUrl: playtomicUrl || null,
         isPlayer,
       })
@@ -448,14 +450,29 @@ function EditMemberDialog({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-playtomic">Playtomic URL</Label>
-                <Input
-                  id="edit-playtomic"
-                  value={playtomicUrl}
-                  onChange={(e) => setPlaytomicUrl(e.target.value)}
-                  placeholder="https://playtomic.io/..."
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-rating">Playtomic rating</Label>
+                  <Input
+                    id="edit-rating"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="7"
+                    value={rating}
+                    onChange={(e) => setRating(e.target.value)}
+                    placeholder="e.g., 3.25"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-playtomic">Playtomic URL</Label>
+                  <Input
+                    id="edit-playtomic"
+                    value={playtomicUrl}
+                    onChange={(e) => setPlaytomicUrl(e.target.value)}
+                    placeholder="https://playtomic.io/..."
+                  />
+                </div>
               </div>
             </>
           )}
