@@ -73,8 +73,8 @@ export function DashboardNav({
 
   if (isLeagueAdmin) {
     // --- League Admin: competition management ---
+    // No generic "Dashboard" item — /admin redirects to /admin/seasons.
     items = [
-      { href: "/admin", label: "Dashboard", icon: ICONS.admin },
       { href: "/admin/seasons", label: "Seasons", icon: ICONS.rankings },
       { href: "/dashboard/fixtures", label: "Fixtures", icon: ICONS.fixtures },
       { href: "/admin/teams", label: "Teams", icon: ICONS.roster },
@@ -130,20 +130,12 @@ export function DashboardNav({
         </div>
       ) : null}
 
-      {/* Active = the single nav item whose href best (longest) matches the path,
-          so /admin/clubs highlights "Clubs" only, not "Dashboard" (/admin).
-          Root-level items like /admin must be an exact match only. */}
+      {/* Active = the single nav item whose href best (longest) matches the current
+          path. e.g. /admin/clubs/42 highlights "Clubs" not "Seasons". */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {items.map((item) => {
           const matches = items
-            .filter((i) => {
-              const exact = pathname === i.href
-              const prefix = pathname.startsWith(i.href + "/")
-              // Treat root dashboard items as exact-match only so sub-routes
-              // like /admin/seasons don't also activate the root "Dashboard" link.
-              const isRootItem = i.href === "/admin" || i.href === "/dashboard"
-              return exact || (!isRootItem && prefix)
-            })
+            .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
             .map((i) => i.href)
           const bestMatch = matches.sort((a, b) => b.length - a.length)[0]
           const active = item.href === bestMatch
