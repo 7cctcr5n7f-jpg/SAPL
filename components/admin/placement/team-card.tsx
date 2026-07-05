@@ -40,11 +40,11 @@ export function TeamCardContent({
           {team.homeClubName ?? "No home club"}
         </p>
       </div>
-      <span className="shrink-0 self-start mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+      <span className="shrink-0 self-start mt-0.5 text-[11px] tabular-nums text-muted-foreground" title={`${team.playerCount} of ${team.maxPlayers} players`}>
         {team.playerCount}/{team.maxPlayers}
       </span>
-      <span className="shrink-0 self-start rounded bg-secondary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-secondary-foreground">
-        {team.avgLi.toFixed(1)}
+      <span className="shrink-0 self-start rounded bg-secondary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-secondary-foreground" title="Average Playtomic rating">
+        {team.avgLi > 0 ? team.avgLi.toFixed(1) : "—"}
       </span>
     </div>
   )
