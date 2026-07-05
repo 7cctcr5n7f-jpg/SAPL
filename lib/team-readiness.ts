@@ -34,6 +34,19 @@ export type TeamReadiness = {
 }
 
 /**
+ * Maps an average Playtomic rating to a suggested division band. This is an
+ * advisory recommendation surfaced to League Admins only — final placement is
+ * always decided by the league office. Returns null when no rating is available.
+ */
+export function suggestDivision(avgRating: number | null): string | null {
+  if (avgRating == null || avgRating <= 0) return null
+  if (avgRating >= 4.5) return "Premier / Division 1"
+  if (avgRating >= 3.5) return "Division 2–3"
+  if (avgRating >= 2.5) return "Division 4–5"
+  return "Division 6+"
+}
+
+/**
  * Computes a team's League Ready status: roster completeness (full squad of 8),
  * fee settlement across the active roster, and roster averages (Playtomic
  * rating + League Index). A team is "League Ready" only when it fields a full,

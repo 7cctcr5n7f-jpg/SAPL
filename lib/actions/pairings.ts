@@ -159,6 +159,10 @@ export async function removeFromTeam(input: { teamId: number; playerId: string }
 export async function invitePlayerByEmail(input: {
   teamId: number
   email: string
+  /** Player's name, captured on Add Player and shown for a pending invite. */
+  name?: string
+  /** Playtomic rating, captured on Add Player and applied to the profile on link. */
+  playtomicRating?: number | null
   category?: string
   pairIndex?: number
   slotIndex?: number
@@ -198,6 +202,14 @@ export async function invitePlayerByEmail(input: {
       if (err instanceof TeamFullError) return { error: err.message }
       throw err
     }
+    // Capture the Playtomic rating on the profile when supplied (used for the
+    // team's average rating). Overwrites so the manager's latest input wins.
+    if (input.playtomicRating != null && input.playtomicRating > 0) {
+      await db
+        .update(user)
+        .set({ playtomicRating: input.playtomicRating, updatedAt: new Date() })
+        .where(eq(user.id, existingPlayer.id))
+    }
     await db.insert(notifications).values({
       userId: existingPlayer.id,
       type: "team_invite",
@@ -221,6 +233,8 @@ export async function invitePlayerByEmail(input: {
     await db
       .update(teamInvites)
       .set({
+        invitedName: input.name?.trim() || null,
+        invitedRating: input.playtomicRating ?? null,
         category: input.category ?? null,
         pairIndex: input.pairIndex ?? null,
         slotIndex: input.slotIndex ?? null,
@@ -230,6 +244,8 @@ export async function invitePlayerByEmail(input: {
     await db.insert(teamInvites).values({
       teamId: input.teamId,
       email,
+      invitedName: input.name?.trim() || null,
+      invitedRating: input.playtomicRating ?? null,
       category: input.category ?? null,
       pairIndex: input.pairIndex ?? null,
       slotIndex: input.slotIndex ?? null,
@@ -387,6 +403,21 @@ export async function resolvePendingInvites(email: string, playerId: string) {
       // manager can make room or cancel it later.
       if (err instanceof TeamFullError) continue
       throw err
+    }
+    // Carry the Playtomic rating captured at Add Player time onto the new
+    // player's profile if they haven't set one themselves.
+    if (invite.invitedRating != null && invite.invitedRating > 0) {
+      const [prof] = await db
+        .select({ rating: user.playtomicRating })
+        .from(user)
+        .where(eq(user.id, playerId))
+        .limit(1)
+      if (!prof?.rating) {
+        await db
+          .update(user)
+          .set({ playtomicRating: invite.invitedRating, updatedAt: new Date() })
+          .where(eq(user.id, playerId))
+      }
     }
     await db
       .update(teamInvites)

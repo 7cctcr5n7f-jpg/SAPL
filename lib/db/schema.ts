@@ -367,6 +367,8 @@ export const teamInvites = pgTable(
     id: serial("id").primaryKey(),
     teamId: integer("teamId").notNull(),
     email: text("email").notNull(),
+    invitedName: text("invitedName"), // captured name so the roster can show the pending player
+    invitedRating: doublePrecision("invitedRating"), // captured Playtomic rating, applied to the profile on link
     category: text("category"), // optional target category
     pairIndex: integer("pairIndex"), // optional target block
     slotIndex: integer("slotIndex"), // optional target slot
