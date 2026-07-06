@@ -98,17 +98,26 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
   const firstName = nameParts[0]
   const lastName = nameParts.slice(1).join(" ") || ""
 
-  // Sign up via Better Auth
+  // Sign up via Better Auth — signUpEmail throws an APIError on duplicate email
   const hdrs = await headers()
-  const res = await auth.api.signUpEmail({
-    headers: hdrs,
-    body: {
-      name: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      password,
-      callbackURL: "/onboarding",
-    },
-  })
+  let res: Awaited<ReturnType<typeof auth.api.signUpEmail>>
+  try {
+    res = await auth.api.signUpEmail({
+      headers: hdrs,
+      body: {
+        name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        callbackURL: "/onboarding",
+      },
+    })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.toLowerCase().includes("already exists") || msg.toLowerCase().includes("already in use")) {
+      return { ok: false, error: "An account with this email already exists. Please sign in instead." }
+    }
+    return { ok: false, error: "Could not create account. Please try again." }
+  }
 
   if (!res?.user) return { ok: false, error: "Could not create account. The email may already be in use." }
 
@@ -184,17 +193,26 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
   const firstName = nameParts[0]
   const lastName = nameParts.slice(1).join(" ") || ""
 
-  // Sign up via Better Auth
+  // Sign up via Better Auth — signUpEmail throws an APIError on duplicate email
   const hdrs = await headers()
-  const res = await auth.api.signUpEmail({
-    headers: hdrs,
-    body: {
-      name: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      password,
-      callbackURL: "/dashboard",
-    },
-  })
+  let res: Awaited<ReturnType<typeof auth.api.signUpEmail>>
+  try {
+    res = await auth.api.signUpEmail({
+      headers: hdrs,
+      body: {
+        name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        callbackURL: "/dashboard",
+      },
+    })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.toLowerCase().includes("already exists") || msg.toLowerCase().includes("already in use")) {
+      return { ok: false, error: "An account with this email already exists. Please sign in instead." }
+    }
+    return { ok: false, error: "Could not create account. Please try again." }
+  }
 
   if (!res?.user) return { ok: false, error: "Could not create account. The email may already be in use." }
 
