@@ -6,13 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import { cn } from "@/lib/utils"
 import {
   ChevronLeft,
@@ -321,30 +315,51 @@ function TeamFlow({
 
       {step === "venue" && (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label>Home club / venue</Label>
-            <Select value={homeClubId} onValueChange={(v) => setHomeClubId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select your home venue..." />
-              </SelectTrigger>
-              <SelectContent>
-                {hostingClubs.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}{c.saplRegion ? ` · ${c.saplRegion}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <p className="text-xs text-muted-foreground">
+              Only clubs that have confirmed they will host league nights are listed below.
+            </p>
           </div>
-          {selectedClub && (
-            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-              <p className="font-medium">{selectedClub.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{selectedClub.courts} court{selectedClub.courts !== 1 ? "s" : ""}{selectedClub.saplRegion ? ` · ${selectedClub.saplRegion}` : ""}</p>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Your home club is where your team hosts league nights. Only clubs that have confirmed they will host are shown.
-          </p>
+          <div className="flex flex-col gap-2 max-h-72 overflow-y-auto rounded-lg border border-border pr-1">
+            {hostingClubs.map((c) => {
+              const selected = homeClubId === String(c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setHomeClubId(String(c.id))}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors first:mt-1 last:mb-1 mx-1",
+                    selected
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted/60 text-foreground",
+                  )}
+                >
+                  <div className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                    selected ? "border-primary-foreground bg-primary-foreground" : "border-muted-foreground",
+                  )}>
+                    {selected && <div className="h-2.5 w-2.5 rounded-full bg-primary" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-snug">{c.name}</p>
+                    {c.saplRegion && (
+                      <p className={cn("text-xs mt-0.5", selected ? "text-primary-foreground/75" : "text-muted-foreground")}>
+                        {c.saplRegion}{c.courts ? ` · ${c.courts} court${c.courts !== 1 ? "s" : ""}` : ""}
+                      </p>
+                    )}
+                  </div>
+                  {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-foreground" />}
+                </button>
+              )
+            })}
+            {hostingClubs.length === 0 && (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                No hosting clubs available yet.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
