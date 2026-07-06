@@ -230,12 +230,14 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
   if (existingOrg) {
     orgId = existingOrg.id
   } else {
+    const slugBase = fullName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
     const [newOrg] = await db
       .insert(organisations)
       .values({
         name: `${fullName.trim()}'s Organisation`,
+        slug: `${slugBase}-${Date.now()}`,
         ownerUserId: userId,
-        type: "private",
+        type: "Social Group",
       })
       .returning({ id: organisations.id })
     orgId = newOrg.id

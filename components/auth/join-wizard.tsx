@@ -287,7 +287,7 @@ function TeamFlow({
 
       {step === "payment" && (
         <div className="flex flex-col gap-4">
-          <RadioGroup value={paymentModel} onValueChange={(v) => setPaymentModel(v as "club" | "individual")}>
+          <RadioGroup value={paymentModel} onValueChange={(v: string) => setPaymentModel(v as "club" | "individual")}>
             <label className={cn("flex cursor-pointer gap-4 rounded-lg border-2 p-4 transition-colors", paymentModel === "club" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
               <RadioGroupItem value="club" id="pay-club" className="mt-0.5 shrink-0" />
               <div>
@@ -310,7 +310,7 @@ function TeamFlow({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>Home club / venue</Label>
-            <Select value={homeClubId} onValueChange={setHomeClubId}>
+            <Select value={homeClubId} onValueChange={(v) => setHomeClubId(v ?? "")}>
               <SelectTrigger>
                 <SelectValue placeholder="Select your home venue..." />
               </SelectTrigger>
@@ -352,7 +352,7 @@ function TeamFlow({
 
           <div className="flex flex-col gap-2">
             <Label>Will you play in the team yourself?</Label>
-            <RadioGroup value={captainPlays} onValueChange={(v) => setCaptainPlays(v as "yes" | "no")} className="flex gap-4">
+            <RadioGroup value={captainPlays} onValueChange={(v: string) => setCaptainPlays(v as "yes" | "no")} className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <RadioGroupItem value="yes" id="plays-yes" /> <span className="text-sm">Yes, I&apos;ll play</span>
               </label>
@@ -562,7 +562,7 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
               </div>
               <RadioGroup
                 value={acceptInvite ? "yes" : "no"}
-                onValueChange={(v) => setAcceptInvite(v === "yes")}
+                onValueChange={(v: string) => setAcceptInvite(v === "yes")}
               >
                 <label className={cn("flex cursor-pointer gap-3 rounded-lg border-2 p-3.5 transition-colors", acceptInvite ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
                   <RadioGroupItem value="yes" id="accept-yes" className="mt-0.5 shrink-0" />
