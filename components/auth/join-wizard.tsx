@@ -16,13 +16,13 @@ import {
 import { cn } from "@/lib/utils"
 import {
   ChevronLeft,
+  ChevronRight,
   Users,
   User,
   Loader2,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  ExternalLink,
 } from "lucide-react"
 import {
   checkEmailInvite,
@@ -81,13 +81,17 @@ function PlaytomicHelp() {
 
 function StepDots({ total, current }: { total: number; current: number }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       {Array.from({ length: total }).map((_, i) => (
         <span
           key={i}
           className={cn(
-            "h-1.5 rounded-full transition-all",
-            i < current ? "bg-primary w-4" : i === current ? "bg-primary w-4" : "bg-border w-1.5",
+            "h-2 rounded-full transition-all duration-300",
+            i === current
+              ? "bg-primary w-6"
+              : i < current
+              ? "bg-primary/50 w-2"
+              : "bg-border w-2",
           )}
         />
       ))}
@@ -101,57 +105,59 @@ function StepDots({ total, current }: { total: number; current: number }) {
 
 function PathChooser({ onChoose }: { onChoose: (p: "team" | "player") => void }) {
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="heading text-3xl text-balance">Join the League</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="heading text-4xl text-balance leading-tight">Join the League</h1>
+        <p className="text-sm text-muted-foreground">
           How would you like to participate in SAPL?
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-4">
+        {/* Create a Team — primary red card */}
         <button
           type="button"
           onClick={() => onChoose("team")}
-          className="group flex flex-col gap-3 rounded-lg border-2 border-border bg-card p-5 text-left transition-colors hover:border-primary hover:bg-primary/5"
+          className="group relative w-full overflow-hidden rounded-xl bg-primary text-primary-foreground text-left transition-all active:scale-[0.98] hover:brightness-110"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Users className="h-5 w-5" />
+          <div className="flex items-center gap-4 p-6">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <Users className="h-7 w-7" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold leading-tight">Create a Team</p>
+              <p className="mt-1 text-sm leading-relaxed opacity-85">
+                Register a new team, pick your home venue, and captain your squad through the season.
+              </p>
+            </div>
+            <ChevronRight className="h-6 w-6 shrink-0 opacity-70 group-hover:translate-x-1 transition-transform" />
           </div>
-          <div>
-            <p className="font-semibold text-foreground group-hover:text-primary">Create a Team</p>
-            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-              Register a new team and become the team captain. You&apos;ll manage your roster, choose your home venue, and lead your squad through the season.
-            </p>
-          </div>
-          <span className="mt-auto text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-            Get started &rarr;
-          </span>
         </button>
 
+        {/* Register as Player — dark outlined card */}
         <button
           type="button"
           onClick={() => onChoose("player")}
-          className="group flex flex-col gap-3 rounded-lg border-2 border-border bg-card p-5 text-left transition-colors hover:border-primary hover:bg-primary/5"
+          className="group relative w-full overflow-hidden rounded-xl border-2 border-border bg-card text-left transition-all active:scale-[0.98] hover:border-primary/60 hover:bg-primary/5"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <User className="h-5 w-5" />
+          <div className="flex items-center gap-4 p-6">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <User className="h-7 w-7" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold leading-tight text-foreground group-hover:text-primary transition-colors">Register as Player</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Accept a team invitation or join the player marketplace so captains can find you.
+              </p>
+            </div>
+            <ChevronRight className="h-6 w-6 shrink-0 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </div>
-          <div>
-            <p className="font-semibold text-foreground group-hover:text-primary">Register as Player</p>
-            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-              Join as an individual player. Accept a team invitation if you have one, or join the player marketplace so captains can find and invite you.
-            </p>
-          </div>
-          <span className="mt-auto text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-            Get started &rarr;
-          </span>
         </button>
       </div>
 
       <p className="text-center text-sm text-muted-foreground">
         Already competing?{" "}
-        <a href="/sign-in" className="text-primary hover:underline">
+        <a href="/sign-in" className="font-medium text-primary hover:underline">
           Sign in
         </a>
       </p>
@@ -247,22 +253,28 @@ function TeamFlow({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <button type="button" onClick={prevStep} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={prevStep}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 -ml-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+        >
           <ChevronLeft className="h-4 w-4" /> Back
         </button>
         <StepDots total={TEAM_STEPS.length} current={stepIndex} />
       </div>
 
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-primary">Create a Team &mdash; {TEAM_STEP_LABELS[step]}</p>
-        {step === "details" && <h2 className="heading text-2xl mt-1">What&apos;s your team called?</h2>}
-        {step === "payment" && <h2 className="heading text-2xl mt-1">How will fees be paid?</h2>}
-        {step === "venue" && <h2 className="heading text-2xl mt-1">Where will you play?</h2>}
-        {step === "account" && <h2 className="heading text-2xl mt-1">Set up your captain account</h2>}
-        {step === "review" && <h2 className="heading text-2xl mt-1">Review your registration</h2>}
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-1">
+          Create a Team &mdash; Step {stepIndex + 1} of {TEAM_STEPS.length}
+        </p>
+        {step === "details" && <h2 className="heading text-3xl text-balance">What&apos;s your team called?</h2>}
+        {step === "payment" && <h2 className="heading text-3xl text-balance">How will fees be paid?</h2>}
+        {step === "venue" && <h2 className="heading text-3xl text-balance">Where will you play?</h2>}
+        {step === "account" && <h2 className="heading text-3xl text-balance">Your captain account</h2>}
+        {step === "review" && <h2 className="heading text-3xl text-balance">Review & submit</h2>}
       </div>
 
       {/* Step content */}
@@ -275,6 +287,7 @@ function TeamFlow({
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
               placeholder="e.g. Northcliff A"
+              className="h-12 text-base"
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) nextStep() }}
             />
           </div>
@@ -339,15 +352,15 @@ function TeamFlow({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="captainName">Full name</Label>
-            <Input id="captainName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" />
+            <Input id="captainName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="captainEmail">Email</Label>
-            <Input id="captainEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+            <Input id="captainEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="captainPw">Password</Label>
-            <Input id="captainPw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} />
+            <Input id="captainPw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} className="h-12 text-base" />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -372,6 +385,7 @@ function TeamFlow({
                 value={playtomicUrl}
                 onChange={(e) => setPlaytomicUrl(e.target.value)}
                 placeholder="https://app.playtomic.io/user/..."
+                className="h-12 text-base"
               />
               <PlaytomicHelp />
             </div>
@@ -494,21 +508,27 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
   const hasInvite = invite && typeof invite !== "string" && invite !== null
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <button type="button" onClick={prevStep} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={prevStep}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 -ml-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+        >
           <ChevronLeft className="h-4 w-4" /> Back
         </button>
         <StepDots total={PLAYER_STEPS.length} current={stepIndex} />
       </div>
 
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-primary">Register as Player</p>
-        {step === "email" && <h2 className="heading text-2xl mt-1">What&apos;s your email?</h2>}
-        {step === "invite-check" && <h2 className="heading text-2xl mt-1">{hasInvite ? "You have an invitation!" : "Join the marketplace"}</h2>}
-        {step === "account" && <h2 className="heading text-2xl mt-1">Create your account</h2>}
-        {step === "review" && <h2 className="heading text-2xl mt-1">Review & submit</h2>}
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-1">
+          Register as Player &mdash; Step {stepIndex + 1} of {PLAYER_STEPS.length}
+        </p>
+        {step === "email" && <h2 className="heading text-3xl text-balance">What&apos;s your email?</h2>}
+        {step === "invite-check" && <h2 className="heading text-3xl text-balance">{hasInvite ? "You have an invitation!" : "Join the marketplace"}</h2>}
+        {step === "account" && <h2 className="heading text-3xl text-balance">Create your account</h2>}
+        {step === "review" && <h2 className="heading text-3xl text-balance">Review & submit</h2>}
       </div>
 
       {/* Email step */}
@@ -522,6 +542,7 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              className="h-12 text-base"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) checkEmail()
               }}
@@ -611,15 +632,15 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="playerName">Full name</Label>
-            <Input id="playerName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" />
+            <Input id="playerName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
             <Label>Email</Label>
-            <p className="text-sm border border-border rounded-md px-3 py-2 bg-muted/40 text-muted-foreground">{email}</p>
+            <p className="h-12 flex items-center text-sm border border-border rounded-md px-3 bg-muted/40 text-muted-foreground">{email}</p>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="playerPw">Password</Label>
-            <Input id="playerPw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} />
+            <Input id="playerPw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="playerPlaytomic">
@@ -630,6 +651,7 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
               value={playtomicUrl}
               onChange={(e) => setPlaytomicUrl(e.target.value)}
               placeholder="https://app.playtomic.io/user/..."
+              className="h-12 text-base"
             />
             <PlaytomicHelp />
           </div>
