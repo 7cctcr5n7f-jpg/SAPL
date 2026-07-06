@@ -149,12 +149,17 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     await resolvePendingInvites(email.trim().toLowerCase(), userId)
   } catch (_) {}
 
-  // If they came in via an invite token, mark it accepted
+  // If they came in via an invite token, mark it accepted and remove from marketplace
   if (inviteToken) {
     await db
       .update(teamInvites)
       .set({ status: "accepted", acceptedAt: new Date() })
       .where(and(eq(teamInvites.token, inviteToken), eq(teamInvites.email, email.trim().toLowerCase())))
+    // Player has joined a team — clear marketplace visibility automatically
+    await db
+      .update(user)
+      .set({ lookingForTeam: false, onMarketplace: false, availability: "unavailable" })
+      .where(eq(user.id, userId))
   }
 
   revalidatePath("/dashboard")

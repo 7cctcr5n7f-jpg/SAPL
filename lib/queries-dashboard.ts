@@ -170,6 +170,13 @@ export async function getPlayerByUserId(userId: string) {
       lookingForTeam: user.lookingForTeam,
       availability: user.availability,
       avatarUrl: user.avatarUrl,
+      // Profile form fields
+      firstName: user.firstName,
+      lastName: user.lastName,
+      bio: user.bio,
+      city: user.city,
+      preferredClubIds: user.preferredClubIds,
+      anyClub: user.anyClub,
     })
     .from(user)
     .where(eq(user.id, userId))
