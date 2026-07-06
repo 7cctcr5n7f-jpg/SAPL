@@ -11,8 +11,8 @@ import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploade
 import { toast } from "sonner"
 
 type PlayerLike = {
-  firstName: string
-  lastName: string
+  firstName: string | null
+  lastName: string | null
   bio: string | null
   city: string | null
   playtomicUrl: string | null
@@ -29,16 +29,22 @@ export function ProfileForm({
   clubs,
   email,
   phone,
+  isOnTeam = false,
+  isPlayer = false,
 }: {
   player: PlayerLike
   clubs: Club[]
   email: string
   phone: string | null
+  isOnTeam?: boolean
+  isPlayer?: boolean
 }) {
   const [state, action, pending] = useActionState(updateProfile, null)
   const [anyClub, setAnyClub] = useState(player.anyClub)
   const [selectedClubs, setSelectedClubs] = useState<number[]>(player.preferredClubIds ?? [])
   const [avatarUrl, setAvatarUrl] = useState(player.avatarUrl || null)
+  // If the player is on a team, marketplace is always off and locked
+  const [lookingForTeam, setLookingForTeam] = useState(isOnTeam ? false : player.lookingForTeam)
 
   function toggleClub(id: number) {
     setSelectedClubs((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]))
@@ -71,11 +77,11 @@ export function ProfileForm({
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="firstName">First name</Label>
-          <Input id="firstName" name="firstName" defaultValue={player.firstName} placeholder="First name" required />
+          <Input id="firstName" name="firstName" defaultValue={player.firstName ?? ""} placeholder="First name" required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="lastName">Surname</Label>
-          <Input id="lastName" name="lastName" defaultValue={player.lastName} placeholder="Surname" required />
+          <Input id="lastName" name="lastName" defaultValue={player.lastName ?? ""} placeholder="Surname" required />
         </div>
       </div>
 
@@ -169,20 +175,27 @@ export function ProfileForm({
         />
       </div>
 
-      <label className="flex items-center gap-3 rounded-md border border-border bg-secondary px-4 py-3">
-        <input
-          type="checkbox"
-          name="lookingForTeam"
-          defaultChecked={player.lookingForTeam}
-          className="h-4 w-4 accent-[var(--color-primary)]"
-        />
-        <span className="text-sm">
-          <span className="font-semibold">List me on the marketplace</span>
-          <span className="block text-xs text-muted-foreground">
-            Captains can discover and invite you to their teams.
+      {/* Marketplace visibility — locked off when the player already has a team */}
+      <div className={`rounded-md border px-4 py-3 ${isOnTeam ? "border-border bg-muted/30 opacity-70" : "border-border bg-secondary"}`}>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            name="lookingForTeam"
+            checked={lookingForTeam}
+            onChange={(e) => !isOnTeam && setLookingForTeam(e.target.checked)}
+            disabled={isOnTeam}
+            className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
+          />
+          <span className="text-sm">
+            <span className="font-semibold">List me on the player marketplace</span>
+            <span className="block text-xs text-muted-foreground mt-0.5">
+              {isOnTeam
+                ? "You are already on a team — marketplace listing is automatically disabled."
+                : "Captains can discover and invite you to their team."}
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      </div>
 
       {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
       {state?.success && <p className="text-sm font-medium text-primary">{state.success}</p>}
