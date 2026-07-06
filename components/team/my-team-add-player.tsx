@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,17 +13,37 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { invitePlayerByEmail } from "@/lib/actions/pairings"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { invitePlayerByEmail, lookupPlayerByEmail, inviteMarketplacePlayer, getFreeAgentsAction } from "@/lib/actions/pairings"
 import { toast } from "sonner"
-import { UserPlus } from "lucide-react"
+import { UserPlus, Mail, Users, Loader2, CheckCircle2, Search, Star } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
 
-/**
- * "Add Player" flow for the My Team page. Captures name, email and an optional
- * Playtomic rating. If the email belongs to a registered player they join
- * immediately; otherwise an invite email is sent and the player is linked
- * automatically when they register with that address.
- */
+type Tab = "email" | "marketplace"
+
+type FreeAgent = {
+  id: string
+  name: string
+  firstName: string | null
+  lastName: string | null
+  playtomicRating: number | null
+  city: string | null
+  province: string | null
+  avatarUrl: string | null
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase()
+}
+
 export function MyTeamAddPlayer({
   teamId,
   slotsRemaining,
@@ -35,18 +55,75 @@ export function MyTeamAddPlayer({
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<Tab>("email")
   const [pending, start] = useTransition()
-  const [name, setName] = useState("")
+
+  // Email tab state
   const [email, setEmail] = useState("")
+  const [name, setName] = useState("")
   const [rating, setRating] = useState("")
+  const [lookupState, setLookupState] = useState<"idle" | "loading" | "found" | "not-found">("idle")
+  const [nameReadonly, setNameReadonly] = useState(false)
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Marketplace tab state
+  const [freeAgents, setFreeAgents] = useState<FreeAgent[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
+  const [search, setSearch] = useState("")
+  const [inviting, setInviting] = useState<string | null>(null)
 
   function reset() {
-    setName("")
     setEmail("")
+    setName("")
     setRating("")
+    setLookupState("idle")
+    setNameReadonly(false)
+    setSearch("")
+    setTab("email")
+    if (lookupTimer.current) clearTimeout(lookupTimer.current)
   }
 
-  function submit() {
+  // Live email lookup with 600ms debounce
+  useEffect(() => {
+    if (lookupTimer.current) clearTimeout(lookupTimer.current)
+    const trimmed = email.trim()
+    if (!trimmed.includes("@") || trimmed.length < 5) {
+      setLookupState("idle")
+      setNameReadonly(false)
+      return
+    }
+    setLookupState("loading")
+    lookupTimer.current = setTimeout(() => {
+      start(async () => {
+        const res = await lookupPlayerByEmail(trimmed)
+        if (res.found && res.name) {
+          setName(res.name)
+          setNameReadonly(true)
+          if (res.playtomicRating != null) setRating(String(res.playtomicRating))
+          setLookupState("found")
+        } else {
+          setNameReadonly(false)
+          setLookupState("not-found")
+        }
+      })
+    }, 600)
+    return () => {
+      if (lookupTimer.current) clearTimeout(lookupTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email])
+
+  // Load free agents when marketplace tab is opened
+  useEffect(() => {
+    if (tab !== "marketplace" || freeAgents.length > 0) return
+    setAgentsLoading(true)
+    getFreeAgentsAction().then((agents) => {
+      setFreeAgents(agents as FreeAgent[])
+      setAgentsLoading(false)
+    })
+  }, [tab, freeAgents.length])
+
+  function submitEmail() {
     if (!email.trim() || !email.includes("@")) {
       toast.error("Enter a valid email address.")
       return
@@ -74,6 +151,31 @@ export function MyTeamAddPlayer({
     })
   }
 
+  function inviteFromMarketplace(playerId: string) {
+    setInviting(playerId)
+    start(async () => {
+      const res = await inviteMarketplacePlayer({ teamId, playerId })
+      setInviting(null)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(res.success ?? "Player invited.")
+      setOpen(false)
+      reset()
+      router.refresh()
+    })
+  }
+
+  const filteredAgents = freeAgents.filter((a) => {
+    const q = search.toLowerCase()
+    return (
+      a.name.toLowerCase().includes(q) ||
+      (a.city ?? "").toLowerCase().includes(q) ||
+      (a.province ?? "").toLowerCase().includes(q)
+    )
+  })
+
   return (
     <Dialog
       open={open}
@@ -91,64 +193,208 @@ export function MyTeamAddPlayer({
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add a player</DialogTitle>
-          <DialogDescription className="text-pretty">
+          <DialogDescription>
             {slotsRemaining > 0
-              ? `${slotsRemaining} open slot${slotsRemaining === 1 ? "" : "s"} left in your squad of 8.`
+              ? `${slotsRemaining} open slot${slotsRemaining === 1 ? "" : "s"} remaining in your squad.`
               : "Your squad is full."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="apName">Player name</Label>
-            <Input
-              id="apName"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Alex Player"
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="apEmail">Email</Label>
-            <Input
-              id="apEmail"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground text-pretty">
-              We&apos;ll email an invite. Registered players are added instantly; new players join once they sign up.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="apRating">Playtomic rating (optional)</Label>
-            <Input
-              id="apRating"
-              type="number"
-              step="0.1"
-              min="0"
-              max="7"
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              placeholder="e.g. 3.5"
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground">Used to calculate your team&apos;s average rating.</p>
-          </div>
+
+        {/* Tab switcher */}
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setTab("email")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors",
+              tab === "email"
+                ? "bg-primary text-primary-foreground"
+                : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40",
+            )}
+          >
+            <Mail className="h-4 w-4" />
+            Invite by email
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("marketplace")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-l border-border",
+              tab === "marketplace"
+                ? "bg-primary text-primary-foreground"
+                : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40",
+            )}
+          >
+            <Users className="h-4 w-4" />
+            From marketplace
+          </button>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || slotsRemaining <= 0}>
-            {pending ? "Adding…" : "Add player"}
-          </Button>
-        </DialogFooter>
+
+        {/* Email tab */}
+        {tab === "email" && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="apEmail">Email</Label>
+              <div className="relative">
+                <Input
+                  id="apEmail"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="player@example.com"
+                  autoComplete="off"
+                  className="h-11 pr-9"
+                />
+                {lookupState === "loading" && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+                {lookupState === "found" && (
+                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
+                )}
+              </div>
+              {lookupState === "found" && (
+                <p className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Registered player found — name auto-filled.
+                </p>
+              )}
+              {lookupState === "not-found" && (
+                <p className="text-xs text-muted-foreground">
+                  No account found — an invite email will be sent when you submit.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apName">
+                Player name{nameReadonly ? "" : " (optional)"}
+              </Label>
+              <Input
+                id="apName"
+                value={name}
+                onChange={(e) => !nameReadonly && setName(e.target.value)}
+                placeholder="Alex Player"
+                autoComplete="off"
+                readOnly={nameReadonly}
+                className={cn("h-11", nameReadonly && "bg-muted/40 text-muted-foreground cursor-not-allowed")}
+              />
+              {nameReadonly && (
+                <p className="text-xs text-muted-foreground">Name locked from registered profile.</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apRating">Playtomic rating (optional)</Label>
+              <Input
+                id="apRating"
+                type="number"
+                step="0.1"
+                min="0"
+                max="7"
+                value={rating}
+                onChange={(e) => setRating(e.target.value)}
+                placeholder="e.g. 3.5"
+                autoComplete="off"
+                className="h-11"
+              />
+              <p className="text-xs text-muted-foreground">Used to calculate your team&apos;s average rating (0–7).</p>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+                Cancel
+              </Button>
+              <Button onClick={submitEmail} disabled={pending || slotsRemaining <= 0}>
+                {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                {lookupState === "found" ? "Add player" : "Send invite"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Marketplace tab */}
+        {tab === "marketplace" && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, city or province..."
+                className="pl-9 h-11"
+              />
+            </div>
+
+            {agentsLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredAgents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <Users className="h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  {search ? "No players match your search." : "No players are currently on the marketplace."}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                {filteredAgents.map((a) => {
+                  const displayName = a.firstName
+                    ? `${a.firstName} ${a.lastName ?? ""}`.trim()
+                    : a.name
+                  const location = [a.city, a.province].filter(Boolean).join(", ")
+                  const isInviting = inviting === a.id
+
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3 bg-card"
+                    >
+                      <Avatar className="h-10 w-10 shrink-0 border border-border">
+                        <AvatarFallback className="bg-secondary text-xs font-semibold">
+                          {initials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {a.playtomicRating != null && a.playtomicRating > 0 ? (
+                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                              <Star className="h-3 w-3" />
+                              {a.playtomicRating.toFixed(1)}
+                            </span>
+                          ) : null}
+                          {location ? (
+                            <span className="text-xs text-muted-foreground truncate">{location}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0 text-xs hidden sm:flex">
+                        Free agent
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending || slotsRemaining <= 0 || isInviting}
+                        onClick={() => inviteFromMarketplace(a.id)}
+                        className="shrink-0"
+                      >
+                        {isInviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Invite"}
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {slotsRemaining <= 0 && (
+              <p className="text-center text-xs text-destructive">Squad is full — remove a player first.</p>
+            )}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

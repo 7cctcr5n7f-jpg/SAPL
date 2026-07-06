@@ -276,6 +276,134 @@ export async function invitePlayerByEmail(input: {
   }
 }
 
+/**
+ * Fetch all free agents (players on the marketplace) for the Add Player picker.
+ * Wrapped as a server action so client components can call it without a fetch.
+ */
+export async function getFreeAgentsAction() {
+  const me = await getCurrentUser()
+  if (!me) return []
+  return db
+    .select({
+      id: user.id,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      playtomicRating: user.playtomicRating,
+      city: user.city,
+      province: user.province,
+      avatarUrl: user.avatarUrl,
+    })
+    .from(user)
+    .where(eq(user.lookingForTeam, true))
+    .orderBy(user.name)
+    .limit(200)
+}
+
+/**
+ * Look up a registered player by email.
+ * Returns their display name, Playtomic rating and player ID so the captain's
+ * "Add Player" dialog can auto-fill the name and avoid duplicates.
+ */
+export async function lookupPlayerByEmail(email: string): Promise<{
+  found: boolean
+  userId?: string
+  name?: string
+  playtomicRating?: number | null
+}> {
+  const me = await getCurrentUser()
+  if (!me) return { found: false }
+
+  const normalized = email.trim().toLowerCase()
+  if (!normalized || !normalized.includes("@")) return { found: false }
+
+  const [found] = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      playtomicRating: user.playtomicRating,
+      isPlayer: user.isPlayer,
+    })
+    .from(user)
+    .where(eq(user.email, normalized))
+    .limit(1)
+
+  if (!found) return { found: false }
+
+  const displayName = found.firstName
+    ? `${found.firstName} ${found.lastName ?? ""}`.trim()
+    : found.name
+
+  return {
+    found: true,
+    userId: found.id,
+    name: displayName,
+    playtomicRating: found.playtomicRating,
+  }
+}
+
+/**
+ * Send a direct team invitation to a player who is already on the marketplace
+ * (i.e. has lookingForTeam = true). Creates a pending teamInvite by email so
+ * the existing invite-resolution machinery handles acceptance.
+ */
+export async function inviteMarketplacePlayer(input: { teamId: number; playerId: string }) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const team = await canManageTeam(me, input.teamId)
+  if (!team) return { error: "You cannot manage this team." }
+
+  const [player] = await db
+    .select({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      name: user.name,
+      isPlayer: user.isPlayer,
+      lookingForTeam: user.lookingForTeam,
+    })
+    .from(user)
+    .where(eq(user.id, input.playerId))
+    .limit(1)
+
+  if (!player) return { error: "Player not found." }
+
+  // If they're already a registered player, add them straight to the roster.
+  if (player.isPlayer) {
+    const conflict = await getPlayerSeasonTeamConflict(player.id, team.seasonId, input.teamId)
+    if (conflict) {
+      return { error: `${player.firstName ?? player.name} already plays for ${conflict.teamName} this season.` }
+    }
+    try {
+      await joinTeam(input.teamId, player.id)
+    } catch (err) {
+      if (err instanceof TeamFullError) return { error: err.message }
+      throw err
+    }
+    await db.insert(notifications).values({
+      userId: player.id,
+      type: "team_invite",
+      title: "You've been added to a team",
+      body: `${team.name} has added you to their squad.`,
+      scope: "direct",
+    })
+    // Clear marketplace flag so they no longer appear as a free agent.
+    await db.update(user).set({ lookingForTeam: false, onMarketplace: false }).where(eq(user.id, player.id))
+    revalidatePath("/dashboard/captain")
+    revalidatePath("/dashboard/org")
+    revalidatePath("/dashboard")
+    const displayName = player.firstName ? `${player.firstName} ${player.lastName ?? ""}`.trim() : player.name
+    return { success: `${displayName} added to ${team.name}.` }
+  }
+
+  // Player has an account but no player profile yet — fall back to email invite.
+  const displayName = player.firstName ? `${player.firstName} ${player.lastName ?? ""}`.trim() : player.name
+  return invitePlayerByEmail({ teamId: input.teamId, email: player.email, name: displayName })
+}
+
 export async function cancelInvite(inviteId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }

@@ -33,9 +33,7 @@ export function AuthForm({ mode, defaultEmail = "" }: { mode: "sign-in" | "sign-
       } else {
         const { error } = await signIn.email({ email, password })
         if (error) throw new Error(error.message || "Invalid email or password")
-        // Keep the user on the public homepage after signing in rather than
-        // dropping them straight into the dashboard.
-        router.push("/")
+        router.push("/dashboard")
       }
       router.refresh()
     } catch (err) {
