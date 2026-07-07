@@ -134,7 +134,7 @@ export async function updateTeamRegistration(input: {
   clubPaysFees?: boolean
   ownerEmail?: string | null
 }) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId, homeClubId: teams.homeClubId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
   await requireOrgOwner(team.organisationId)
 
@@ -208,7 +208,7 @@ export async function updateTeamRegistration(input: {
 export async function assignCaptain(formData: FormData) {
   const teamId = Number(formData.get("teamId"))
   const playerId = String(formData.get("playerId"))
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
   // Authorise via the access context so org owners, league admins AND club/team
   // managers who have this team in their scope can assign a captain. (Using
@@ -275,7 +275,7 @@ export async function updateCaptainContact(input: {
   lastName: string
   phone: string | null
 }) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
   try {
     await requireOrgOwner(team.organisationId)
@@ -308,7 +308,7 @@ export async function updateCaptainContact(input: {
 }
 
 export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { error: "Team not found" }
   try {
     await requireOrgOwner(team.organisationId)
@@ -327,7 +327,7 @@ export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean)
  * their slot but lose the team reference so the schedule stays intact.
  */
 export async function deleteTeam(teamId: number) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team?.organisationId) return { ok: false, error: "Team not found" }
   try {
     await requireOrgOwner(team.organisationId)
