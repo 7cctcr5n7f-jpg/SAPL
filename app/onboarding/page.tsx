@@ -6,11 +6,21 @@ import { getClubOptions } from "@/lib/queries"
 
 export const metadata = { title: "Create Your Profile | SAPL" }
 
-export default async function OnboardingPage() {
+interface Props {
+  searchParams: Promise<{ inviteToken?: string }>
+}
+
+export default async function OnboardingPage({ searchParams }: Props) {
   const user = await getCurrentUser()
   if (!user) redirect("/sign-in")
-  if (user.isPlayer) redirect("/dashboard")
+  if (user.isPlayer) {
+    // If they already have a profile but came via an invite link, process it now
+    const { inviteToken } = await searchParams
+    if (inviteToken) redirect(`/invite/${inviteToken}`)
+    redirect("/dashboard")
+  }
 
+  const { inviteToken } = await searchParams
   const clubs = await getClubOptions()
 
   return (
@@ -24,8 +34,13 @@ export default async function OnboardingPage() {
         <p className="mt-2 text-muted-foreground">
           Set up your competitive profile. Your League Index keeps category line-ups fair and prevents sandbagging.
         </p>
+        {inviteToken && (
+          <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary font-medium">
+            Complete your profile to automatically join your team.
+          </p>
+        )}
         <div className="mt-8">
-          <OnboardingForm defaultName={user.name} clubs={clubs} />
+          <OnboardingForm defaultName={user.name} clubs={clubs} inviteToken={inviteToken} />
         </div>
       </main>
     </div>

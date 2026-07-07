@@ -7,12 +7,11 @@ export const metadata = { title: "Sign In | SAPL" }
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reset?: string; email?: string }>
+  searchParams: Promise<{ reset?: string; email?: string; callbackUrl?: string }>
 }) {
   const session = await getOptionalSession()
-  if (session?.user) redirect("/dashboard")
-
-  const { reset, email } = await searchParams
+  const { reset, email, callbackUrl } = await searchParams
+  if (session?.user) redirect(callbackUrl ?? "/dashboard")
 
   return (
     <div className="flex flex-col gap-6">
@@ -25,7 +24,7 @@ export default async function SignInPage({
           Your password has been reset. Sign in with your new password.
         </p>
       ) : null}
-      <AuthForm mode="sign-in" defaultEmail={email ?? ""} />
+      <AuthForm mode="sign-in" defaultEmail={email ?? ""} callbackUrl={callbackUrl} />
     </div>
   )
 }
