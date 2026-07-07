@@ -123,11 +123,15 @@ export function PlayerSummary({
       {/* ── Horizontal stats strip ───────────────────────────────────────── */}
       <div className="flex items-stretch divide-x divide-border">
         <StatPill label="PR Rating" value={playtomicRating ?? "—"} highlight={!!playtomicRating} />
-        <StatPill label="Category" value={primaryCategory ?? "—"} />
         <StatPill
-          label="Eligible"
-          value={eligibleCategories.length > 0 ? String(eligibleCategories.length) : "—"}
-          sub={eligibleCategories.length > 0 ? "categories" : undefined}
+          label="Playing Partner"
+          value={partner?.name ? partner.name.split(" ")[0] : "—"}
+          sub={partner?.name && partner.name.includes(" ") ? partner.name.split(" ").slice(1).join(" ") : undefined}
+        />
+        <StatPill
+          label="Combined PR"
+          value={combinedAvg ?? "—"}
+          highlight={!!combinedAvg}
         />
       </div>
 

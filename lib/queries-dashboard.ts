@@ -1293,25 +1293,29 @@ export async function getPairingPartner(playerId: string, teamId: number): Promi
 
   if (!partnerSlot?.playerId) return null
 
-  // Resolve their name, rating and avatar
+  // Resolve name, rating and avatar in a single join.
+  // ppl_players.playtomicRating is the canonical admin-set value; fall back
+  // to user.playtomicRating for players who registered directly without a
+  // ppl_players row yet.
   const [partnerUser] = await db
-    .select({ firstName: user.firstName, lastName: user.lastName, avatarUrl: players.avatarUrl })
+    .select({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      userPr: user.playtomicRating,
+      playerPr: players.playtomicRating,
+      avatarUrl: players.avatarUrl,
+    })
     .from(user)
     .leftJoin(players, eq(players.userId, user.id))
     .where(eq(user.id, partnerSlot.playerId))
-    .limit(1)
-
-  const [partnerPlayer] = await db
-    .select({ playtomicRating: players.playtomicRating })
-    .from(players)
-    .where(eq(players.userId, partnerSlot.playerId))
     .limit(1)
 
   if (!partnerUser) return null
 
   return {
     name: `${partnerUser.firstName ?? ""} ${partnerUser.lastName ?? ""}`.trim(),
-    playtomicRating: partnerPlayer?.playtomicRating ?? null,
+    // Prefer ppl_players value; fall back to user-level value
+    playtomicRating: partnerUser.playerPr ?? partnerUser.userPr ?? null,
     avatarUrl: partnerUser.avatarUrl ?? null,
   }
 }
