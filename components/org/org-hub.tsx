@@ -175,7 +175,8 @@ export function OrgHub({
     })
   }
 
-  const totalPlayers = teams.reduce((s, t) => s + t.playerCount, 0)
+  // Player count is derived from filled pairing slots, not the separate roster table.
+  const totalPlayers = teams.reduce((s, t) => s + t.pairingRoster.length, 0)
   const withOwner = teams.filter((t) => t.ownerEmail).length
   const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
 
@@ -183,7 +184,7 @@ export function OrgHub({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Add players to the league, then build squads. Set a team owner via the edit button on each team.
+          Assign players directly into pairing slots. All 8 players in the pairings are the squad — there is no separate roster. Set a team owner via the edit button.
         </p>
         <div className="flex items-center gap-2">
           <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
@@ -268,10 +269,10 @@ export function OrgHub({
           <div className="space-y-2">
             {visibleTeams.map((t) => {
               const ts = typeStyle(t.teamType)
-              // Squads need at least the 8 dedicated players; subs beyond that are
-              // optional. Flag teams that are still short of the minimum.
+              // The squad is exactly the 8 pairing slots. Count filled slots.
               const minPlayers = TEAM_SQUAD_SIZE
-              const squadComplete = t.playerCount >= minPlayers
+              const filledSlots = t.pairingRoster.length
+              const squadComplete = filledSlots >= minPlayers
               // Payment health drives the indicator colour. Fully settled = green,
               // part-paid = amber, nothing in yet = red.
               const payState =
@@ -394,7 +395,7 @@ export function OrgHub({
                         <Users2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <div>
                           <span className={cn("text-sm font-semibold tabular-nums", !squadComplete && "text-amber-600 dark:text-amber-400")}>
-                            {t.playerCount}<span className="font-normal text-muted-foreground">/{minPlayers}</span>
+                            {filledSlots}<span className="font-normal text-muted-foreground">/{minPlayers}</span>
                           </span>
                           {squadComplete ? (
                             <CircleCheck className="ml-1 inline h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
@@ -402,7 +403,7 @@ export function OrgHub({
                             <CircleAlert className="ml-1 inline h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
                           )}
                           <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
-                            {squadComplete ? "squad ready" : `${minPlayers - t.playerCount} more needed`}
+                            {squadComplete ? "pairings full" : `${minPlayers - filledSlots} slot${minPlayers - filledSlots !== 1 ? "s" : ""} open`}
                           </p>
                         </div>
                       </div>
@@ -449,7 +450,6 @@ export function OrgHub({
             <PairingsBoard
               teamId={squadFor.id}
               categories={squadFor.pairingCategories}
-              roster={squadFor.pairingRoster}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}
             />

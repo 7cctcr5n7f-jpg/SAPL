@@ -103,6 +103,67 @@ export async function setPairingSlot(input: {
     })
   }
 
+  // Keep ppl_team_members in sync so the permission / availability system stays
+  // correct. Adding to a slot = add active member. Clearing a slot = remove if
+  // they have no other slots for this team.
+  if (input.playerId != null) {
+    // Ensure active membership for the player being placed.
+    const [member] = await db
+      .select({ id: teamMembers.id, status: teamMembers.status })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, input.playerId)))
+      .limit(1)
+    if (member) {
+      if (member.status !== "active") {
+        await db.update(teamMembers).set({ status: "active", updatedAt: new Date() }).where(eq(teamMembers.id, member.id))
+      }
+    } else {
+      await db.insert(teamMembers).values({
+        teamId: input.teamId,
+        playerId: input.playerId,
+        role: "member",
+        status: "active",
+        initiatedBy: "team",
+      })
+    }
+  } else {
+    // Slot was cleared — find the player who was just removed.
+    // We only remove their membership if they hold no other pairing slots.
+    // (existing.playerId holds who was in the slot before clearing)
+    const clearedPlayerId = existing?.playerId ?? null
+    if (clearedPlayerId) {
+      const otherSlots = await db
+        .select({ id: teamPairings.id })
+        .from(teamPairings)
+        .where(
+          and(
+            eq(teamPairings.teamId, input.teamId),
+            eq(teamPairings.playerId, clearedPlayerId),
+          ),
+        )
+      if (otherSlots.length === 0) {
+        // No other slots — mark as removed so availability frees up.
+        await db
+          .update(teamMembers)
+          .set({ status: "removed", updatedAt: new Date() })
+          .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, clearedPlayerId)))
+        // Mark player as available again if they're on no other active team.
+        const stillActive = await db
+          .select({ id: teamMembers.id })
+          .from(teamMembers)
+          .where(and(eq(teamMembers.playerId, clearedPlayerId), eq(teamMembers.status, "active")))
+          .limit(1)
+        if (stillActive.length === 0) {
+          await db
+            .update(user)
+            .set({ availability: "available", updatedAt: new Date() })
+            .where(eq(user.id, clearedPlayerId))
+        }
+      }
+    }
+  }
+
+  await recomputeTeamStats(input.teamId)
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return { success: "Lineup updated." }
