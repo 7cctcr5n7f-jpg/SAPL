@@ -215,10 +215,10 @@ export async function removeFromTeam(input: { teamId: number; playerId: string }
 }
 
 // Add a player to a team by email and (optionally) a specific pairing slot.
-// If the email already belongs to a registered player, they are added to the
-// roster immediately (no approval needed). Otherwise a pending invite is stored,
-// an account-creation email is sent, and the membership is resolved when they
-// register with that email address.
+// Always stores a pending invite and sends the player an email with an
+// accept/decline link — even if they already have an account. The player must
+// explicitly click Accept before they are placed in a pairing slot. This
+// applies to both new and existing registered players.
 export async function invitePlayerByEmail(input: {
   teamId: number
   email: string
@@ -238,55 +238,27 @@ export async function invitePlayerByEmail(input: {
   const email = input.email.trim().toLowerCase()
   if (!email || !email.includes("@")) return { error: "Enter a valid email address." }
 
-  // Does a registered user with a player profile already exist for this email?
+  // Check for an existing registered player with this email so we can validate
+  // season conflicts upfront — but we no longer add them automatically.
   const [existingUser] = await db
     .select({ id: user.id, isPlayer: user.isPlayer, firstName: user.firstName, lastName: user.lastName })
     .from(user)
     .where(eq(user.email, email))
     .limit(1)
-  let existingPlayer = existingUser
 
-  if (existingPlayer && existingPlayer.isPlayer) {
-    // One team per player per season.
-    const conflict = await getPlayerSeasonTeamConflict(existingPlayer.id, team.seasonId, input.teamId)
+  if (existingUser?.isPlayer) {
+    // Block the invite early if they are already on another team this season.
+    const conflict = await getPlayerSeasonTeamConflict(existingUser.id, team.seasonId, input.teamId)
     if (conflict) {
       return {
-        error: `${existingPlayer.firstName} already plays for ${conflict.teamName} this season. They must leave that team first.`,
+        error: `${existingUser.firstName} already plays for ${conflict.teamName} this season. They must leave that team first.`,
       }
     }
-    // Immediate add for an existing player — no approval needed.
-    try {
-      await joinTeam(input.teamId, existingPlayer.id, {
-        category: input.category,
-        pairIndex: input.pairIndex,
-        slotIndex: input.slotIndex,
-      })
-    } catch (err) {
-      if (err instanceof TeamFullError) return { error: err.message }
-      throw err
-    }
-    // Capture the Playtomic rating on the profile when supplied (used for the
-    // team's average rating). Overwrites so the manager's latest input wins.
-    if (input.playtomicRating != null && input.playtomicRating > 0) {
-      await db
-        .update(user)
-        .set({ playtomicRating: input.playtomicRating, updatedAt: new Date() })
-        .where(eq(user.id, existingPlayer.id))
-    }
-    await db.insert(notifications).values({
-      userId: existingPlayer.id,
-      type: "team_invite",
-      title: "You've been added to a team",
-      body: `${team.name} has added you to their squad.`,
-      scope: "direct",
-    })
-    revalidatePath("/dashboard/captain")
-    revalidatePath("/dashboard/org")
-    revalidatePath("/dashboard")
-    return { success: `${existingPlayer.firstName} ${existingPlayer.lastName} added to ${team.name}.` }
   }
 
-  // Otherwise store a pending invite to be resolved on registration.
+  // Always create a pending invite — every player must Accept the invite link
+  // before they are placed in a slot, regardless of whether they have an account.
+  // Store a pending invite to be resolved on registration.
   const [already] = await db
     .select()
     .from(teamInvites)
@@ -344,7 +316,7 @@ export async function invitePlayerByEmail(input: {
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return {
-    success: `${email} has been added as pending. They'll join ${team.name} automatically once they create their account.`,
+    success: `Invite sent to ${email}. They will appear in the slot once they accept.`,
   }
 }
 
@@ -443,35 +415,7 @@ export async function inviteMarketplacePlayer(input: { teamId: number; playerId:
 
   if (!player) return { error: "Player not found." }
 
-  // If they're already a registered player, add them straight to the roster.
-  if (player.isPlayer) {
-    const conflict = await getPlayerSeasonTeamConflict(player.id, team.seasonId, input.teamId)
-    if (conflict) {
-      return { error: `${player.firstName ?? player.name} already plays for ${conflict.teamName} this season.` }
-    }
-    try {
-      await joinTeam(input.teamId, player.id)
-    } catch (err) {
-      if (err instanceof TeamFullError) return { error: err.message }
-      throw err
-    }
-    await db.insert(notifications).values({
-      userId: player.id,
-      type: "team_invite",
-      title: "You've been added to a team",
-      body: `${team.name} has added you to their squad.`,
-      scope: "direct",
-    })
-    // Clear marketplace flag so they no longer appear as a free agent.
-    await db.update(user).set({ lookingForTeam: false, onMarketplace: false }).where(eq(user.id, player.id))
-    revalidatePath("/dashboard/captain")
-    revalidatePath("/dashboard/org")
-    revalidatePath("/dashboard")
-    const displayName = player.firstName ? `${player.firstName} ${player.lastName ?? ""}`.trim() : player.name
-    return { success: `${displayName} added to ${team.name}.` }
-  }
-
-  // Player has an account but no player profile yet — fall back to email invite.
+  // Always go through the invite flow — the player must accept before being placed.
   const displayName = player.firstName ? `${player.firstName} ${player.lastName ?? ""}`.trim() : player.name
   return invitePlayerByEmail({ teamId: input.teamId, email: player.email, name: displayName })
 }
