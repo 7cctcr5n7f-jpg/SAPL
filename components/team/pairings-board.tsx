@@ -324,6 +324,48 @@ export function PairingsBoard({
 
   return (
     <div className="space-y-6">
+      {/* Squad roster summary — shows who is on the squad and whether they have been placed */}
+      {roster.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-5 text-center">
+          <UserPlus className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-muted-foreground">No players on squad yet</p>
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
+            Add players to the squad first, then assign them to pairing slots.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-card p-3">
+          <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+            Squad · {roster.length} player{roster.length !== 1 ? "s" : ""}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {roster.map((p) => {
+              const placed = placedIds.has(p.playerId)
+              return (
+                <div
+                  key={p.playerId}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                    placed
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-border bg-muted/50 text-foreground",
+                  )}
+                >
+                  {p.gender === "female" ? (
+                    <Venus className="h-3 w-3 text-pink-500 shrink-0" />
+                  ) : (
+                    <Mars className="h-3 w-3 text-blue-500 shrink-0" />
+                  )}
+                  {p.name}
+                  <span className="text-muted-foreground">· LI {p.li.toFixed(1)}</span>
+                  {placed && <span className="ml-0.5 text-[10px] opacity-70">Placed</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-5 sm:grid-cols-2">
         {(["female", "male"] as const).map((gender) => {
           const group = PAIRING_LAYOUT[gender]
