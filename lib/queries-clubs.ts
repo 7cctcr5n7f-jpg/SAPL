@@ -77,6 +77,7 @@ export type ClubRow = {
   playtomicUrl: string | null
   contactName: string | null
   contactEmail: string | null
+  contactEmail2: string | null
   contactPhone: string | null
   ownerUserId: string | null
   // The venue's own entered teams (Club Team blocks homed here), in creation
@@ -113,6 +114,7 @@ const clubColumns = {
   playtomicUrl: clubs.playtomicUrl,
   contactName: clubs.contactName,
   contactEmail: clubs.contactEmail,
+  contactEmail2: clubs.contactEmail2,
   contactPhone: clubs.contactPhone,
   ownerUserId: clubs.ownerUserId,
 }

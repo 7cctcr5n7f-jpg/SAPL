@@ -60,6 +60,7 @@ const EMPTY = {
   playtomicUrl: "",
   contactName: "",
   contactEmail: "",
+  contactEmail2: "",
   contactPhone: "",
 }
 
@@ -132,6 +133,7 @@ export function ClubsManager({
       playtomicUrl: c.playtomicUrl ?? "",
       contactName: c.contactName ?? "",
       contactEmail: c.contactEmail ?? "",
+      contactEmail2: c.contactEmail2 ?? "",
       contactPhone: c.contactPhone ?? "",
     })
     setEditingClub(c)
@@ -182,6 +184,7 @@ export function ClubsManager({
         playtomicUrl: form.playtomicUrl,
         contactName: form.contactName,
         contactEmail: form.contactEmail,
+        contactEmail2: form.contactEmail2,
         contactPhone: form.contactPhone,
       })
       if (res.ok) {
@@ -437,25 +440,39 @@ export function ClubsManager({
               />
             </Field>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Contact name">
-                <Input
-                  value={form.contactName}
-                  onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))}
-                />
-              </Field>
-              <Field label="Contact email">
-                <Input
-                  value={form.contactEmail}
-                  onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
-                />
-              </Field>
-              <Field label="Contact phone">
-                <Input
-                  value={form.contactPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
-                />
-              </Field>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Contact name">
+                  <Input
+                    value={form.contactName}
+                    onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Contact phone">
+                  <Input
+                    value={form.contactPhone}
+                    onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Contact email 1" hint="Gets club management access">
+                  <Input
+                    type="email"
+                    placeholder="manager@example.com"
+                    value={form.contactEmail}
+                    onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Contact email 2" hint="Also gets club management access">
+                  <Input
+                    type="email"
+                    placeholder="co-manager@example.com"
+                    value={form.contactEmail2}
+                    onChange={(e) => setForm((f) => ({ ...f, contactEmail2: e.target.value }))}
+                  />
+                </Field>
+              </div>
             </div>
 
             <Field label="Description">
@@ -669,10 +686,13 @@ function CapacityStat({ label, value, className }: { label: string; value: numbe
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
+      <div className="flex items-baseline gap-2">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
+        {hint && <span className="text-[11px] text-muted-foreground/70">{hint}</span>}
+      </div>
       {children}
     </div>
   )

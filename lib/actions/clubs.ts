@@ -93,6 +93,7 @@ type ClubInput = {
   playtomicUrl?: string
   contactName?: string
   contactEmail?: string
+  contactEmail2?: string
   contactPhone?: string
 }
 
@@ -145,6 +146,7 @@ export async function saveClub(input: ClubInput) {
     playtomicUrl: input.playtomicUrl?.trim() || null,
     contactName: input.contactName?.trim() || null,
     contactEmail: input.contactEmail?.trim() || null,
+    contactEmail2: input.contactEmail2?.trim() || null,
     contactPhone: input.contactPhone?.trim() || null,
     updatedAt: new Date(),
   }

@@ -82,7 +82,9 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     ? await db
         .select({ id: clubs.id, name: clubs.name })
         .from(clubs)
-        .where(sql`lower(${clubs.contactEmail}) = ${email}`)
+        .where(
+          sql`lower(${clubs.contactEmail}) = ${email} OR lower(${clubs.contactEmail2}) = ${email}`,
+        )
     : []
   const autoClubIds = new Set(autoClubs.map((c) => c.id))
 
