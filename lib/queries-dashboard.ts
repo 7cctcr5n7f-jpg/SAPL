@@ -19,6 +19,7 @@ import {
   feeNotes,
   regions,
   clubs,
+  players,
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
@@ -1210,4 +1211,107 @@ export async function getStandingForTeam(teamId: number) {
     .where(eq(standings.teamId, teamId))
     .limit(1)
   return s ?? null
+}
+
+// ── Team invite banner ────────────────────────────────────────────────────────
+
+export type PendingTeamInvite = {
+  id: number
+  teamName: string
+  category: string | null
+  token: string
+}
+
+/**
+ * Returns pending team invites for the given email address so the dashboard
+ * can surface them even if the player missed the original email.
+ */
+export async function getPendingInvitesForEmail(email: string): Promise<PendingTeamInvite[]> {
+  const rows = await db
+    .select({
+      id: teamInvites.id,
+      teamId: teamInvites.teamId,
+      category: teamInvites.category,
+      token: teamInvites.token,
+    })
+    .from(teamInvites)
+    .where(and(eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt))
+
+  if (rows.length === 0) return []
+
+  const teamIds = [...new Set(rows.map((r) => r.teamId))]
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(inArray(teams.id, teamIds))
+  const nameById = new Map(teamRows.map((t) => [t.id, t.name]))
+
+  return rows.map((r) => ({
+    id: r.id,
+    teamName: nameById.get(r.teamId) ?? "Unknown Team",
+    category: r.category,
+    token: r.token,
+  }))
+}
+
+// ── Pairing partner ───────────────────────────────────────────────────────────
+
+export type PairingPartner = {
+  name: string
+  playtomicRating: number | null
+  avatarUrl: string | null
+}
+
+/**
+ * Finds the other player paired with playerId in the same pair slot for
+ * the given team. Returns null if the player has no partner yet.
+ */
+export async function getPairingPartner(playerId: string, teamId: number): Promise<PairingPartner | null> {
+  // Find this player's pairing slot
+  const [mySlot] = await db
+    .select({ pairIndex: teamPairings.pairIndex, category: teamPairings.category })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.playerId, playerId)))
+    .limit(1)
+
+  if (!mySlot) return null
+
+  // Find the other player in the same pair
+  const [partnerSlot] = await db
+    .select({ playerId: teamPairings.playerId })
+    .from(teamPairings)
+    .where(
+      and(
+        eq(teamPairings.teamId, teamId),
+        eq(teamPairings.pairIndex, mySlot.pairIndex),
+        eq(teamPairings.category, mySlot.category),
+        ne(teamPairings.playerId, playerId),
+      ),
+    )
+    .limit(1)
+
+  if (!partnerSlot?.playerId) return null
+
+  // Resolve their name, rating and avatar
+  const [partnerUser] = await db
+    .select({ firstName: user.firstName, lastName: user.lastName, avatarUrl: players.avatarUrl })
+    .from(user)
+    .leftJoin(players, eq(players.userId, user.id))
+    .where(eq(user.id, partnerSlot.playerId))
+    .limit(1)
+
+  const [partnerPlayer] = await db
+    .select({ playtomicRating: players.playtomicRating })
+    .from(players)
+    .where(eq(players.userId, partnerSlot.playerId))
+    .limit(1)
+
+  if (!partnerUser) return null
+
+  return {
+    name: `${partnerUser.firstName ?? ""} ${partnerUser.lastName ?? ""}`.trim(),
+    playtomicRating: partnerPlayer?.playtomicRating ?? null,
+    avatarUrl: partnerUser.avatarUrl ?? null,
+  }
 }

@@ -1,9 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import type { PlayerOverviewTeam } from "@/lib/queries-dashboard"
+import type { PlayerOverviewTeam, PendingTeamInvite, PairingPartner } from "@/lib/queries-dashboard"
 import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
-import { Users, ChevronRight, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Users, ChevronRight, AlertCircle, CheckCircle2, Mail } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function PlayerSummary({
@@ -15,6 +15,8 @@ export function PlayerSummary({
   eligibleCategories,
   avatarUrl,
   onPhotoChange,
+  pendingInvites = [],
+  partner,
 }: {
   firstName: string
   leagueIndex: number | null
@@ -24,14 +26,21 @@ export function PlayerSummary({
   eligibleCategories: string[]
   avatarUrl?: string | null
   onPhotoChange?: (url: string) => void
+  pendingInvites?: PendingTeamInvite[]
+  partner?: PairingPartner | null
 }) {
   const primaryCategory = eligibleCategories?.[0] || null
+  const myPr = playtomicRating ? parseFloat(playtomicRating) : null
+  const combinedAvg =
+    myPr != null && partner?.playtomicRating != null
+      ? ((myPr + partner.playtomicRating) / 2).toFixed(2)
+      : null
 
   return (
-    <section>
-      {/* ── Fee alert banner (only when outstanding) ─────────────────────── */}
+    <section className="space-y-5">
+      {/* ── Fee alert banner ─────────────────────────────────────────────── */}
       {!feesPaid && (
-        <div className="flex items-center gap-3 bg-amber-500/10 border-l-4 border-amber-500 px-4 py-3 mb-6 rounded-r-lg">
+        <div className="flex items-center gap-3 bg-amber-500/10 border-l-4 border-amber-500 px-4 py-3 rounded-r-lg">
           <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />
           <p className="text-sm font-semibold text-amber-400 leading-tight">
             League fees outstanding —{" "}
@@ -42,8 +51,34 @@ export function PlayerSummary({
         </div>
       )}
 
+      {/* ── Pending invite banners ───────────────────────────────────────── */}
+      {pendingInvites.map((inv) => (
+        <div
+          key={inv.id}
+          className="flex items-center gap-3 bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg"
+        >
+          <Mail className="h-4 w-4 shrink-0 text-primary" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground leading-tight">
+              Team invite from{" "}
+              <span className="text-primary">{inv.teamName}</span>
+              {inv.category && (
+                <span className="text-muted-foreground font-normal"> &middot; {inv.category}</span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">You have a pending invite — accept before it expires.</p>
+          </div>
+          <Link
+            href={`/invite/${inv.token}`}
+            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            View invite
+          </Link>
+        </div>
+      ))}
+
       {/* ── Identity block ───────────────────────────────────────────────── */}
-      <div className="flex items-center gap-5 mb-8">
+      <div className="flex items-center gap-5">
         <div className="shrink-0">
           <PlayerPhotoUploader
             value={avatarUrl}
@@ -53,7 +88,6 @@ export function PlayerSummary({
         </div>
 
         <div className="min-w-0 flex-1">
-          {/* Greeting */}
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-0.5">
             {feesPaid ? (
               <span className="inline-flex items-center gap-1 text-emerald-500">
@@ -63,13 +97,9 @@ export function PlayerSummary({
               "Welcome back"
             )}
           </p>
-
-          {/* Name — Oswald, massive */}
           <h1 className="font-heading text-4xl font-bold tracking-tight text-foreground leading-none text-balance">
             {firstName}
           </h1>
-
-          {/* Team pill */}
           {team ? (
             <Link
               href="/dashboard/org"
@@ -90,36 +120,9 @@ export function PlayerSummary({
         </div>
       </div>
 
-      {/* ── PR hero number ────────────────────────────────────────────────── */}
-      <div className="mb-8 border-l-4 border-primary pl-5">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">
-          Playtomic Rating
-        </p>
-        <div className="flex items-end gap-4">
-          <span
-            className={cn(
-              "font-heading font-bold tabular-nums leading-none",
-              playtomicRating ? "text-6xl text-foreground" : "text-5xl text-muted-foreground/40",
-            )}
-          >
-            {playtomicRating ?? "—"}
-          </span>
-          {primaryCategory && (
-            <div className="mb-1.5 flex flex-col">
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Category</span>
-              <span className="text-base font-bold text-foreground leading-tight">{primaryCategory}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Horizontal stats strip (hairline dividers) ────────────────────── */}
-      <div className="flex items-stretch divide-x divide-border mb-8">
-        <StatPill
-          label="PR Rating"
-          value={playtomicRating ?? "—"}
-          highlight={!!playtomicRating}
-        />
+      {/* ── Horizontal stats strip ───────────────────────────────────────── */}
+      <div className="flex items-stretch divide-x divide-border">
+        <StatPill label="PR Rating" value={playtomicRating ?? "—"} highlight={!!playtomicRating} />
         <StatPill label="Category" value={primaryCategory ?? "—"} />
         <StatPill
           label="Eligible"
@@ -127,6 +130,52 @@ export function PlayerSummary({
           sub={eligibleCategories.length > 0 ? "categories" : undefined}
         />
       </div>
+
+      {/* ── Partner block (replaces PR hero widget) ──────────────────────── */}
+      {partner ? (
+        <div className="flex items-center gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3.5">
+          {/* Partner avatar */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary uppercase">
+            {partner.name
+              .split(" ")
+              .map((n) => n[0])
+              .join("")
+              .slice(0, 2)}
+          </div>
+
+          {/* Partner info */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Playing Partner
+            </p>
+            <p className="font-heading text-base font-bold text-foreground leading-tight truncate">
+              {partner.name}
+            </p>
+          </div>
+
+          {/* Partner PR */}
+          <div className="text-center px-3 border-x border-border">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">PR</p>
+            <p className={cn("font-heading text-xl font-bold tabular-nums", partner.playtomicRating ? "text-foreground" : "text-muted-foreground/40")}>
+              {partner.playtomicRating?.toFixed(2) ?? "—"}
+            </p>
+          </div>
+
+          {/* Combined avg */}
+          <div className="text-center pl-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Combined</p>
+            <p className={cn("font-heading text-xl font-bold tabular-nums", combinedAvg ? "text-primary" : "text-muted-foreground/40")}>
+              {combinedAvg ?? "—"}
+            </p>
+          </div>
+        </div>
+      ) : team ? (
+        /* On a team but no partner assigned yet */
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3.5 text-muted-foreground">
+          <Users className="h-4 w-4 shrink-0" />
+          <p className="text-sm">No playing partner assigned yet — captain will set the lineup.</p>
+        </div>
+      ) : null}
 
       {/* ── CTAs ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-3">

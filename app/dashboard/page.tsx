@@ -8,7 +8,11 @@ import {
   getPlayerTeamFees,
   getPlayerOverviewTeam,
   getFixtureDetails,
+  getPendingInvitesForEmail,
+  getPairingPartner,
   type FixtureDetail,
+  type PendingTeamInvite,
+  type PairingPartner,
 } from "@/lib/queries-dashboard"
 import { getDashboardFixtures } from "@/lib/queries-fixtures"
 import { PageHeader } from "@/components/dashboard/page-header"
@@ -55,6 +59,13 @@ export default async function DashboardOverview() {
         )) ?? new Map<number, FixtureDetail>()
       : new Map<number, FixtureDetail>()
   const fixtureDetails = Object.fromEntries(detailMap)
+
+  // Pending invites (for players who missed the email) + pairing partner
+  const pendingInvites = await getPendingInvitesForEmail(me.email)
+  const pairingPartner =
+    overviewTeam && player
+      ? await getPairingPartner(me.id, overviewTeam.teamId)
+      : null
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
@@ -106,6 +117,8 @@ export default async function DashboardOverview() {
         playtomicRating={player.playtomicRating ? String(player.playtomicRating) : null}
         eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
         avatarUrl={player.avatarUrl as string | null}
+        pendingInvites={pendingInvites}
+        partner={pairingPartner}
       />
 
       {/* ── League Fees (only when due) ───────────────────────────────────── */}
