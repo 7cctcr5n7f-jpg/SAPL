@@ -1,43 +1,56 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
-import { processTeamInviteByToken } from "@/lib/actions/pairings"
-import { InviteResult } from "@/components/invite/invite-result"
+import { getInvitePreview } from "@/lib/actions/pairings"
+import { InviteAccept } from "@/components/invite/invite-accept"
 
 interface Props {
   params: Promise<{ token: string }>
 }
 
 /**
- * Token-based team invite accept page.
+ * Team invite landing page.
  *
- * Cases handled:
- *  1. Signed in + has player profile  → join immediately, show success
- *  2. Signed in + no player profile   → redirect to onboarding with token
- *  3. Not signed in (any)             → redirect to sign-in with token so after
- *     login they land back here; or to sign-up if no account exists
+ * This page only SHOWS the invitation details. The player must click
+ * "Accept" to trigger the server action — we do NOT auto-process on
+ * load, which would break with email pre-fetch bots and sign-in redirects.
+ *
+ * Cases:
+ *  1. Not signed in → redirect to sign-in (callbackUrl back here)
+ *  2. Signed in, no player profile → redirect to onboarding with token
+ *  3. Invalid / cancelled / not found token → show error inline
+ *  4. Already accepted (re-visit) → show success inline
+ *  5. Ready to accept → show Accept / Decline UI
  */
 export default async function InviteAcceptPage({ params }: Props) {
   const { token } = await params
 
-  // If user is not signed in, send them to sign-in first, then come back here
   const me = await getCurrentUser()
   if (!me) {
     redirect(`/sign-in?callbackUrl=${encodeURIComponent(`/invite/${token}`)}`)
   }
 
-  const result = await processTeamInviteByToken(token)
+  // Fetch invite metadata without mutating anything.
+  let preview
+  try {
+    preview = await getInvitePreview(token, me.id)
+  } catch (err) {
+    console.log("[v0] getInvitePreview error:", err)
+    return (
+      <InviteAccept
+        token={token}
+        preview={{ error: "Something went wrong loading this invitation. Please try again." }}
+      />
+    )
+  }
 
-  if ("needsProfile" in result) {
-    // Has account, needs player profile — go to onboarding then auto-join
+  if ("needsProfile" in preview) {
     redirect(`/onboarding?inviteToken=${encodeURIComponent(token)}`)
   }
 
-  if ("needsAccount" in result) {
-    // No account yet — send to sign-up; after registering they'll be auto-joined
-    // via resolvePendingInvites (email-based) in registerPlayer
-    redirect(`/sign-up?email=${encodeURIComponent(result.email)}&inviteToken=${encodeURIComponent(token)}`)
+  if ("needsAccount" in preview) {
+    redirect(`/sign-up?email=${encodeURIComponent(preview.email)}&inviteToken=${encodeURIComponent(token)}`)
   }
 
-  // For all other cases (joined, error, alreadyOnTeam) show the result page
-  return <InviteResult result={result} />
+  // Show accept / decline UI (or an inline result if already settled).
+  return <InviteAccept token={token} preview={preview} />
 }

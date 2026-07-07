@@ -116,6 +116,18 @@ export default async function AdminTeamsPage() {
     }
     const outstanding = Math.max(teamTotal - amountPaid, 0)
 
+    // Resolve the owner's display name from their email so the UI can show
+    // "Ruan Broe" instead of the raw email address.
+    let ownerName: string | null = null
+    if (row.team.ownerEmail) {
+      const [ownerUser] = await db
+        .select({ firstName: userTable.firstName, lastName: userTable.lastName })
+        .from(userTable)
+        .where(eq(userTable.email, row.team.ownerEmail))
+        .limit(1)
+      if (ownerUser) ownerName = `${ownerUser.firstName} ${ownerUser.lastName}`.trim()
+    }
+
     teamData.push({
       id: row.team.id,
       name: row.team.name,
@@ -125,6 +137,7 @@ export default async function AdminTeamsPage() {
       homeClubLogoUrl: club?.logoUrl ?? null,
       homeClubContactEmail: club?.contactEmail ?? null,
       ownerEmail: row.team.ownerEmail ?? null,
+      ownerName,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
       maxPlayers: row.team.maxPlayers,

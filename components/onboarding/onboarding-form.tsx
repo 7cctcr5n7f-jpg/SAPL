@@ -89,45 +89,49 @@ export function OnboardingForm({ defaultName, clubs, inviteToken }: { defaultNam
         </span>
       </div>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">Preferred home club</legend>
-        <label className="flex items-center gap-3 border border-border bg-card p-3">
-          <input
-            type="checkbox"
-            name="anyClub"
-            checked={anyClub}
-            onChange={(e) => setAnyClub(e.target.checked)}
-            className="size-4 accent-[var(--color-primary)]"
-          />
-          <span className="text-sm font-semibold">{"I don't mind — any club works"}</span>
-        </label>
-        {!anyClub && (
-          <div className="grid max-h-56 gap-2 overflow-y-auto border border-border p-3 sm:grid-cols-2">
-            {clubs.length === 0 ? (
-              <span className="text-xs text-muted-foreground">No clubs available yet.</span>
-            ) : (
-              clubs.map((club) => (
-                <label key={club.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="preferredClubIds"
-                    value={club.id}
-                    checked={selectedClubs.includes(club.id)}
-                    onChange={() => toggleClub(club.id)}
-                    className="size-4 accent-[var(--color-primary)]"
-                  />
-                  <span>{club.name}</span>
-                </label>
-              ))
+      {!inviteToken && (
+        <>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">Preferred home club</legend>
+            <label className="flex items-center gap-3 border border-border bg-card p-3">
+              <input
+                type="checkbox"
+                name="anyClub"
+                checked={anyClub}
+                onChange={(e) => setAnyClub(e.target.checked)}
+                className="size-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-sm font-semibold">{"I don't mind — any club works"}</span>
+            </label>
+            {!anyClub && (
+              <div className="grid max-h-56 gap-2 overflow-y-auto border border-border p-3 sm:grid-cols-2">
+                {clubs.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">No clubs available yet.</span>
+                ) : (
+                  clubs.map((club) => (
+                    <label key={club.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="preferredClubIds"
+                        value={club.id}
+                        checked={selectedClubs.includes(club.id)}
+                        onChange={() => toggleClub(club.id)}
+                        className="size-4 accent-[var(--color-primary)]"
+                      />
+                      <span>{club.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </fieldset>
+          </fieldset>
 
-      <label className="flex items-center gap-3 border border-border bg-card p-4">
-        <input type="checkbox" name="lookingForTeam" defaultChecked className="size-4 accent-[var(--color-primary)]" />
-        <span className="text-sm">List me on the player marketplace so captains can recruit me.</span>
-      </label>
+          <label className="flex items-center gap-3 border border-border bg-card p-4">
+            <input type="checkbox" name="lookingForTeam" defaultChecked className="size-4 accent-[var(--color-primary)]" />
+            <span className="text-sm">List me on the player marketplace so captains can recruit me.</span>
+          </label>
+        </>
+      )}
 
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
 

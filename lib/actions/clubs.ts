@@ -93,6 +93,7 @@ type ClubInput = {
   playtomicUrl?: string
   contactName?: string
   contactEmail?: string
+  contactEmail2?: string
   contactPhone?: string
 }
 
@@ -145,6 +146,7 @@ export async function saveClub(input: ClubInput) {
     playtomicUrl: input.playtomicUrl?.trim() || null,
     contactName: input.contactName?.trim() || null,
     contactEmail: input.contactEmail?.trim() || null,
+    contactEmail2: input.contactEmail2?.trim() || null,
     contactPhone: input.contactPhone?.trim() || null,
     updatedAt: new Date(),
   }
@@ -288,5 +290,39 @@ export async function setClubTeamCaptain(input: {
   revalidatePath("/admin/clubs")
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
+  return { ok: true }
+}
+
+/**
+ * Set or clear the ownerEmail on a Club Team. The person whose email matches
+ * will automatically gain captain_hub + team_management access for this team
+ * (regardless of their player role) via the access context.
+ */
+export async function updateTeamOwnerEmail(input: { teamId: number; ownerEmail: string | null }) {
+  const [team] = await db
+    .select({ id: teams.id, homeClubId: teams.homeClubId, teamType: teams.teamType, organisationId: teams.organisationId })
+    .from(teams)
+    .where(eq(teams.id, input.teamId))
+    .limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+
+  try {
+    await requireClubManager({ clubId: team.homeClubId!, organisationId: team.organisationId })
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const email = (input.ownerEmail ?? "").trim().toLowerCase()
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Invalid email address" }
+  }
+
+  await db
+    .update(teams)
+    .set({ ownerEmail: email || null, updatedAt: new Date() })
+    .where(eq(teams.id, team.id))
+
+  revalidatePath("/admin/clubs")
+  revalidatePath("/dashboard/org")
   return { ok: true }
 }

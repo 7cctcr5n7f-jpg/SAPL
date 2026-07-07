@@ -97,19 +97,25 @@ export default async function DashboardOverview() {
 
       {teamFees.some((f) => f.status === "due") && (
         <section id="fees">
-          <h2 className="text-2xl font-bold mb-6">League Fees</h2>
+          <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
+            League Fees
+          </h2>
           <TeamFees fees={teamFees} />
         </section>
       )}
 
       <section>
-        <h2 className="text-2xl font-bold mb-6">Upcoming Matches</h2>
+        <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
+          Upcoming Matches
+        </h2>
         <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
       </section>
 
       {overviewTeam && (
         <section>
-          <h2 className="text-2xl font-bold mb-6">My Team</h2>
+          <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
+            My Team
+          </h2>
           <MyTeamCard team={overviewTeam} />
         </section>
       )}

@@ -251,9 +251,20 @@ export function MatchCentre({
 
   if (matches.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-        <p>No scheduled matches yet. Your fixtures appear here once the season draw is published.</p>
-        <Link href="/league-centre" className="mt-2 inline-flex items-center gap-1 text-primary hover:underline">
+      <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-secondary/30 px-6 py-10 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+          <Clock className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <p className="font-bold text-foreground">No matches scheduled yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your fixtures will appear here once the season draw drops.
+          </p>
+        </div>
+        <Link
+          href="/league-centre"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
+        >
           Explore the League Centre <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>

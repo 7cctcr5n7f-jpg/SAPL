@@ -53,6 +53,7 @@ export type ClubTeamBlock = {
   name: string
   captainUserId: string | null
   captainName: string | null
+  ownerEmail: string | null
   divisionId: number | null
 }
 
@@ -77,6 +78,7 @@ export type ClubRow = {
   playtomicUrl: string | null
   contactName: string | null
   contactEmail: string | null
+  contactEmail2: string | null
   contactPhone: string | null
   ownerUserId: string | null
   // The venue's own entered teams (Club Team blocks homed here), in creation
@@ -113,6 +115,7 @@ const clubColumns = {
   playtomicUrl: clubs.playtomicUrl,
   contactName: clubs.contactName,
   contactEmail: clubs.contactEmail,
+  contactEmail2: clubs.contactEmail2,
   contactPhone: clubs.contactPhone,
   ownerUserId: clubs.ownerUserId,
 }
@@ -156,6 +159,7 @@ export async function getClubsWithUsage(
         homeClubId: teams.homeClubId,
         teamType: teams.teamType,
         captainUserId: teams.captainUserId,
+        ownerEmail: teams.ownerEmail,
         divisionId: teams.divisionId,
       })
       .from(teams)
@@ -185,6 +189,7 @@ export async function getClubsWithUsage(
           name: t.name,
           captainUserId: t.captainUserId ?? null,
           captainName: t.captainUserId ? (captainName.get(t.captainUserId) ?? null) : null,
+          ownerEmail: t.ownerEmail ?? null,
           divisionId: t.divisionId ?? null,
         })
         clubTeamsMap.set(t.homeClubId, list)

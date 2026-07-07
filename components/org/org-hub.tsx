@@ -17,13 +17,12 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
-import { assignCaptain, createTeam, updateTeamRegistration, deleteTeam, updateCaptainContact } from "@/lib/actions/org"
+import { createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { toast } from "sonner"
 import {
   Users,
   Plus,
-  Crown,
   Users2,
   Activity,
   MapPin,
@@ -32,7 +31,6 @@ import {
   Building2,
   Lock,
   Mail,
-  Phone,
   CircleCheck,
   CircleAlert,
 } from "lucide-react"
@@ -41,13 +39,6 @@ import { TEAM_TYPES, TEAM_SQUAD_SIZE, SAPL_REGIONS } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
-
-type Captain = {
-  playerId: string
-  name: string
-  email: string | null
-  phone: string | null
-}
 
 type Team = {
   id: number
@@ -58,6 +49,7 @@ type Team = {
   homeClubLogoUrl: string | null
   homeClubContactEmail: string | null
   ownerEmail: string | null
+  ownerName: string | null
   avgLi: number
   playerCount: number
   maxPlayers: number
@@ -65,7 +57,6 @@ type Team = {
   divisionName: string
   divisionId: number | null
   tpr: number
-  captain: Captain | null
   played: number
   won: number
   points: number
@@ -144,10 +135,11 @@ export function OrgHub({
   locked?: boolean
 }) {
   const [pending, start] = useTransition()
-  const [assignFor, setAssignFor] = useState<Team | null>(null)
-  const [squadFor, setSquadFor] = useState<Team | null>(null)
+  const [squadForId, setSquadForId] = useState<number | null>(null)
+  // Always derive from the live `teams` prop so router.refresh() inside the
+  // modal immediately reflects the updated pairings/roster data.
+  const squadFor = squadForId != null ? (teams.find((t) => t.id === squadForId) ?? null) : null
   const [editFor, setEditFor] = useState<Team | null>(null)
-  const [captainFor, setCaptainFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
   const [search, setSearch] = useState("")
 
@@ -183,47 +175,16 @@ export function OrgHub({
     })
   }
 
-  function doAssign(playerId: string) {
-    if (!assignFor) return
-    const fd = new FormData()
-    fd.set("teamId", String(assignFor.id))
-    fd.set("playerId", playerId)
-    start(async () => {
-      const res = await assignCaptain(fd)
-      if (res.ok) {
-        toast.success("Captain assigned")
-        setAssignFor(null)
-      } else toast.error(res.error ?? "Failed")
-    })
-  }
-
-  // Captain candidates = the selected team's current squad PLUS free agents,
-  // deduped, so admins can promote an existing roster member or recruit a free
-  // agent. Roster members are flagged so the UI can show "On squad".
-  const captainCandidates = (() => {
-    const onRoster = new Map<string, { playerId: string; name: string; li: number; onRoster: boolean }>()
-    if (assignFor) {
-      for (const p of assignFor.pairingRoster) {
-        onRoster.set(p.playerId, { playerId: p.playerId, name: p.name, li: p.li, onRoster: true })
-      }
-    }
-    const combined = [...onRoster.values()]
-    for (const a of freeAgents) {
-      if (!onRoster.has(a.playerId)) combined.push({ playerId: a.playerId, name: a.name, li: a.li, onRoster: false })
-    }
-    const q = search.toLowerCase()
-    return combined.filter((c) => c.name.toLowerCase().includes(q))
-  })()
-
-  const totalPlayers = teams.reduce((s, t) => s + t.playerCount, 0)
-  const withCaptain = teams.filter((t) => t.captain).length
+  // Player count is derived from filled pairing slots, not the separate roster table.
+  const totalPlayers = teams.reduce((s, t) => s + t.pairingRoster.length, 0)
+  const withOwner = teams.filter((t) => t.ownerEmail).length
   const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Add players to the league, then build squads and assign captains.
+          Assign players directly into pairing slots. All 8 players in the pairings are the squad — there is no separate roster. Set a team owner via the edit button.
         </p>
         <div className="flex items-center gap-2">
           <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
@@ -235,7 +196,7 @@ export function OrgHub({
         <Stat label="Teams" value={teams.length} />
         <Stat label="Total Players" value={totalPlayers} />
         <Stat label="Avg TPR" value={avgTpr} />
-        <Stat label="Captains Assigned" value={`${withCaptain}/${teams.length}`} />
+        <Stat label="Owners Assigned" value={`${withOwner}/${teams.length}`} />
       </div>
 
       <Card>
@@ -308,10 +269,10 @@ export function OrgHub({
           <div className="space-y-2">
             {visibleTeams.map((t) => {
               const ts = typeStyle(t.teamType)
-              // Squads need at least the 8 dedicated players; subs beyond that are
-              // optional. Flag teams that are still short of the minimum.
+              // The squad is exactly the 8 pairing slots. Count filled slots.
               const minPlayers = TEAM_SQUAD_SIZE
-              const squadComplete = t.playerCount >= minPlayers
+              const filledSlots = t.pairingRoster.length
+              const squadComplete = filledSlots >= minPlayers
               // Payment health drives the indicator colour. Fully settled = green,
               // part-paid = amber, nothing in yet = red.
               const payState =
@@ -320,52 +281,53 @@ export function OrgHub({
               return (
                 <div
                   key={t.id}
-                  className="flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/40 hover:shadow"
+                  className="group flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/30 hover:shadow-md"
                 >
-                  <span className={cn("w-1.5 shrink-0", ts.bar)} aria-hidden />
-                  <div className="flex flex-1 flex-col gap-3 p-3.5 lg:flex-row lg:items-center lg:gap-4">
-                    {/* Identity */}
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                  {/* Type accent bar */}
+                  <span className={cn("w-1 shrink-0", ts.bar)} aria-hidden />
+
+                  <div className="flex flex-1 flex-col gap-0 divide-y divide-border/60">
+                    {/* ── Top row: identity + action buttons ── */}
+                    <div className="flex items-center gap-3 px-3.5 py-2.5">
+                      {/* Club logo / placeholder */}
                       {t.homeClubLogoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={t.homeClubLogoUrl || "/placeholder.svg"}
                           alt={`${t.homeClubName ?? "Club"} logo`}
-                          className="mt-0.5 h-9 w-9 shrink-0 rounded-md border border-border object-contain"
+                          className="h-8 w-8 shrink-0 rounded-md border border-border object-contain"
                         />
                       ) : (
-                        <span
-                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground"
-                          aria-hidden
-                        >
-                          <Building2 className="h-4 w-4" />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground" aria-hidden>
+                          <Building2 className="h-3.5 w-3.5" />
                         </span>
                       )}
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate font-semibold">{t.name}</span>
-                          {/* Assignment indicator light */}
+
+                      {/* Team name + division + owner */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="truncate text-sm font-semibold leading-tight">{t.name}</span>
+                          {/* Division dot */}
                           <span
-                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            className="inline-flex items-center gap-1 text-[11px]"
                             title={assigned ? `Assigned to ${t.divisionName}` : "Not yet assigned to a division"}
                           >
                             <span
                               className={cn(
-                                "h-2 w-2 rounded-full ring-2",
-                                assigned
-                                  ? "bg-emerald-500 ring-emerald-500/20"
-                                  : "bg-muted-foreground/40 ring-muted-foreground/10",
+                                "h-1.5 w-1.5 rounded-full",
+                                assigned ? "bg-emerald-500" : "bg-muted-foreground/30",
                               )}
                               aria-hidden
                             />
-                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>
+                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-muted-foreground"}>
                               {assigned ? t.divisionName : "Unassigned"}
                             </span>
                           </span>
                         </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <Badge variant="outline" className={cn("gap-1 font-normal", ts.badge)}>
-                            <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
+                        {/* Meta row: type badge · LI · location · owner */}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                          <Badge variant="outline" className={cn("h-4 gap-1 px-1.5 py-0 text-[10px] font-normal", ts.badge)}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
                             {t.teamType}
                           </Badge>
                           <span className="inline-flex items-center gap-1" title="Average League Index">
@@ -373,90 +335,103 @@ export function OrgHub({
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
-                            {t.homeClubName ? t.homeClubName : "No home club"}
-                            {t.saplRegion ? ` · ${t.saplRegion}` : ""}
+                            {t.homeClubName ?? "No home club"}{t.saplRegion ? ` · ${t.saplRegion}` : ""}
                           </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Squad size + payments */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-4 lg:gap-5">
-                      {/* Players: min 8 required */}
-                      <div className="min-w-[88px]">
-                        <div className="flex items-center gap-1.5 text-sm font-semibold">
-                          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className={cn(!squadComplete && "text-amber-600 dark:text-amber-400")}>
-                            {t.playerCount}/{minPlayers}
-                          </span>
-                          {squadComplete ? (
-                            <CircleCheck className="h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          {/* Owner name — visible inline, tooltip shows email */}
+                          {t.ownerName ? (
+                            <span
+                              className="inline-flex items-center gap-1 font-medium text-foreground/70"
+                              title={t.ownerEmail ? `Owner email: ${t.ownerEmail}` : undefined}
+                            >
+                              <Users className="h-3 w-3" /> {t.ownerName}
+                            </span>
                           ) : (
-                            <CircleAlert className="h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          {squadComplete ? "min squad met" : `${minPlayers - t.playerCount} more needed`}
-                        </p>
-                      </div>
-
-                      {/* Payment indicator + outstanding amount */}
-                      <button
-                        type="button"
-                        onClick={() => setSquadFor(t)}
-                        className="min-w-[150px] rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left transition hover:border-primary/40"
-                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
-                      >
-                        <div className="flex items-center gap-1.5 text-sm font-semibold">
-                          <PayDot state={payState} />
-                          {t.outstanding <= 0 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400">Paid up</span>
-                          ) : (
-                            <span>
-                              {fmtZAR(t.outstanding)} <span className="font-normal text-muted-foreground">due</span>
+                            <span className="inline-flex items-center gap-1 italic opacity-50">
+                              <Users className="h-3 w-3" /> No owner
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          {t.clubPaysFees
-                            ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
-                            : `Players pay · ${t.paidCount}/${TEAM_SQUAD_SIZE} paid`}
-                        </p>
-                      </button>
+                      </div>
+
+                      {/* Action icon buttons */}
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditFor(t)}
+                          aria-label="Edit team"
+                          title="Edit team"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setSquadForId(t.id)}
+                          aria-label="View squad & pairings"
+                          title="Squad & Pairings"
+                        >
+                          <Users2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteFor(t)}
+                          aria-label="Delete team"
+                          title="Delete team"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
 
-                    {/* Captain + actions */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
-                      {t.captain ? (
-                        <button
-                          type="button"
-                          onClick={() => setCaptainFor(t)}
-                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
-                          title="View / edit captain"
-                        >
-                          <Crown className="h-3 w-3" /> {t.captain.name}
-                        </button>
-                      ) : (
-                        <Badge variant="destructive">No captain</Badge>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => setEditFor(t)} aria-label="Edit team">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setSquadFor(t)}>
-                        <Users2 className="mr-1 h-4 w-4" /> Squad
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setAssignFor(t)}>
-                        {t.captain ? "Reassign" : "Add captain"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteFor(t)}
-                        aria-label="Delete team"
+                    {/* ── Bottom row: squad count + payment stats ── */}
+                    <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
+                      {/* Squad */}
+                      <div className="flex items-center gap-2 px-3.5 py-2">
+                        <Users2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <div>
+                          <span className={cn("text-sm font-semibold tabular-nums", !squadComplete && "text-amber-600 dark:text-amber-400")}>
+                            {filledSlots}<span className="font-normal text-muted-foreground">/{minPlayers}</span>
+                          </span>
+                          {squadComplete ? (
+                            <CircleCheck className="ml-1 inline h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          ) : (
+                            <CircleAlert className="ml-1 inline h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
+                          )}
+                          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                            {squadComplete ? "pairings full" : `${minPlayers - filledSlots} slot${minPlayers - filledSlots !== 1 ? "s" : ""} open`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Payment */}
+                      <button
+                        type="button"
+                        onClick={() => setSquadForId(t.id)}
+                        className="flex items-center gap-2 px-3.5 py-2 text-left transition hover:bg-muted/40"
+                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        <PayDot state={payState} />
+                        <div>
+                          {t.outstanding <= 0 ? (
+                            <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Paid up</span>
+                          ) : (
+                            <span className="text-sm font-semibold">
+                              {fmtZAR(t.outstanding)}{" "}
+                              <span className="font-normal text-muted-foreground">due</span>
+                            </span>
+                          )}
+                          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                            {t.clubPaysFees
+                              ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
+                              : `Players pay · ${t.paidCount}/${TEAM_SQUAD_SIZE} paid`}
+                          </p>
+                        </div>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -466,16 +441,15 @@ export function OrgHub({
         </CardContent>
       </Card>
 
-      <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadFor(null)}>
-        <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
-          <DialogHeader>
-            <DialogTitle>{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
+      <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadForId(null)}>
+        <DialogContent className="max-h-[95vh] w-[97vw] max-w-[97vw] overflow-y-auto bg-white p-4 sm:max-w-5xl sm:p-6 lg:max-w-6xl">
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-slate-800">{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
           </DialogHeader>
           {squadFor && (
             <PairingsBoard
               teamId={squadFor.id}
               categories={squadFor.pairingCategories}
-              roster={squadFor.pairingRoster}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}
             />
@@ -494,58 +468,6 @@ export function OrgHub({
           onClose={() => setEditFor(null)}
         />
       )}
-
-      {captainFor?.captain && (
-        <CaptainDialog
-          key={captainFor.id}
-          team={captainFor}
-          captain={captainFor.captain}
-          pending={pending}
-          start={start}
-          onReassign={() => {
-            const t = captainFor
-            setCaptainFor(null)
-            setAssignFor(t)
-          }}
-          onClose={() => setCaptainFor(null)}
-        />
-      )}
-
-      <Dialog open={!!assignFor} onOpenChange={(o) => !o && setAssignFor(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign captain — {assignFor?.name}</DialogTitle>
-          </DialogHeader>
-          <Input
-            placeholder="Search squad members or free agents..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">
-            {captainCandidates.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">No available players found.</p>
-            )}
-            {captainCandidates.map((a) => (
-              <button
-                key={a.playerId}
-                disabled={pending}
-                onClick={() => doAssign(a.playerId)}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border p-3 text-left transition hover:border-primary hover:bg-secondary/50 disabled:opacity-50"
-              >
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  {a.name}
-                  {a.onRoster && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      On squad
-                    </Badge>
-                  )}
-                </span>
-                <Badge variant="outline">LI {a.li.toFixed(1)}</Badge>
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}>
         <DialogContent className="max-w-md">
@@ -914,139 +836,5 @@ function EditTeamDialog({
 
 // View and edit a team captain's contact details. Email is the captain's login
 // identity so it's shown read-only; name and phone can be edited inline.
-function CaptainDialog({
-  team,
-  captain,
-  pending,
-  start,
-  onReassign,
-  onClose,
-}: {
-  team: Team
-  captain: Captain
-  pending: boolean
-  start: (cb: () => Promise<void>) => void
-  onReassign: () => void
-  onClose: () => void
-}) {
-  const [first, ...rest] = captain.name.split(" ")
-  const [firstName, setFirstName] = useState(first ?? "")
-  const [lastName, setLastName] = useState(rest.join(" "))
-  const [phone, setPhone] = useState(captain.phone ?? "")
-  const [editing, setEditing] = useState(false)
 
-  function save() {
-    if (!firstName.trim() || !lastName.trim()) {
-      toast.error("First and last name are required.")
-      return
-    }
-    start(async () => {
-      const res = await updateCaptainContact({
-        teamId: team.id,
-        playerId: captain.playerId,
-        firstName,
-        lastName,
-        phone: phone.trim() || null,
-      })
-      if (res.ok) {
-        toast.success("Captain updated")
-        onClose()
-      } else toast.error(res.error ?? "Failed to update captain")
-    })
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Crown className="h-4 w-4 text-primary" /> Team captain
-          </DialogTitle>
-        </DialogHeader>
-
-        {editing ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="capFirst">First name</Label>
-                <Input id="capFirst" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="capLast">Last name</Label>
-                <Input id="capLast" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="capPhone">Contact number</Label>
-              <Input
-                id="capPhone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. 082 123 4567"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Email ({captain.email ?? "unknown"}) is the captain&apos;s login and can&apos;t be changed here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Crown className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="font-semibold">{captain.name}</p>
-                <p className="text-xs text-muted-foreground">Captain · {team.name}</p>
-              </div>
-            </div>
-            <a
-              href={captain.email ? `mailto:${captain.email}` : undefined}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
-                captain.email ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
-              )}
-            >
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              <span className="truncate">{captain.email ?? "No email on file"}</span>
-            </a>
-            <a
-              href={captain.phone ? `tel:${captain.phone}` : undefined}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border border-border p-3 text-sm transition",
-                captain.phone ? "hover:border-primary/40 hover:bg-secondary/40" : "pointer-events-none opacity-60",
-              )}
-            >
-              <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="truncate">{captain.phone ?? "No contact number on file"}</span>
-            </a>
-          </div>
-        )}
-
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
-          {editing ? (
-            <>
-              <Button variant="ghost" onClick={() => setEditing(false)} disabled={pending}>
-                Back
-              </Button>
-              <Button onClick={save} disabled={pending}>
-                {pending ? "Saving…" : "Save changes"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" className="text-muted-foreground" onClick={onReassign}>
-                Reassign captain
-              </Button>
-              <Button onClick={() => setEditing(true)}>
-                <Pencil className="mr-1.5 h-4 w-4" /> Edit details
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 

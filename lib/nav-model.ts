@@ -69,7 +69,7 @@ const SPONSORS: NavItem = { label: "Sponsors", icon: "sponsors", href: "/sponsor
 const ADMIN_DASHBOARD: NavItem = { label: "Dashboard", icon: "admin", href: "/admin" }
 const ADMIN_SEASONS: NavItem = { label: "Seasons", icon: "seasons", href: "/admin?tab=seasons" }
 const ADMIN_FIXTURES: NavItem = { label: "Fixtures", icon: "fixtures", href: "/admin/fixtures" }
-const ADMIN_TEAMS: NavItem = { label: "Teams", icon: "team", href: "/admin?tab=placement" }
+const ADMIN_TEAMS: NavItem = { label: "All Teams", icon: "team", href: "/admin/teams" }
 const ADMIN_CLUBS: NavItem = { label: "Clubs", icon: "club", href: "/admin/clubs" }
 const ADMIN_MEMBERS: NavItem = { label: "Members", icon: "members", href: "/admin/members" }
 const ADMIN_PAYMENTS: NavItem = { label: "Payments", icon: "payments", href: "/admin/billing" }
@@ -121,11 +121,25 @@ export function buildNavModel(user: CurrentUser | null, access: AccessContext | 
     }
   }
 
-  // --- Player / team owner / captain (unified simple menu) ---
-  // Per the V1 redesign every signed-in non-admin gets the same four items.
+  // --- Player / team owner / captain ---
+  // Team owners and captains (anyone with at least one managed team) get a
+  // "My Team" shortcut on the bar. Plain players just get Home + League Centre.
+  const hasTeam = access.teamIds.length > 0
+
+  const playerPrimary: NavItem[] = hasTeam
+    ? [HOME, LEAGUE_CENTRE, MY_TEAM]
+    : [HOME, LEAGUE_CENTRE]
+
   return {
     authed: true,
-    primary: [HOME, LEAGUE_CENTRE, MY_TEAM, SETTINGS],
-    more: dedupe([MARKETPLACE, LEAGUE_FORMAT, SPONSORS, LOGOUT]),
+    primary: playerPrimary,
+    more: dedupe([
+      ...(hasTeam ? [] : [MY_TEAM]),   // expose My Team in More for plain players
+      MARKETPLACE,
+      LEAGUE_FORMAT,
+      SPONSORS,
+      SETTINGS,
+      LOGOUT,
+    ]),
   }
 }

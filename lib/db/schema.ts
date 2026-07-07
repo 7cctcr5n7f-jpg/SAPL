@@ -192,6 +192,7 @@ export const clubs = pgTable(
     playtomicUrl: text("playtomicUrl"),
     contactName: text("contactName"),
     contactEmail: text("contactEmail"),
+    contactEmail2: text("contactEmail2"),
     contactPhone: text("contactPhone"),
     ownerUserId: text("ownerUserId"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),

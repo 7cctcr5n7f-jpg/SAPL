@@ -3,7 +3,7 @@
 import Link from "next/link"
 import type { PlayerOverviewTeam } from "@/lib/queries-dashboard"
 import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
-import { cn } from "@/lib/utils"
+import { Zap, Users } from "lucide-react"
 
 export function PlayerSummary({
   firstName,
@@ -27,76 +27,93 @@ export function PlayerSummary({
   const primaryCategory = eligibleCategories?.[0] || null
 
   return (
-    <section className="mb-8 overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-background to-background/50 p-6">
-      {/* Hero Profile Section */}
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-8 mb-6">
-        {/* Profile Photo */}
-        <PlayerPhotoUploader
-          value={avatarUrl}
-          onChange={onPhotoChange || (() => {})}
-          isCapitan={team?.role === "captain"}
-        />
+    <section className="mb-8">
+      {/* Hero banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-[#E10600] px-6 pt-6 pb-0">
+        {/* Decorative circles */}
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
+        <div className="pointer-events-none absolute -right-4 top-12 h-24 w-24 rounded-full bg-white/5" />
+        <div className="pointer-events-none absolute left-1/2 bottom-0 h-16 w-16 rounded-full bg-white/5" />
 
-        {/* Profile Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4 mb-2">
-            <div className="min-w-0">
-              <h1 className="text-3xl font-bold text-foreground truncate">{firstName}</h1>
-              {team && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {team.teamName}
-                </p>
-              )}
-            </div>
+        <div className="relative flex items-end gap-5">
+          {/* Avatar */}
+          <div className="shrink-0 pb-4">
+            <PlayerPhotoUploader
+              value={avatarUrl}
+              onChange={onPhotoChange || (() => {})}
+              isCapitan={team?.role === "captain"}
+            />
           </div>
-          {team && (
-            <p className="text-xs text-muted-foreground">
-              {team.divisionName}
-              {team.regionName ? ` • ${team.regionName}` : ""}
+
+          {/* Name + team */}
+          <div className="min-w-0 flex-1 pb-5">
+            <p className="text-sm font-medium text-red-100/80 leading-none mb-1">
+              {feesPaid ? "All fees settled" : "Fees outstanding"}
             </p>
-          )}
+            <h1 className="text-3xl font-black text-white leading-none tracking-tight text-balance">
+              {firstName}
+            </h1>
+            {team ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold text-white">
+                  <Users className="h-3 w-3" />
+                  {team.teamName}
+                </span>
+                {team.role === "captain" && (
+                  <span className="rounded-full bg-yellow-400 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-yellow-900">
+                    Captain
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-red-100/80">Not on a team yet</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 py-4 border-y border-border/40">
+      {/* Stat pills below the banner */}
+      <div className="mt-3 grid grid-cols-3 gap-3">
         {/* League Index */}
-        {leagueIndex != null && (
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">League Index</p>
-            <p className="text-2xl font-bold text-foreground tabular-nums">{leagueIndex.toFixed(2)}</p>
-          </div>
-        )}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-3 py-4 text-center">
+          <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Zap className="h-3 w-3 text-primary" />
+            LI
+          </span>
+          <span className="font-mono text-2xl font-black tabular-nums text-foreground">
+            {leagueIndex != null ? leagueIndex.toFixed(2) : "—"}
+          </span>
+        </div>
 
-        {/* Playtomic Rating */}
-        {playtomicRating && (
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Playtomic</p>
-            <p className="text-2xl font-bold text-foreground">{playtomicRating}</p>
-          </div>
-        )}
+        {/* Category */}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-3 py-4 text-center">
+          <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</span>
+          <span className="text-xl font-black text-foreground leading-tight">
+            {primaryCategory ?? "—"}
+          </span>
+        </div>
 
-        {/* Eligible Category */}
-        {primaryCategory && (
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Category</p>
-            <p className="text-2xl font-bold text-foreground">{primaryCategory}</p>
-          </div>
-        )}
+        {/* Playtomic */}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-3 py-4 text-center">
+          <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Playtomic</span>
+          <span className="text-2xl font-black tabular-nums text-foreground">
+            {playtomicRating ?? "—"}
+          </span>
+        </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Quick actions */}
+      <div className="mt-3 flex gap-3">
         <Link
           href="/dashboard/profile"
-          className="flex-1 flex items-center justify-center px-4 py-2 rounded-lg border-2 border-primary text-primary font-semibold text-sm hover:bg-primary/5 transition-colors"
+          className="flex-1 flex items-center justify-center rounded-xl border-2 border-primary px-4 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/5"
         >
           Edit Profile
         </Link>
         {team && (
           <Link
             href="/dashboard/org"
-            className="flex-1 flex items-center justify-center px-4 py-2 rounded-lg bg-primary text-background font-semibold text-sm hover:bg-primary/90 transition-colors"
+            className="flex-1 flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90"
           >
             My Team
           </Link>

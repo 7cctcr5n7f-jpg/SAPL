@@ -57,37 +57,9 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     .limit(1)
   if (!team) return null
 
-  // Active roster players.
-  const rosterRows = await db
-    .select({
-      status: teamMembers.status,
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      currentLi: user.currentLi,
-      gender: user.gender,
-    })
-    .from(teamMembers)
-    .innerJoin(user, eq(teamMembers.playerId, user.id))
-    .where(and(eq(teamMembers.teamId, teamId), ne(teamMembers.status, "removed")))
-
-  // Which players have paid (individual payment for this team).
-  const paidRows = await db
-    .select({ playerId: payments.playerId })
-    .from(payments)
-    .where(and(eq(payments.teamId, teamId), eq(payments.status, "paid")))
-  const paidSet = new Set(paidRows.map((r) => r.playerId))
-
-  const roster: PairingPlayer[] = rosterRows.map((r) => ({
-    playerId: r.id,
-    name: `${r.firstName} ${r.lastName}`,
-    li: r.currentLi,
-    gender: r.gender,
-    // If the club covers fees, everyone is considered covered.
-    paid: team.clubPaysFees || paidSet.has(r.id),
-  }))
-  const rosterById = new Map(roster.map((p) => [p.playerId, p]))
-
+  // The squad IS the set of unique players assigned to pairing slots.
+  // There is no separate roster table — ppl_team_pairings is the single source
+  // of truth for who is on the team.
   const slotRows = await db
     .select({
       category: teamPairings.category,
@@ -97,21 +69,23 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     })
     .from(teamPairings)
     .where(eq(teamPairings.teamId, teamId))
-  const slotMap = new Map<string, number | null>()
-  for (const s of slotRows) {
-    slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId)
-  }
 
-  // Collect any player IDs referenced in pairing slots that are NOT in the
-  // roster (e.g. a league admin assigned themselves directly via setPairingSlot
-  // without first being added to teamMembers). We need to fetch these so the
-  // board can show who is in the slot rather than silently rendering it empty.
-  const rosterPlayerIds = new Set(roster.map((p) => p.playerId))
-  const orphanIds = [...new Set(
-    slotRows.map((s) => s.playerId).filter((id): id is string => id != null && !rosterPlayerIds.has(id))
+  // Collect unique player IDs that are actually filled in.
+  const filledPlayerIds = [...new Set(
+    slotRows.map((s) => s.playerId).filter((id): id is string => id != null),
   )]
-  if (orphanIds.length > 0) {
-    const orphanRows = await db
+
+  // Which players have paid (individual payment for this team).
+  const paidRows = await db
+    .select({ playerId: payments.playerId })
+    .from(payments)
+    .where(and(eq(payments.teamId, teamId), eq(payments.status, "paid")))
+  const paidSet = new Set(paidRows.map((r) => r.playerId))
+
+  // Fetch profile data for all players currently in a pairing slot.
+  const rosterById = new Map<string, PairingPlayer>()
+  if (filledPlayerIds.length > 0) {
+    const profileRows = await db
       .select({
         id: user.id,
         firstName: user.firstName,
@@ -120,18 +94,25 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
         gender: user.gender,
       })
       .from(user)
-      .where(inArray(user.id, orphanIds))
-    for (const p of orphanRows) {
-      const entry: PairingPlayer = {
+      .where(inArray(user.id, filledPlayerIds))
+    for (const p of profileRows) {
+      rosterById.set(p.id, {
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
         li: p.currentLi,
         gender: p.gender,
         paid: team.clubPaysFees || paidSet.has(p.id),
-      }
-      roster.push(entry)
-      rosterById.set(p.id, entry)
+      })
     }
+  }
+
+  // Roster = all players that have at least one pairing slot (for the board's
+  // "available to assign" list and fee summary).
+  const roster: PairingPlayer[] = [...rosterById.values()]
+
+  const slotMap = new Map<string, string | null>()
+  for (const s of slotRows) {
+    slotMap.set(`${s.category}|${s.pairIndex}|${s.slotIndex}`, s.playerId ?? null)
   }
 
   // Build 1 pair x 2 slots per category (4 categories = 8 players).

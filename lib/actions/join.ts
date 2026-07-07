@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema"
 import { eq, and, asc, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { resolvePendingInvites } from "@/lib/actions/pairings"
+
 import { headers } from "next/headers"
 
 // ---------------------------------------------------------------------------
@@ -144,26 +144,14 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     })
     .where(eq(user.id, userId))
 
-  // Resolve any pending team invites for this email
-  try {
-    await resolvePendingInvites(email.trim().toLowerCase(), userId)
-  } catch (_) {}
-
-  // If they came in via an invite token, mark it accepted and remove from marketplace
-  if (inviteToken) {
-    await db
-      .update(teamInvites)
-      .set({ status: "accepted", acceptedAt: new Date() })
-      .where(and(eq(teamInvites.token, inviteToken), eq(teamInvites.email, email.trim().toLowerCase())))
-    // Player has joined a team — clear marketplace visibility automatically
-    await db
-      .update(user)
-      .set({ lookingForTeam: false, onMarketplace: false, availability: "unavailable" })
-      .where(eq(user.id, userId))
-  }
-
   revalidatePath("/dashboard")
-  return { ok: true, redirectTo: "/onboarding" }
+  // After account creation, send the player to complete their profile.
+  // If they arrived via an invite link, redirect back to the invite accept page
+  // after onboarding so they can explicitly accept — do not auto-join here.
+  const postOnboarding = inviteToken
+    ? `/invite/${encodeURIComponent(inviteToken)}`
+    : "/dashboard"
+  return { ok: true, redirectTo: `/onboarding?next=${encodeURIComponent(postOnboarding)}` }
 }
 
 // ---------------------------------------------------------------------------
