@@ -7,6 +7,7 @@ import {
   teamPairings,
   teamInvites,
   user,
+  userMeta,
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
@@ -517,10 +518,12 @@ export async function processTeamInviteByToken(token: string): Promise<
   | { declined: true }
   | { error: string }
 > {
+  // Fetch the invite without filtering on status so we can handle accepted/
+  // cancelled states gracefully (e.g. after onboarding resolves it).
   const [invite] = await db
     .select()
     .from(teamInvites)
-    .where(and(eq(teamInvites.token, token), eq(teamInvites.status, "pending")))
+    .where(eq(teamInvites.token, token))
     .limit(1)
 
   if (!invite) return { error: "This invitation link is invalid or has already been used." }
@@ -532,6 +535,17 @@ export async function processTeamInviteByToken(token: string): Promise<
     .limit(1)
 
   if (!team) return { error: "The team for this invitation no longer exists." }
+
+  // If the invite was already accepted (e.g. resolved via onboarding email
+  // matching), treat it as a successful join so we show the success screen
+  // rather than "already been used".
+  if (invite.status === "accepted") {
+    return { joined: true, teamName: team.name }
+  }
+
+  if (invite.status === "cancelled") {
+    return { error: "This invitation has been cancelled." }
+  }
 
   // Prefer the currently signed-in user over an email lookup.
   // The invite email and the account email may differ (e.g. iCloud relay vs
@@ -562,7 +576,18 @@ export async function processTeamInviteByToken(token: string): Promise<
     return { needsAccount: true, token, email: invite.email, teamName: team.name }
   }
 
-  if (!invitedUser.isPlayer) {
+  // Check if this user has a player profile. Some users are created via admin
+  // assignment and never go through onboarding, so isPlayer may be false even
+  // though they have a userMeta row (League Index etc). Check both.
+  const [meta] = await db
+    .select({ id: userMeta.id })
+    .from(userMeta)
+    .where(eq(userMeta.userId, invitedUser.id))
+    .limit(1)
+
+  const hasProfile = invitedUser.isPlayer || meta != null
+
+  if (!hasProfile) {
     // Has an account but no player profile yet — redirect to onboarding
     return { needsProfile: true, token, teamName: team.name }
   }
