@@ -145,7 +145,10 @@ export function OrgHub({
 }) {
   const [pending, start] = useTransition()
   const [assignFor, setAssignFor] = useState<Team | null>(null)
-  const [squadFor, setSquadFor] = useState<Team | null>(null)
+  const [squadForId, setSquadForId] = useState<number | null>(null)
+  // Always derive from the live `teams` prop so router.refresh() inside the
+  // modal immediately reflects the updated pairings/roster data.
+  const squadFor = squadForId != null ? (teams.find((t) => t.id === squadForId) ?? null) : null
   const [editFor, setEditFor] = useState<Team | null>(null)
   const [captainFor, setCaptainFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
@@ -403,7 +406,7 @@ export function OrgHub({
                       {/* Payment indicator + outstanding amount */}
                       <button
                         type="button"
-                        onClick={() => setSquadFor(t)}
+                        onClick={() => setSquadForId(t.id)}
                         className="min-w-[150px] rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left transition hover:border-primary/40"
                         title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
                       >
@@ -442,7 +445,7 @@ export function OrgHub({
                       <Button size="sm" variant="ghost" onClick={() => setEditFor(t)} aria-label="Edit team">
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setSquadFor(t)}>
+                      <Button size="sm" variant="ghost" onClick={() => setSquadForId(t.id)}>
                         <Users2 className="mr-1 h-4 w-4" /> Squad
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setAssignFor(t)}>
@@ -466,7 +469,7 @@ export function OrgHub({
         </CardContent>
       </Card>
 
-      <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadFor(null)}>
+      <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadForId(null)}>
         <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
           <DialogHeader>
             <DialogTitle>{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
