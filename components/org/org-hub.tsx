@@ -78,20 +78,40 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
     dot: "bg-sky-500",
     badge: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
     bar: "bg-sky-500",
+    prBg: "bg-sky-500/12",
+    prIcon: "bg-sky-500/20 text-sky-600",
+    prLabel: "text-sky-600/80",
+    prValue: "text-sky-900",
   },
   "Company Team": {
     dot: "bg-amber-500",
     badge: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
     bar: "bg-amber-500",
+    prBg: "bg-amber-500/12",
+    prIcon: "bg-amber-500/20 text-amber-600",
+    prLabel: "text-amber-600/80",
+    prValue: "text-amber-900",
   },
   "Private Team": {
     dot: "bg-emerald-500",
     badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     bar: "bg-emerald-500",
+    prBg: "bg-emerald-500/12",
+    prIcon: "bg-emerald-500/20 text-emerald-600",
+    prLabel: "text-emerald-600/80",
+    prValue: "text-emerald-900",
   },
 }
 function typeStyle(t: string) {
-  return TYPE_STYLES[t] ?? { dot: "bg-muted-foreground", badge: "", bar: "bg-muted-foreground" }
+  return TYPE_STYLES[t] ?? {
+    dot: "bg-muted-foreground",
+    badge: "",
+    bar: "bg-muted-foreground",
+    prBg: "bg-muted/40",
+    prIcon: "bg-muted text-muted-foreground",
+    prLabel: "text-muted-foreground",
+    prValue: "text-foreground",
+  }
 }
 
 // Traffic-light dot for a team's payment health.
@@ -387,16 +407,16 @@ export function OrgHub({
 
                     {/* ── Bottom row: PR (left, dark) · slots · payment ── */}
                     <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
-                      {/* PR — key stat */}
-                      <div className="flex items-center gap-2 bg-primary/8 border-r-0 px-3.5 py-2 rounded-bl-lg">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 shrink-0">
-                          <Activity className="h-3.5 w-3.5 text-primary" />
+                      {/* PR — key stat, colored to match team type */}
+                      <div className={cn("flex items-center gap-2 px-3.5 py-2 rounded-bl-lg", ts.prBg)}>
+                        <div className={cn("flex h-6 w-6 items-center justify-center rounded-md shrink-0", ts.prIcon)}>
+                          <Activity className="h-3.5 w-3.5" />
                         </div>
                         <div>
-                          <span className="text-sm font-bold tabular-nums text-slate-800">
+                          <span className={cn("text-sm font-bold tabular-nums", ts.prValue)}>
                             {t.avgLi > 0 ? t.avgLi.toFixed(2) : "—"}
                           </span>
-                          <p className="text-[10px] font-medium text-primary/70 leading-none mt-0.5 uppercase tracking-wide">Avg PR</p>
+                          <p className={cn("text-[10px] font-semibold leading-none mt-0.5 uppercase tracking-wide", ts.prLabel)}>Avg PR</p>
                         </div>
                       </div>
 

@@ -76,9 +76,21 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
     await db.insert(userMeta).values({ userId: me.id, phone: phone || null, bio: bio || null })
   }
 
+  // If the player's Playtomic rating changed and they are on a team,
+  // recompute that team's average PR so the org-hub card stays in sync.
+  const [membership] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, me.id), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (membership?.teamId) {
+    await recomputeTeamStats(membership.teamId)
+  }
+
   revalidatePath("/dashboard/profile")
   revalidatePath("/dashboard")
   revalidatePath("/marketplace")
+  revalidatePath("/admin")
   return { success: "Profile updated." }
 }
 
