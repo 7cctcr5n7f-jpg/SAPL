@@ -293,6 +293,12 @@ export function OrgHub({
               const minPlayers = TEAM_SQUAD_SIZE
               const filledSlots = t.pairingRoster.length
               const squadComplete = filledSlots >= minPlayers
+              // Compute avg PR live from pairingRoster — same logic as the squad board.
+              const ratedRoster = t.pairingRoster.filter((p) => p.playtomicRating != null)
+              const liveAvgPr =
+                ratedRoster.length > 0
+                  ? ratedRoster.reduce((s, p) => s + (p.playtomicRating ?? 0), 0) / ratedRoster.length
+                  : null
               // Payment health drives the indicator colour. Fully settled = green,
               // part-paid = amber, nothing in yet = red.
               const payState =
@@ -414,7 +420,7 @@ export function OrgHub({
                         </div>
                         <div>
                           <span className={cn("text-sm font-bold tabular-nums", ts.prValue)}>
-                            {t.avgLi > 0 ? t.avgLi.toFixed(2) : "—"}
+                            {liveAvgPr != null ? liveAvgPr.toFixed(2) : "—"}
                           </span>
                           <p className={cn("text-[10px] font-semibold leading-none mt-0.5 uppercase tracking-wide", ts.prLabel)}>Avg PR</p>
                         </div>
@@ -480,7 +486,6 @@ export function OrgHub({
             <PairingsBoard
               teamId={squadFor.id}
               teamName={squadFor.name}
-              teamAvgPr={squadFor.avgLi > 0 ? squadFor.avgLi : null}
               categories={squadFor.pairingCategories}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}
