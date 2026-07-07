@@ -3,7 +3,7 @@
 import Link from "next/link"
 import type { PlayerOverviewTeam, PendingTeamInvite, PairingPartner } from "@/lib/queries-dashboard"
 import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
-import { Users, AlertCircle, CheckCircle2, Mail } from "lucide-react"
+import { Users, AlertCircle, CheckCircle2, Mail, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function PlayerSummary({
