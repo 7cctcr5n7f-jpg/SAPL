@@ -41,7 +41,11 @@ export async function recomputeTeamStats(teamId: number) {
   let saplRegion = team.saplRegion ?? null
   let regionId = team.regionId ?? null
   if (team.homeClubId) {
-    const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, team.homeClubId)).limit(1)
+    const [club] = await db
+      .select({ saplRegion: clubs.saplRegion, regionId: clubs.regionId })
+      .from(clubs)
+      .where(eq(clubs.id, team.homeClubId))
+      .limit(1)
     if (club) {
       saplRegion = club.saplRegion ?? saplRegion
       regionId = club.regionId ?? regionId
