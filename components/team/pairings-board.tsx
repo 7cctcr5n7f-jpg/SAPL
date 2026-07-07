@@ -284,14 +284,18 @@ function PlayerDragOverlay({ player }: { player: PairingPlayer }) {
 
 export function PairingsBoard({
   teamId,
+  teamName,
   categories,
   invites: initialInvites,
   clubPaysFees,
+  teamAvgPr,
 }: {
   teamId: number
+  teamName?: string
   categories: PairingCategory[]
   invites: Invite[]
   clubPaysFees: boolean
+  teamAvgPr?: number | null
 }) {
   const roster: PairingPlayer[] = []
   for (const cat of categories) {
@@ -321,6 +325,14 @@ export function PairingsBoard({
 
   const catByName = new Map(categories.map((c) => [c.category, c]))
   const ruleByName = new Map(CATEGORY_RULES.map((r) => [r.name, r]))
+
+  // Compute avg PR from the local roster (players currently placed in pairs)
+  const ratedPlayers = roster.filter((p) => p.playtomicRating != null)
+  const localAvgPr =
+    ratedPlayers.length > 0
+      ? ratedPlayers.reduce((s, p) => s + (p.playtomicRating ?? 0), 0) / ratedPlayers.length
+      : null
+  const displayAvgPr = teamAvgPr ?? localAvgPr
 
   const placedIds = new Set<string>()
   categories.forEach((c) =>
@@ -559,42 +571,41 @@ export function PairingsBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="space-y-5">
+        {/* ── Team avg PR stat bar ── */}
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+            <span className="text-[10px] font-bold text-primary uppercase tracking-wide">PR</span>
+          </div>
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-widest text-slate-400">Team Average PR</p>
+            <p className="text-xl font-bold tabular-nums text-slate-800 leading-tight">
+              {displayAvgPr != null ? displayAvgPr.toFixed(2) : <span className="text-slate-400 text-base font-normal">No ratings yet</span>}
+            </p>
+          </div>
+          {ratedPlayers.length > 0 && (
+            <span className="ml-auto text-xs text-slate-400">
+              {ratedPlayers.length} of {roster.length} player{roster.length !== 1 ? "s" : ""} rated
+            </span>
+          )}
+        </div>
+
         {/* Custom layout:
             Top row    — Ladies Open (left)  |  Mens Open (right)
             Bottom row — Mens Beginner (left) |  Mens Intermediate (right)
+            Column headers removed — each PairBlock card has its own header
         */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
           {/* Top-left: Ladies Open */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 pb-1 border-b border-pink-200">
-              <Venus className="h-4 w-4 shrink-0 text-pink-500" />
-              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
-                {PAIRING_LAYOUT.female.label}
-              </h3>
-            </div>
-            <PairBlock categoryName="Ladies Open" />
-          </div>
+          <PairBlock categoryName="Ladies Open" />
 
           {/* Top-right: Mens Open */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 pb-1 border-b border-blue-200">
-              <Mars className="h-4 w-4 shrink-0 text-blue-500" />
-              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
-                {PAIRING_LAYOUT.male.label}
-              </h3>
-            </div>
-            <PairBlock categoryName="Mens Open" />
-          </div>
+          <PairBlock categoryName="Mens Open" />
 
-          {/* Bottom-left: Mens Beginner (below Ladies Open) */}
-          <div className="space-y-3">
-            <PairBlock categoryName="Mens Beginner" />
-          </div>
+          {/* Bottom-left: Mens Beginner */}
+          <PairBlock categoryName="Mens Beginner" />
 
-          {/* Bottom-right: Mens Intermediate (below Mens Open) */}
-          <div className="space-y-3">
-            <PairBlock categoryName="Mens Intermediate" />
-          </div>
+          {/* Bottom-right: Mens Intermediate */}
+          <PairBlock categoryName="Mens Intermediate" />
         </div>
 
         {uncategorisedInvites.length > 0 && (

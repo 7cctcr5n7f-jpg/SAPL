@@ -387,14 +387,16 @@ export function OrgHub({
 
                     {/* ── Bottom row: PR (left, dark) · slots · payment ── */}
                     <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
-                      {/* PR — key stat, dark background */}
-                      <div className="flex items-center gap-2 bg-foreground px-3.5 py-2 rounded-bl-lg">
-                        <Activity className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                      {/* PR — key stat */}
+                      <div className="flex items-center gap-2 bg-primary/8 border-r-0 px-3.5 py-2 rounded-bl-lg">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 shrink-0">
+                          <Activity className="h-3.5 w-3.5 text-primary" />
+                        </div>
                         <div>
-                          <span className="text-sm font-bold tabular-nums text-white">
+                          <span className="text-sm font-bold tabular-nums text-slate-800">
                             {t.avgLi > 0 ? t.avgLi.toFixed(2) : "—"}
                           </span>
-                          <p className="text-[10px] text-white/60 leading-none mt-0.5">Avg PR</p>
+                          <p className="text-[10px] font-medium text-primary/70 leading-none mt-0.5 uppercase tracking-wide">Avg PR</p>
                         </div>
                       </div>
 
@@ -457,6 +459,8 @@ export function OrgHub({
           {squadFor && (
             <PairingsBoard
               teamId={squadFor.id}
+              teamName={squadFor.name}
+              teamAvgPr={squadFor.avgLi > 0 ? squadFor.avgLi : null}
               categories={squadFor.pairingCategories}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}
