@@ -279,11 +279,25 @@ export async function getPlayerTeamFees(playerId: string): Promise<PlayerTeamFee
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
 
+  // Cross-check against actual pairing slots: a stale ppl_team_members row
+  // (e.g. from earlier squad experiments) should not generate a fee entry if
+  // the player has no pairing slot on that team.  We only skip the check when
+  // the player has no pairings at all (e.g. newly invited, not yet placed).
+  const pairingRows = await db
+    .select({ teamId: teamPairings.teamId })
+    .from(teamPairings)
+    .where(eq(teamPairings.playerId, playerId))
+  const pairedTeamIds = new Set(pairingRows.map((r) => r.teamId))
+  const hasAnyPairing = pairedTeamIds.size > 0
+
   const { splitVatInclusive } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
 
   const result: PlayerTeamFee[] = []
   for (const { team } of memberRows) {
+    // Skip teams where the player has no pairing slot (stale membership row),
+    // but only when the player has at least one pairing elsewhere.
+    if (hasAnyPairing && !pairedTeamIds.has(team.id)) continue
     const { amount, vatAmount } = splitVatInclusive(await getPlayerFee(team.seasonId))
     if (team.clubPaysFees) {
       result.push({
