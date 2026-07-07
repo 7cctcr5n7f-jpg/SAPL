@@ -330,9 +330,6 @@ export function OrgHub({
                             <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
                             {t.teamType}
                           </Badge>
-                          <span className="inline-flex items-center gap-1" title="Average Playtomic Rating">
-                            <Activity className="h-3 w-3" /> PR {t.avgLi.toFixed(2)}
-                          </span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
                             {t.homeClubName ?? "No home club"}{t.saplRegion ? ` · ${t.saplRegion}` : ""}
@@ -388,9 +385,20 @@ export function OrgHub({
                       </div>
                     </div>
 
-                    {/* ── Bottom row: squad count + payment stats ── */}
+                    {/* ── Bottom row: PR (left, dark) · slots · payment ── */}
                     <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
-                      {/* Squad */}
+                      {/* PR — key stat, dark background */}
+                      <div className="flex items-center gap-2 bg-foreground px-3.5 py-2 rounded-bl-lg">
+                        <Activity className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                        <div>
+                          <span className="text-sm font-bold tabular-nums text-white">
+                            {t.avgLi > 0 ? t.avgLi.toFixed(2) : "—"}
+                          </span>
+                          <p className="text-[10px] text-white/60 leading-none mt-0.5">Avg PR</p>
+                        </div>
+                      </div>
+
+                      {/* Squad slots */}
                       <div className="flex items-center gap-2 px-3.5 py-2">
                         <Users2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <div>

@@ -559,26 +559,42 @@ export function PairingsBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="space-y-5">
+        {/* Custom layout:
+            Top row    — Ladies Open (left)  |  Mens Open (right)
+            Bottom row — Mens Beginner (left) |  Mens Intermediate (right)
+        */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
-          {(["female", "male"] as const).map((gender) => {
-            const group = PAIRING_LAYOUT[gender]
-            const Icon = gender === "female" ? Venus : Mars
-            const headerColor = gender === "female" ? "text-pink-500" : "text-blue-500"
-            const dividerColor = gender === "female" ? "border-pink-200" : "border-blue-200"
-            return (
-              <div key={gender} className="space-y-3">
-                <div className={cn("flex items-center gap-2 pb-1 border-b", dividerColor)}>
-                  <Icon className={cn("h-4 w-4 shrink-0", headerColor)} />
-                  <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
-                    {group.label}
-                  </h3>
-                </div>
-                {group.categories.map((name) => (
-                  <PairBlock key={name} categoryName={name} />
-                ))}
-              </div>
-            )
-          })}
+          {/* Top-left: Ladies Open */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 pb-1 border-b border-pink-200">
+              <Venus className="h-4 w-4 shrink-0 text-pink-500" />
+              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
+                {PAIRING_LAYOUT.female.label}
+              </h3>
+            </div>
+            <PairBlock categoryName="Ladies Open" />
+          </div>
+
+          {/* Top-right: Mens Open */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 pb-1 border-b border-blue-200">
+              <Mars className="h-4 w-4 shrink-0 text-blue-500" />
+              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
+                {PAIRING_LAYOUT.male.label}
+              </h3>
+            </div>
+            <PairBlock categoryName="Mens Open" />
+          </div>
+
+          {/* Bottom-left: Mens Beginner (below Ladies Open) */}
+          <div className="space-y-3">
+            <PairBlock categoryName="Mens Beginner" />
+          </div>
+
+          {/* Bottom-right: Mens Intermediate (below Mens Open) */}
+          <div className="space-y-3">
+            <PairBlock categoryName="Mens Intermediate" />
+          </div>
         </div>
 
         {uncategorisedInvites.length > 0 && (
