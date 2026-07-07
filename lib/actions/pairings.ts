@@ -533,15 +533,32 @@ export async function processTeamInviteByToken(token: string): Promise<
 
   if (!team) return { error: "The team for this invitation no longer exists." }
 
-  // Is the invitee already a registered user?
-  const [invitedUser] = await db
-    .select({ id: user.id, isPlayer: user.isPlayer, firstName: user.firstName, lastName: user.lastName })
-    .from(user)
-    .where(eq(user.email, invite.email))
-    .limit(1)
+  // Prefer the currently signed-in user over an email lookup.
+  // The invite email and the account email may differ (e.g. iCloud relay vs
+  // real address), so we always honour the authenticated session first.
+  const sessionUser = await getCurrentUser()
+
+  let invitedUser: { id: string; isPlayer: boolean } | undefined
+
+  if (sessionUser) {
+    const [row] = await db
+      .select({ id: user.id, isPlayer: user.isPlayer })
+      .from(user)
+      .where(eq(user.id, sessionUser.id))
+      .limit(1)
+    invitedUser = row ?? undefined
+  } else {
+    // No session — fall back to matching by invite email
+    const [row] = await db
+      .select({ id: user.id, isPlayer: user.isPlayer })
+      .from(user)
+      .where(eq(user.email, invite.email))
+      .limit(1)
+    invitedUser = row ?? undefined
+  }
 
   if (!invitedUser) {
-    // No account at all — redirect to sign-up preserving the token
+    // No account at all — send to sign-up preserving the token
     return { needsAccount: true, token, email: invite.email, teamName: team.name }
   }
 
