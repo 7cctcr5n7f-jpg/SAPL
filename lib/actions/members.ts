@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites } from "@/lib/db/schema"
+import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players } from "@/lib/db/schema"
 import { eq, and, asc, desc, max, sql } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -286,7 +286,12 @@ export async function updateMemberDetails(
 export async function updateMemberRating(userId: string, rating: number | null) {
   await requireMemberManager()
   const val = rating != null ? Math.max(0, Math.min(7, rating)) : null
-  await db.update(user).set({ playtomicRating: val, updatedAt: new Date() }).where(eq(user.id, userId))
+  // Write to both tables: ppl_players is the canonical source for team stats;
+  // user.playtomicRating is kept in sync as a convenience mirror.
+  await Promise.all([
+    db.update(user).set({ playtomicRating: val, updatedAt: new Date() }).where(eq(user.id, userId)),
+    db.update(players).set({ playtomicRating: val, updatedAt: new Date() }).where(eq(players.userId, userId)),
+  ])
   // Recalculate any team they're on
   const [membership] = await db
     .select({ teamId: teamMembers.teamId })

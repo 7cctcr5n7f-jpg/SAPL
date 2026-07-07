@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { teams, teamPairings, user, clubs } from "@/lib/db/schema"
+import { teams, teamPairings, players, clubs } from "@/lib/db/schema"
 import { and, eq, inArray, isNotNull } from "drizzle-orm"
 
 /**
@@ -26,12 +26,14 @@ export async function recomputeTeamStats(teamId: number) {
 
   const uniquePlayerIds = [...new Set(slotRows.map((r) => r.playerId as string))]
 
+  // Read playtomicRating from ppl_players (the canonical source set by admins).
+  // user.playtomicRating is a mirror only — ppl_players is always authoritative.
   let roster: { pr: number | null }[] = []
   if (uniquePlayerIds.length > 0) {
     roster = await db
-      .select({ pr: user.playtomicRating })
-      .from(user)
-      .where(inArray(user.id, uniquePlayerIds))
+      .select({ pr: players.playtomicRating })
+      .from(players)
+      .where(inArray(players.userId, uniquePlayerIds))
   }
 
   const playerCount = uniquePlayerIds.length
