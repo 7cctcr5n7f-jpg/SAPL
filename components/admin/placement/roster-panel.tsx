@@ -99,7 +99,7 @@ export function RosterPanel({ team, onClose }: { team: BoardTeam | null; onClose
             </SheetHeader>
 
             <div className="grid grid-cols-2 gap-3">
-              <InfoTile icon={<Activity className="h-4 w-4" />} label="Average LI" value={team.avgLi.toFixed(1)} />
+              <InfoTile icon={<Activity className="h-4 w-4" />} label="Average PR" value={team.avgLi.toFixed(2)} />
               <InfoTile
                 icon={<Users className="h-4 w-4" />}
                 label="Players"
@@ -186,7 +186,7 @@ export function RosterPanel({ team, onClose }: { team: BoardTeam | null; onClose
                         {p.isCaptain && <Crown className="h-3.5 w-3.5 text-primary" />}
                         {p.name}
                       </span>
-                      <Badge variant="outline">LI {p.li.toFixed(1)}</Badge>
+                      <Badge variant="outline">PR {p.playtomicRating != null ? p.playtomicRating.toFixed(2) : "—"}</Badge>
                     </li>
                   ))}
                 </ul>

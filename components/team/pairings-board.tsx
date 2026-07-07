@@ -126,12 +126,10 @@ function DraggablePlayer({
             )}
           </p>
           <p className="text-xs text-slate-500 flex items-center gap-1.5">
-            LI {player.li.toFixed(1)}
-            {player.playtomicRating != null && (
-              <span className={cn("font-medium", overCap ? "text-red-600" : "text-slate-500")}>
-                · PT {player.playtomicRating.toFixed(2)}
-              </span>
-            )}
+            {player.playtomicRating != null
+              ? <span className={cn("font-medium", overCap ? "text-red-600" : "text-slate-500")}>PR {player.playtomicRating.toFixed(2)}</span>
+              : <span>PR —</span>
+            }
             {!player.paid && !clubPaysFees && (
               <span className="text-amber-600">· Unpaid</span>
             )}
@@ -238,8 +236,7 @@ function DroppableSlot({
                         {p.name}
                       </span>
                       <span className="ml-auto pl-4 text-xs text-slate-400">
-                        LI {p.li.toFixed(1)}
-                        {p.playtomicRating != null && ` · PT ${p.playtomicRating.toFixed(2)}`}
+                        PR {p.playtomicRating != null ? p.playtomicRating.toFixed(2) : "—"}
                       </span>
                     </DropdownMenuItem>
                   ))}
@@ -276,8 +273,7 @@ function PlayerDragOverlay({ player }: { player: PairingPlayer }) {
       <div>
         <p className="text-sm font-semibold text-slate-800">{player.name}</p>
         <p className="text-xs text-slate-500">
-          LI {player.li.toFixed(1)}
-          {player.playtomicRating != null && ` · PT ${player.playtomicRating.toFixed(2)}`}
+          PR {player.playtomicRating != null ? player.playtomicRating.toFixed(2) : "—"}
         </p>
       </div>
     </div>
@@ -443,15 +439,17 @@ export function PairingsBoard({
     const shortName = categoryName.replace(/^(Ladies|Mens)\s/, "")
 
     const rule = ruleByName.get(categoryName)
-    const ptCap = rule?.avgTeamMaxLi ?? null // Using LI cap as proxy; no separate PT cap in rules
-    const cap = rule?.avgTeamMaxLi ?? null
-    const pairAvg = complete ? pair.reduce((sum, s) => sum + (s.player?.li ?? 0), 0) / 2 : null
+    const cap = rule?.avgTeamMaxLi ?? null  // This is the PR cap (named avgTeamMaxLi in constants)
+    // Pair avg PT rating — only if both players have a rating
+    const pairAvg = complete
+      ? pair.reduce((sum, s) => sum + (s.player?.playtomicRating ?? 0), 0) / 2
+      : null
     const overCap = pairAvg != null && cap != null && cap < 7 && pairAvg > cap
 
-    // Per-player: flag red if their PT rating exceeds the category LI cap
+    // Per-player: flag red if their PR exceeds the category cap
     function playerOverCap(player: PairingPlayer | null) {
-      if (!player || !ptCap || ptCap >= 7) return false
-      return (player.playtomicRating ?? 0) > ptCap
+      if (!player || !cap || cap >= 7) return false
+      return (player.playtomicRating ?? 0) > cap
     }
 
     const accentBorder = isLadies ? "border-pink-300" : "border-blue-300"
@@ -476,7 +474,7 @@ export function PairingsBoard({
                 <p className="text-[11px] text-slate-500">
                   {isLadies ? "Ladies" : "Mens"} pair
                   {cap != null && cap < 7 && (
-                    <span className="ml-1 text-slate-400">· max LI {cap.toFixed(1)}</span>
+                    <span className="ml-1 text-slate-400">· max PR {cap.toFixed(1)}</span>
                   )}
                 </p>
               </div>
@@ -509,7 +507,7 @@ export function PairingsBoard({
           <div className="mx-3 mb-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              Avg LI <strong>{pairAvg.toFixed(2)}</strong> exceeds the {shortName} cap of{" "}
+              Avg PR <strong>{pairAvg.toFixed(2)}</strong> exceeds the {shortName} cap of{" "}
               <strong>{cap.toFixed(1)}</strong>. This pairing may be ineligible.
             </span>
           </div>

@@ -330,8 +330,8 @@ export function OrgHub({
                             <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
                             {t.teamType}
                           </Badge>
-                          <span className="inline-flex items-center gap-1" title="Average League Index">
-                            <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
+                          <span className="inline-flex items-center gap-1" title="Average Playtomic Rating">
+                            <Activity className="h-3 w-3" /> PR {t.avgLi.toFixed(2)}
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
