@@ -152,13 +152,20 @@ export function appBaseUrl(): string {
 }
 
 /**
- * Email sent to a person who has been added to a team but doesn't yet have an
- * account. Prompts them to register; their team membership is resolved
- * automatically once they sign up with this email address.
+ * Invitation email with Accept / Decline buttons.
+ * - Existing users with a player profile are joined immediately when they click Accept.
+ * - Existing users without a profile are sent through onboarding first, then auto-joined.
+ * - Brand-new users are sent through account creation, then auto-joined.
+ * The token-based URL handles all three cases server-side.
  */
-export function teamAddInviteEmail(opts: { teamName: string; captainName?: string | null; registerUrl: string }) {
-  const { teamName, captainName, registerUrl } = opts
-  const subject = `You've been added to ${teamName} on ${BRAND.short}`
+export function teamInviteEmail(opts: {
+  teamName: string
+  captainName?: string | null
+  acceptUrl: string
+  declineUrl: string
+}) {
+  const { teamName, captainName, acceptUrl, declineUrl } = opts
+  const subject = `You've been invited to join ${teamName} on ${BRAND.short}`
   const html = `
   <div style="background:#0a0a0a;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:480px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden;">
@@ -167,21 +174,46 @@ export function teamAddInviteEmail(opts: { teamName: string; captainName?: strin
         <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
       </div>
       <div style="padding:32px;">
-        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">You're on the squad</h1>
-        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 24px;">
-          ${captainName ? `${captainName} has` : "A captain has"} added you to <strong style="color:#ffffff;">${teamName}</strong> on ${BRAND.name}.
-          Create your free account with this email address to claim your spot — you'll join the team automatically.
+        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">Team invitation</h1>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 28px;">
+          ${captainName ? `<strong style="color:#ffffff;">${captainName}</strong> has` : "A captain has"} invited you to join
+          <strong style="color:#ffffff;">${teamName}</strong> on ${BRAND.name}.
+          Accept to claim your spot — or decline if you&apos;re not interested.
         </p>
-        <a href="${registerUrl}" style="display:inline-block;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:8px;">
-          Create your account
-        </a>
+        <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding-right:8px;width:50%;">
+              <a href="${acceptUrl}" style="display:block;text-align:center;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:13px 16px;border-radius:8px;">
+                Accept invitation
+              </a>
+            </td>
+            <td style="padding-left:8px;width:50%;">
+              <a href="${declineUrl}" style="display:block;text-align:center;background:#262626;color:#a3a3a3;text-decoration:none;font-weight:600;font-size:14px;padding:13px 16px;border-radius:8px;border:1px solid #404040;">
+                Decline
+              </a>
+            </td>
+          </tr>
+        </table>
         <p style="color:#737373;font-size:12px;line-height:1.6;margin:24px 0 0;">
-          Or paste this link into your browser:<br/>
-          <a href="${registerUrl}" style="color:#E10600;word-break:break-all;">${registerUrl}</a>
+          If you don&apos;t recognise this invitation, you can safely ignore it.<br/>
+          Accept link: <a href="${acceptUrl}" style="color:#E10600;word-break:break-all;">${acceptUrl}</a>
         </p>
       </div>
     </div>
   </div>`
-  const text = `${captainName ? `${captainName} has` : "A captain has"} added you to ${teamName} on ${BRAND.name}. Create your account with this email to join automatically: ${registerUrl}`
+  const text = `${captainName ? `${captainName} has` : "A captain has"} invited you to join ${teamName} on ${BRAND.name}.\n\nAccept: ${acceptUrl}\nDecline: ${declineUrl}`
   return { subject, html, text }
+}
+
+/**
+ * @deprecated Use teamInviteEmail instead. Kept for backwards compatibility.
+ */
+export function teamAddInviteEmail(opts: { teamName: string; captainName?: string | null; registerUrl: string }) {
+  const { teamName, captainName, registerUrl } = opts
+  return teamInviteEmail({
+    teamName,
+    captainName,
+    acceptUrl: registerUrl,
+    declineUrl: registerUrl,
+  })
 }

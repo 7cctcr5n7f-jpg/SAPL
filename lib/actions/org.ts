@@ -51,18 +51,38 @@ import { revalidatePath } from "next/cache"
 import { notify } from "@/lib/notify"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
-async function requireOrgOwner(orgId: number) {  const user = await getCurrentUser()
+async function requireOrgOwner(orgId: number) {
+  const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
-  const [org] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, orgId)).limit(1)
+  const [org] = await db
+    .select({ id: organisations.id, ownerUserId: organisations.ownerUserId })
+    .from(organisations)
+    .where(eq(organisations.id, orgId))
+    .limit(1)
   if (!org) throw new Error("Organisation not found")
   if (org.ownerUserId !== user.id) {
-    // allow league admins and the main (super) admin
-    const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, user.id)).limit(1)
+    // allow league admins and super admins
+    const [meta] = await db
+      .select({ role: userMeta.role })
+      .from(userMeta)
+      .where(eq(userMeta.userId, user.id))
+      .limit(1)
     if (meta?.role !== "league_admin" && meta?.role !== "super_admin") {
       throw new Error("Not authorised for this organisation")
     }
   }
   return { user, org }
+}
+
+/** Allow team captains, org owners, and league/super admins to manage a team. */
+async function requireCanManageTeam(teamId: number) {
+  const me = await getCurrentUser()
+  if (!me) throw new Error("Not authenticated")
+  const access = await getAccessContext(me)
+  if (!access.canManageTeam(teamId) && !access.isLeagueAdmin) {
+    throw new Error("Not authorised for this team")
+  }
+  return me
 }
 
 export async function createTeam(formData: FormData) {
@@ -134,9 +154,9 @@ export async function updateTeamRegistration(input: {
   clubPaysFees?: boolean
   ownerEmail?: string | null
 }) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
-  if (!team?.organisationId) return { ok: false, error: "Team not found" }
-  await requireOrgOwner(team.organisationId)
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId, homeClubId: teams.homeClubId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+  await requireCanManageTeam(input.teamId)
 
   const patch: Record<string, unknown> = { updatedAt: new Date() }
   // Team name and home venue are frozen once a season is active.
@@ -208,11 +228,10 @@ export async function updateTeamRegistration(input: {
 export async function assignCaptain(formData: FormData) {
   const teamId = Number(formData.get("teamId"))
   const playerId = String(formData.get("playerId"))
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (!team?.organisationId) return { ok: false, error: "Team not found" }
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, teamId)).limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
   // Authorise via the access context so org owners, league admins AND club/team
-  // managers who have this team in their scope can assign a captain. (Using
-  // requireOrgOwner here would reject club managers and throw.)
+  // managers who have this team in their scope can assign a captain.
   const currentUser = await getCurrentUser()
   if (!currentUser) return { ok: false, error: "Not authenticated" }
   const access = await getAccessContext(currentUser)
@@ -265,8 +284,6 @@ export async function assignCaptain(formData: FormData) {
 
 /**
  * Update a captain's display name and contact number from the team admin row.
- * The captain's login email is their identity and stays read-only here. Scoped
- * to the team's organisation owner (or league/super admins).
  */
 export async function updateCaptainContact(input: {
   teamId: number
@@ -275,13 +292,9 @@ export async function updateCaptainContact(input: {
   lastName: string
   phone: string | null
 }) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
-  if (!team?.organisationId) return { ok: false, error: "Team not found" }
-  try {
-    await requireOrgOwner(team.organisationId)
-  } catch {
-    return { ok: false, error: "You cannot manage this team." }
-  }
+  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+  await requireCanManageTeam(input.teamId)
 
   const firstName = input.firstName.trim()
   const lastName = input.lastName.trim()
@@ -297,9 +310,9 @@ export async function updateCaptainContact(input: {
 
   const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, player.id)).limit(1)
   if (meta) {
-    await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, player.id))
+    await db.update(userMeta).set({ phone: input.phone, updatedAt: new Date() }).where(eq(userMeta.userId, player.id))
   } else {
-    await db.insert(userMeta).values({ userId: player.id, phone })
+    await db.insert(userMeta).values({ userId: player.id, phone: input.phone })
   }
 
   revalidatePath("/dashboard/org")
@@ -309,12 +322,8 @@ export async function updateCaptainContact(input: {
 
 export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean) {
   const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (!team?.organisationId) return { error: "Team not found" }
-  try {
-    await requireOrgOwner(team.organisationId)
-  } catch {
-    return { error: "You cannot manage this team." }
-  }
+  if (!team) return { error: "Team not found" }
+  await requireCanManageTeam(teamId)
   await db.update(teams).set({ clubPaysFees, updatedAt: new Date() }).where(eq(teams.id, teamId))
   revalidatePath("/dashboard/org")
   revalidatePath("/dashboard/captain")
@@ -322,21 +331,17 @@ export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean)
 }
 
 /**
- * Permanently delete a team and all its dependent rows (roster, pairings,
- * invites, availability, standings, season entries, payments). Fixtures keep
- * their slot but lose the team reference so the schedule stays intact.
+ * Permanently delete a team and all its dependent rows.
  */
 export async function deleteTeam(teamId: number) {
-  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
-  if (!team?.organisationId) return { ok: false, error: "Team not found" }
-  try {
-    await requireOrgOwner(team.organisationId)
-  } catch {
-    return { ok: false, error: "You cannot manage this team." }
-  }
+  const [team] = await db
+    .select({ id: teams.id, organisationId: teams.organisationId, ownerEmail: teams.ownerEmail })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+  await requireCanManageTeam(teamId)
 
-  // A team can only be deleted while no season is active. Once the league is
-  // running, removing a placed team would corrupt fixtures and standings.
   if (await isSeasonLocked()) {
     return { ok: false, error: "The season has started — teams can't be deleted while the league is active." }
   }
@@ -348,13 +353,10 @@ export async function deleteTeam(teamId: number) {
   await db.delete(standings).where(eq(standings.teamId, teamId))
   await db.delete(teamEntries).where(eq(teamEntries.teamId, teamId))
   await db.delete(payments).where(eq(payments.teamId, teamId))
-  // Detach from any generated fixtures rather than deleting the slot.
   await db.update(fixtures).set({ homeTeamId: null }).where(eq(fixtures.homeTeamId, teamId))
   await db.update(fixtures).set({ awayTeamId: null }).where(eq(fixtures.awayTeamId, teamId))
   await db.delete(teams).where(eq(teams.id, teamId))
 
-  // If the team had a self-service owner, and they no longer own any team, drop
-  // the auto-granted Team Owner access so their role reverts to a plain player.
   if (team.ownerEmail) {
     const [owner] = await db
       .select({ userId: userMeta.userId })

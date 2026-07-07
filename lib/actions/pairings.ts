@@ -10,12 +10,12 @@ import {
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { and, eq } from "drizzle-orm"
+import { and, eq, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
-import { sendEmail, teamAddInviteEmail, appBaseUrl } from "@/lib/email"
+import { sendEmail, teamInviteEmail, appBaseUrl } from "@/lib/email"
 import { getAccessContext } from "@/lib/access"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { TeamFullError } from "@/lib/team-errors"
@@ -256,17 +256,27 @@ export async function invitePlayerByEmail(input: {
     })
   }
 
-  // Send an account-creation email so the invitee can claim their spot. The
-  // registration page pre-fills the email; their membership resolves on signup.
-  const registerUrl = `${appBaseUrl()}/sign-up?email=${encodeURIComponent(email)}`
-  const { subject, html, text } = teamAddInviteEmail({
+  // Fetch the token we just stored so we can build the accept/decline URLs
+  const [storedInvite] = await db
+    .select({ token: teamInvites.token })
+    .from(teamInvites)
+    .where(and(eq(teamInvites.teamId, input.teamId), eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt))
+    .limit(1)
+
+  const base = appBaseUrl()
+  const acceptUrl = `${base}/invite/${storedInvite?.token}`
+  const declineUrl = `${base}/invite/${storedInvite?.token}/decline`
+
+  const { subject, html, text } = teamInviteEmail({
     teamName: team.name,
     captainName: me.name,
-    registerUrl,
+    acceptUrl,
+    declineUrl,
   })
   const { sent } = await sendEmail({ to: email, subject, html, text })
   if (!sent) {
-    console.log(`[v0] Team add invite for ${email} (no email provider): ${registerUrl}`)
+    console.log(`[v0] Team invite for ${email} — Accept: ${acceptUrl} | Decline: ${declineUrl}`)
   }
 
   revalidatePath("/dashboard/captain")
@@ -489,6 +499,121 @@ async function joinTeam(
   }
 
   await recomputeTeamStats(teamId)
+}
+
+/**
+ * Process a team invite by token.
+ * Returns what should happen next so the server page can redirect appropriately:
+ *  - { joined: true }                            → send to dashboard
+ *  - { needsProfile: true, token }               → send to onboarding with token
+ *  - { needsAccount: true, token, email }        → send to sign-up with token
+ *  - { error: string }                           → show error
+ */
+export async function processTeamInviteByToken(token: string): Promise<
+  | { joined: true; teamName: string }
+  | { needsProfile: true; token: string; teamName: string }
+  | { needsAccount: true; token: string; email: string; teamName: string }
+  | { alreadyOnTeam: true; teamName: string }
+  | { declined: true }
+  | { error: string }
+> {
+  const [invite] = await db
+    .select()
+    .from(teamInvites)
+    .where(and(eq(teamInvites.token, token), eq(teamInvites.status, "pending")))
+    .limit(1)
+
+  if (!invite) return { error: "This invitation link is invalid or has already been used." }
+
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId })
+    .from(teams)
+    .where(eq(teams.id, invite.teamId))
+    .limit(1)
+
+  if (!team) return { error: "The team for this invitation no longer exists." }
+
+  // Is the invitee already a registered user?
+  const [invitedUser] = await db
+    .select({ id: user.id, isPlayer: user.isPlayer, firstName: user.firstName, lastName: user.lastName })
+    .from(user)
+    .where(eq(user.email, invite.email))
+    .limit(1)
+
+  if (!invitedUser) {
+    // No account at all — redirect to sign-up preserving the token
+    return { needsAccount: true, token, email: invite.email, teamName: team.name }
+  }
+
+  if (!invitedUser.isPlayer) {
+    // Has an account but no player profile yet — redirect to onboarding
+    return { needsProfile: true, token, teamName: team.name }
+  }
+
+  // Check for season conflict
+  const conflict = await getPlayerSeasonTeamConflict(invitedUser.id, team.seasonId, team.id)
+  if (conflict) {
+    return { alreadyOnTeam: true, teamName: conflict.teamName }
+  }
+
+  // Join the team immediately
+  try {
+    await joinTeam(team.id, invitedUser.id, {
+      category: invite.category ?? undefined,
+      pairIndex: invite.pairIndex ?? undefined,
+      slotIndex: invite.slotIndex ?? undefined,
+    })
+  } catch (err) {
+    if (err instanceof TeamFullError) return { error: "The team is full." }
+    throw err
+  }
+
+  if (invite.invitedRating != null && invite.invitedRating > 0) {
+    const [prof] = await db.select({ rating: user.playtomicRating }).from(user).where(eq(user.id, invitedUser.id)).limit(1)
+    if (!prof?.rating) {
+      await db.update(user).set({ playtomicRating: invite.invitedRating }).where(eq(user.id, invitedUser.id))
+    }
+  }
+
+  await db.update(teamInvites).set({ status: "accepted", acceptedAt: new Date() }).where(eq(teamInvites.id, invite.id))
+  await db.update(user).set({ lookingForTeam: false, onMarketplace: false, availability: "unavailable" }).where(eq(user.id, invitedUser.id))
+
+  await db.insert(notifications).values({
+    userId: invitedUser.id,
+    type: "team_invite",
+    title: "You joined a team",
+    body: `You have joined ${team.name}.`,
+    scope: "direct",
+  })
+
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/org")
+
+  return { joined: true, teamName: team.name }
+}
+
+/**
+ * Decline a team invitation by token. Marks it as cancelled.
+ */
+export async function declineTeamInviteByToken(token: string): Promise<{ ok: boolean; teamName: string; error?: string }> {
+  const [invite] = await db
+    .select({ id: teamInvites.id, teamId: teamInvites.teamId, status: teamInvites.status })
+    .from(teamInvites)
+    .where(eq(teamInvites.token, token))
+    .limit(1)
+
+  if (!invite) return { ok: false, teamName: "", error: "Invalid invitation link." }
+  if (invite.status !== "pending") return { ok: false, teamName: "", error: "This invitation has already been used." }
+
+  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+
+  await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, invite.id))
+
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/org")
+
+  return { ok: true, teamName: team?.name ?? "the team" }
 }
 
 // Resolve any pending email invites for a freshly-registered player.

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 
-export function AuthForm({ mode, defaultEmail = "" }: { mode: "sign-in" | "sign-up"; defaultEmail?: string }) {
+export function AuthForm({ mode, defaultEmail = "", callbackUrl }: { mode: "sign-in" | "sign-up"; defaultEmail?: string; callbackUrl?: string }) {
   const router = useRouter()
   const isSignUp = mode === "sign-up"
   const [name, setName] = useState("")
@@ -33,7 +33,7 @@ export function AuthForm({ mode, defaultEmail = "" }: { mode: "sign-in" | "sign-
       } else {
         const { error } = await signIn.email({ email, password })
         if (error) throw new Error(error.message || "Invalid email or password")
-        router.push("/dashboard")
+        router.push(callbackUrl ?? "/dashboard")
       }
       router.refresh()
     } catch (err) {

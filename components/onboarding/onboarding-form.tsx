@@ -27,7 +27,7 @@ function SubmitButton() {
   )
 }
 
-export function OnboardingForm({ defaultName, clubs }: { defaultName?: string; clubs: Club[] }) {
+export function OnboardingForm({ defaultName, clubs, inviteToken }: { defaultName?: string; clubs: Club[]; inviteToken?: string }) {
   const router = useRouter()
   const [state, action] = useActionState<OnboardingState, FormData>(createPlayerProfile, {})
   const [firstName, lastName] = (defaultName ?? "").split(" ")
@@ -40,10 +40,14 @@ export function OnboardingForm({ defaultName, clubs }: { defaultName?: string; c
 
   useEffect(() => {
     if (state.success) {
-      router.push("/dashboard")
+      if (inviteToken) {
+        router.push(`/invite/${inviteToken}`)
+      } else {
+        router.push("/dashboard")
+      }
       router.refresh()
     }
-  }, [state.success, router])
+  }, [state.success, router, inviteToken])
 
   return (
     <form action={action} className="flex flex-col gap-5">
