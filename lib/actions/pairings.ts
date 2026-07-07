@@ -508,6 +508,83 @@ async function joinTeam(
 }
 
 /**
+ * Read-only invite preview — fetches metadata needed to render the accept page
+ * without mutating any state. Safe to call on every page load / email pre-fetch.
+ *
+ * Returns one of:
+ *  - { ready: true, teamName, captainName, category }  → show Accept / Decline UI
+ *  - { already: true, teamName }                       → already accepted, show success
+ *  - { needsProfile: true, token }                     → redirect to onboarding
+ *  - { needsAccount: true, email, token, teamName }    → redirect to sign-up
+ *  - { error: string }                                 → show error
+ */
+export async function getInvitePreview(
+  token: string,
+  sessionUserId: string,
+): Promise<
+  | { ready: true; teamName: string; captainName: string; category: string | null }
+  | { already: true; teamName: string }
+  | { needsProfile: true; token: string }
+  | { needsAccount: true; token: string; email: string; teamName: string }
+  | { error: string }
+> {
+  const [invite] = await db
+    .select()
+    .from(teamInvites)
+    .where(eq(teamInvites.token, token))
+    .limit(1)
+
+  if (!invite) return { error: "This invitation link is invalid or has already been used." }
+
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(eq(teams.id, invite.teamId))
+    .limit(1)
+
+  if (!team) return { error: "The team for this invitation no longer exists." }
+
+  if (invite.status === "cancelled") return { error: "This invitation has been cancelled." }
+
+  if (invite.status === "accepted") return { already: true, teamName: team.name }
+
+  // Check the session user's profile status.
+  const [sessionUser] = await db
+    .select({ id: user.id, isPlayer: user.isPlayer })
+    .from(user)
+    .where(eq(user.id, sessionUserId))
+    .limit(1)
+
+  if (!sessionUser) return { error: "Could not verify your account. Please sign in again." }
+
+  const [meta] = await db
+    .select({ id: userMeta.id })
+    .from(userMeta)
+    .where(eq(userMeta.userId, sessionUserId))
+    .limit(1)
+
+  const hasProfile = sessionUser.isPlayer || meta != null
+  if (!hasProfile) return { needsProfile: true, token }
+
+  // Captain name for the accept page.
+  const captainName = invite.invitedByUserId
+    ? await db
+        .select({ name: user.name })
+        .from(user)
+        .where(eq(user.id, invite.invitedByUserId))
+        .limit(1)
+        .then((rows) => rows[0]?.name ?? "Your captain")
+    : "Your captain"
+
+  return {
+    ready: true,
+    teamName: team.name,
+    captainName,
+    category: invite.category ?? null,
+  }
+}
+
+/**
  * Process a team invite by token.
  * Returns what should happen next so the server page can redirect appropriately:
  *  - { joined: true }                            → send to dashboard
