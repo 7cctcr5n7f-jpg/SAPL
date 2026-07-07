@@ -3,7 +3,7 @@
 import Link from "next/link"
 import type { PlayerOverviewTeam, PendingTeamInvite, PairingPartner } from "@/lib/queries-dashboard"
 import { PlayerPhotoUploader } from "@/components/dashboard/player-photo-uploader"
-import { Users, ChevronRight, AlertCircle, CheckCircle2, Mail } from "lucide-react"
+import { Users, AlertCircle, CheckCircle2, Mail } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function PlayerSummary({
@@ -135,76 +135,7 @@ export function PlayerSummary({
         />
       </div>
 
-      {/* ── Partner block (replaces PR hero widget) ──────────────────────── */}
-      {partner ? (
-        <div className="flex items-center gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3.5">
-          {/* Partner avatar */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary uppercase">
-            {partner.name
-              .split(" ")
-              .map((n) => n[0])
-              .join("")
-              .slice(0, 2)}
-          </div>
 
-          {/* Partner info */}
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Playing Partner
-            </p>
-            <p className="font-heading text-base font-bold text-foreground leading-tight truncate">
-              {partner.name}
-            </p>
-          </div>
-
-          {/* Partner PR */}
-          <div className="text-center px-3 border-x border-border">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">PR</p>
-            <p className={cn("font-heading text-xl font-bold tabular-nums", partner.playtomicRating ? "text-foreground" : "text-muted-foreground/40")}>
-              {partner.playtomicRating?.toFixed(2) ?? "—"}
-            </p>
-          </div>
-
-          {/* Combined avg */}
-          <div className="text-center pl-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Combined</p>
-            <p className={cn("font-heading text-xl font-bold tabular-nums", combinedAvg ? "text-primary" : "text-muted-foreground/40")}>
-              {combinedAvg ?? "—"}
-            </p>
-          </div>
-        </div>
-      ) : team ? (
-        /* On a team but no partner assigned yet */
-        <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3.5 text-muted-foreground">
-          <Users className="h-4 w-4 shrink-0" />
-          <p className="text-sm">No playing partner assigned yet — captain will set the lineup.</p>
-        </div>
-      ) : null}
-
-      {/* ── CTAs ─────────────────────────────────────────────────────────── */}
-      <div className="flex gap-3">
-        <Link
-          href="/dashboard/profile"
-          className="flex-1 flex items-center justify-center rounded-xl border border-border bg-transparent px-4 py-3.5 text-sm font-bold text-foreground transition-colors hover:bg-secondary"
-        >
-          Edit Profile
-        </Link>
-        {team ? (
-          <Link
-            href="/dashboard/org"
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            My Team <ChevronRight className="h-4 w-4" />
-          </Link>
-        ) : (
-          <Link
-            href="/dashboard/profile"
-            className="flex-1 flex items-center justify-center rounded-xl bg-secondary px-4 py-3.5 text-sm font-bold text-foreground transition-colors hover:bg-secondary/70"
-          >
-            Find a Team
-          </Link>
-        )}
-      </div>
     </section>
   )
 }
