@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account } from "@/lib/db/schema"
+import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites } from "@/lib/db/schema"
 import { eq, and, asc, desc, max, sql } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -552,6 +552,137 @@ export async function sendMemberResetEmail(userId: string) {
     return { ok: false, error: "Could not send reset email" }
   }
   return { ok: true, email: u.email }
+}
+
+/** Resend a pending team invite email to the player (by their userId). */
+export async function resendInviteEmail(userId: string) {
+  await requireSuperAdmin()
+  const [u] = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, userId)).limit(1)
+  if (!u) return { ok: false, error: "User not found" }
+
+  // Find the most recent pending invite for this email
+  const [invite] = await db
+    .select()
+    .from(teamInvites)
+    .where(and(eq(teamInvites.email, u.email.trim().toLowerCase()), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt))
+    .limit(1)
+
+  if (!invite) return { ok: false, error: "No pending invite found for this member." }
+
+  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+  const [invitingUser] = invite.invitedByUserId
+    ? await db.select({ name: user.name }).from(user).where(eq(user.id, invite.invitedByUserId)).limit(1)
+    : [{ name: "Your captain" }]
+
+  const { sendEmail, teamInviteEmail, appBaseUrl } = await import("@/lib/email")
+  const base = appBaseUrl()
+  const acceptUrl = `${base}/invite/${invite.token}`
+  const declineUrl = `${base}/invite/${invite.token}/decline`
+  const { subject, html, text } = teamInviteEmail({
+    teamName: team?.name ?? "your team",
+    captainName: invitingUser?.name ?? "Your captain",
+    acceptUrl,
+    declineUrl,
+  })
+
+  const { sent } = await sendEmail({ to: u.email, subject, html, text })
+  if (!sent) return { ok: false, error: "Could not send invite email." }
+
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Update a member's email address. */
+export async function updateMemberEmail(userId: string, email: string) {
+  const { me } = await requireMemberManager()
+  if (userId === me.id) return { ok: false, error: "Use the account settings to change your own email." }
+
+  const trimmed = email.trim().toLowerCase()
+  if (!trimmed || !trimmed.includes("@")) return { ok: false, error: "Enter a valid email address." }
+
+  const [dupe] = await db.select({ id: user.id }).from(user).where(eq(user.email, trimmed)).limit(1)
+  if (dupe && dupe.id !== userId) return { ok: false, error: "That email is already in use." }
+
+  await db.update(user).set({ email: trimmed, updatedAt: new Date() }).where(eq(user.id, userId))
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Toggle a member's paid status by inserting or updating their individual payment record. */
+export async function updateMemberPaid(userId: string, paid: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireMemberManager()
+
+  // Find the most recent individual payment row
+  const [existing] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(and(eq(payments.payerUserId, userId), eq(payments.type, "individual")))
+    .orderBy(desc(payments.createdAt))
+    .limit(1)
+
+  const newStatus = paid ? "paid" : "outstanding"
+
+  if (existing) {
+    await db.update(payments).set({ status: newStatus }).where(eq(payments.id, existing.id))
+  } else {
+    // Find team membership to link the payment
+    const [membership] = await db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.playerId, userId), eq(teamMembers.status, "active")))
+      .limit(1)
+
+    await db.insert(payments).values({
+      payerUserId: userId,
+      teamId: membership?.teamId ?? null,
+      type: "individual",
+      status: newStatus,
+      amount: 0,
+    })
+  }
+
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Permanently delete a member's account and all associated data. */
+export async function deleteMember(userId: string) {
+  const { me, isMainAdmin } = await requireMemberManager()
+  if (!isMainAdmin) return { ok: false, error: "Only the main admin can delete accounts." }
+  if (userId === me.id) return { ok: false, error: "You cannot delete your own account." }
+
+  // Deactivate team memberships and recompute affected teams
+  const activeMemberships = await db
+    .select({ id: teamMembers.id, teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, userId), eq(teamMembers.status, "active")))
+
+  for (const m of activeMemberships) {
+    await db.update(teamMembers).set({ status: "inactive" }).where(eq(teamMembers.id, m.id))
+    await recomputeTeamStats(m.teamId)
+  }
+
+  // Cancel pending invites
+  const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId)).limit(1)
+  if (u) {
+    await db
+      .update(teamInvites)
+      .set({ status: "cancelled" })
+      .where(and(eq(teamInvites.email, u.email), eq(teamInvites.status, "pending")))
+  }
+
+  // Delete auth account — Better Auth cascades sessions/accounts
+  try {
+    await auth.api.deleteUser({ body: { userId } } as any)
+  } catch {
+    // Fallback: manually delete from tables if the API call fails
+    await db.delete(user).where(eq(user.id, userId))
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true }
 }
 
 function generatePassword(): string {

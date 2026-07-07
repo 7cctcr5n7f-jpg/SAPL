@@ -10,6 +10,11 @@ import {
   updateMemberRating,
   updateMemberTeam,
   updateMemberStatus,
+  updateMemberDetails,
+  updateMemberEmail,
+  updateMemberPaid,
+  resendInviteEmail,
+  deleteMember,
   type MemberRow,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
@@ -24,6 +29,9 @@ import {
   ChevronDown,
   X,
   Check,
+  Send,
+  Trash2,
+  SquarePen,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -367,6 +375,315 @@ function FilterSelect({
   )
 }
 
+// ─── Member edit slide-out panel ─────────────────────────────────────────────
+
+const GENDERS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+]
+
+const PROVINCES = [
+  "Gauteng", "Western Cape", "KwaZulu-Natal", "Eastern Cape",
+  "Limpopo", "Mpumalanga", "North West", "Free State", "Northern Cape",
+]
+
+function MemberEditPanel({
+  member,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  member: MemberRow
+  onClose: () => void
+  onSaved: () => void
+  onDeleted: () => void
+}) {
+  const [pending, start] = useTransition()
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+  // Field state
+  const [firstName, setFirstName] = useState(member.playerName?.split(" ")[0] ?? member.name.split(" ")[0] ?? "")
+  const [lastName, setLastName] = useState(member.playerName?.split(" ").slice(1).join(" ") ?? member.name.split(" ").slice(1).join(" ") ?? "")
+  const [email, setEmail] = useState(member.email)
+  const [phone, setPhone] = useState(member.phone ?? "")
+  const [gender, setGender] = useState(member.gender ?? "")
+  const [city, setCity] = useState(member.city ?? "")
+  const [province, setProvince] = useState(member.province ?? "")
+  const [li, setLi] = useState(member.currentLi != null ? String(member.currentLi) : "")
+  const [rating, setRating] = useState(member.playtomicRating != null ? String(member.playtomicRating) : "")
+  const [playtomicUrl, setPlaytomicUrl] = useState(member.playtomicUrl ?? "")
+  const [paid, setPaid] = useState(member.paymentStatus === "paid")
+
+  function save() {
+    start(async () => {
+      const liVal = li.trim() === "" ? null : parseInt(li, 10)
+      const ratingVal = rating.trim() === "" ? null : parseFloat(rating)
+
+      if (liVal !== null && (isNaN(liVal) || liVal < 0)) { toast.error("LI must be a positive number"); return }
+      if (ratingVal !== null && (isNaN(ratingVal) || ratingVal < 0 || ratingVal > 7)) { toast.error("Rating must be 0–7"); return }
+
+      // Email change is separate (security check)
+      const emailTrimmed = email.trim().toLowerCase()
+      if (emailTrimmed !== member.email) {
+        const res = await updateMemberEmail(member.id, emailTrimmed)
+        if (!res.ok) { toast.error(res.error ?? "Could not update email"); return }
+      }
+
+      // Core profile update
+      const res = await updateMemberDetails(member.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        phone: phone.trim() || null,
+        gender: gender || null,
+        city: city.trim() || null,
+        province: province || null,
+        currentLi: liVal,
+        playtomicRating: ratingVal,
+        playtomicUrl: playtomicUrl.trim() || null,
+      })
+      if (!res.ok) { toast.error(res.error ?? "Could not save"); return }
+
+      // Payment status
+      if ((member.paymentStatus === "paid") !== paid) {
+        const pRes = await updateMemberPaid(member.id, paid)
+        if (!pRes.ok) { toast.error(pRes.error ?? "Could not update payment status"); return }
+      }
+
+      toast.success("Member updated")
+      onSaved()
+      onClose()
+    })
+  }
+
+  function handleResendInvite() {
+    start(async () => {
+      const res = await resendInviteEmail(member.id)
+      if (res.ok) toast.success("Invite email resent")
+      else toast.error(res.error ?? "Could not resend invite")
+    })
+  }
+
+  function handleResetEmail() {
+    start(async () => {
+      const res = await sendMemberResetEmail(member.id)
+      if (res.ok) toast.success(`Password reset sent to ${member.email}`)
+      else toast.error(res.error ?? "Could not send reset email")
+    })
+  }
+
+  function handleDelete() {
+    if (!deleteConfirm) { setDeleteConfirm(true); return }
+    start(async () => {
+      const res = await deleteMember(member.id)
+      if (res.ok) { toast.success("Member deleted"); onDeleted(); onClose() }
+      else toast.error(res.error ?? "Could not delete member")
+    })
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-card shadow-2xl border-l border-border">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center gap-3">
+            {member.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={member.avatarUrl} alt={member.name} className="h-9 w-9 rounded-full object-cover" />
+            ) : (
+              <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center">
+                <UserCircle className="h-5 w-5 text-muted-foreground" />
+              </div>
+            )}
+            <div>
+              <p className="font-semibold text-foreground leading-tight">{member.name}</p>
+              <p className="text-xs text-muted-foreground">{member.email}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">First Name</label>
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Last Name</label>
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-8 text-sm" />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Email Address</label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className="h-8 text-sm" />
+          </div>
+
+          {/* Phone */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Mobile Number</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="h-8 text-sm" />
+          </div>
+
+          {/* Gender */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Gender</label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">Not specified</option>
+              {GENDERS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
+          </div>
+
+          {/* City + Province */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">City</label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Province</label>
+              <select
+                value={province}
+                onChange={(e) => setProvince(e.target.value)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Select…</option>
+                {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* LI + PT Rating */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">League Index (LI)</label>
+              <Input
+                value={li}
+                onChange={(e) => setLi(e.target.value)}
+                type="number"
+                min="0"
+                step="1"
+                className="h-8 text-sm tabular-nums"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Playtomic Rating</label>
+              <Input
+                value={rating}
+                onChange={(e) => setRating(e.target.value)}
+                type="number"
+                min="0"
+                max="7"
+                step="0.01"
+                className="h-8 text-sm tabular-nums"
+              />
+            </div>
+          </div>
+
+          {/* Playtomic URL */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Playtomic Profile URL</label>
+            <Input value={playtomicUrl} onChange={(e) => setPlaytomicUrl(e.target.value)} type="url" className="h-8 text-sm" placeholder="https://playtomic.io/..." />
+          </div>
+
+          {/* Paid status */}
+          <label className="flex items-center gap-3 rounded-lg border border-border bg-secondary/30 px-4 py-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={paid}
+              onChange={(e) => setPaid(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm font-medium text-foreground">Mark as Paid</span>
+            <span className={cn(
+              "ml-auto rounded px-2 py-0.5 text-[11px] font-medium",
+              paid ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700",
+            )}>
+              {paid ? "Paid" : "Outstanding"}
+            </span>
+          </label>
+
+          {/* Account actions */}
+          <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Account Actions</p>
+
+            {member.accountLinked === "invited" && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={handleResendInvite}
+                className="flex w-full items-center gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted/50 disabled:opacity-50 transition-colors"
+              >
+                <Send className="h-4 w-4 text-amber-500 shrink-0" />
+                <span>Resend invite email</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={pending}
+              onClick={handleResetEmail}
+              className="flex w-full items-center gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted/50 disabled:opacity-50 transition-colors"
+            >
+              <Mail className="h-4 w-4 text-primary shrink-0" />
+              <span>Send password reset email</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={pending}
+              onClick={handleDelete}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50",
+                deleteConfirm
+                  ? "border-red-400 bg-red-50 text-red-700 hover:bg-red-100"
+                  : "border-border bg-card text-destructive hover:bg-muted/50",
+              )}
+            >
+              <Trash2 className="h-4 w-4 shrink-0" />
+              <span>{deleteConfirm ? "Confirm delete — this cannot be undone" : "Delete account"}</span>
+            </button>
+            {deleteConfirm && (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(false)}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-border px-5 py-4 flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button size="sm" onClick={save} disabled={pending}>
+            {pending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function MembersTable({
@@ -383,6 +700,7 @@ export function MembersTable({
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
+  const [editMember, setEditMember] = useState<MemberRow | null>(null)
   const [, startTransition] = useTransition()
 
   // Filters
@@ -649,20 +967,19 @@ export function MembersTable({
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => emailReset(m)}
-                        title="Resend welcome / reset email"
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
-                      >
-                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
                         onClick={() => tempPassword(m)}
                         title="Set temp password"
                         className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
                       >
                         <KeyRound className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditMember(m)}
+                        title="Edit member"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                      >
+                        <SquarePen className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </td>
@@ -682,6 +999,16 @@ export function MembersTable({
 
       {/* Temp password modal */}
       {pwModal && <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} />}
+
+      {/* Member edit panel */}
+      {editMember && (
+        <MemberEditPanel
+          member={editMember}
+          onClose={() => setEditMember(null)}
+          onSaved={() => { setMembers((prev) => prev.map((m) => m.id === editMember.id ? { ...m } : m)); refresh() }}
+          onDeleted={() => { setMembers((prev) => prev.filter((m) => m.id !== editMember.id)) }}
+        />
+      )}
     </div>
   )
 }
