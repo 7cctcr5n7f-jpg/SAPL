@@ -442,9 +442,9 @@ export function OrgHub({
       </Card>
 
       <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadForId(null)}>
-        <DialogContent className="max-h-[92vh] w-[97vw] max-w-[97vw] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
-          <DialogHeader>
-            <DialogTitle>{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
+        <DialogContent className="max-h-[95vh] w-[97vw] max-w-[97vw] overflow-y-auto bg-white p-4 sm:max-w-5xl sm:p-6 lg:max-w-6xl">
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-slate-800">{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
           </DialogHeader>
           {squadFor && (
             <PairingsBoard
