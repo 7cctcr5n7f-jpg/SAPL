@@ -110,6 +110,7 @@ export type RegisterPlayerInput = {
   email: string
   password: string
   playtomicUrl: string
+  playtomicRating?: number
   joinMarketplace: boolean
   inviteToken?: string
 }
@@ -117,7 +118,7 @@ export type RegisterPlayerInput = {
 export type RegisterResult = { ok: true; redirectTo: string } | { ok: false; error: string }
 
 export async function registerPlayer(input: RegisterPlayerInput): Promise<RegisterResult> {
-  const { fullName, email, password, playtomicUrl, joinMarketplace, inviteToken } = input
+  const { fullName, email, password, playtomicUrl, playtomicRating, joinMarketplace, inviteToken } = input
 
   if (!fullName.trim()) return { ok: false, error: "Full name is required." }
   if (!email.trim()) return { ok: false, error: "Email is required." }
@@ -166,6 +167,7 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
       lastName,
       isPlayer: true,
       playtomicUrl: playtomicUrl.trim() || null,
+      playtomicRating: playtomicRating ?? null,
       lookingForTeam: joinMarketplace,
       onMarketplace: joinMarketplace,
       availability: joinMarketplace ? "available" : "unavailable",

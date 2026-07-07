@@ -42,6 +42,7 @@ export type PairingPlayer = {
   playerId: string
   name: string
   li: number
+  playtomicRating: number | null
   gender: string | null
   paid: boolean
 }
@@ -91,6 +92,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
         firstName: user.firstName,
         lastName: user.lastName,
         currentLi: user.currentLi,
+        playtomicRating: user.playtomicRating,
         gender: user.gender,
       })
       .from(user)
@@ -100,6 +102,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
         li: p.currentLi,
+        playtomicRating: p.playtomicRating,
         gender: p.gender,
         paid: team.clubPaysFees || paidSet.has(p.id),
       })

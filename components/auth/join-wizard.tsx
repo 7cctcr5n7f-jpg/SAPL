@@ -477,6 +477,7 @@ function PlayerFlow({
   const [fullName, setFullName] = useState("")
   const [password, setPassword] = useState("")
   const [playtomicUrl, setPlaytomicUrl] = useState("")
+  const [playtomicRating, setPlaytomicRating] = useState("")
   const [joinMarketplace, setJoinMarketplace] = useState(true)
 
   const [invite, setInvite] = useState<{ teamName: string; category: string; invitedName: string | null; token: string } | null | "loading">(
@@ -535,11 +536,13 @@ function PlayerFlow({
   function submit() {
     startTransition(async () => {
       setError(null)
+      const ptRating = playtomicRating.trim() !== "" ? Number(playtomicRating) : undefined
       const res = await registerPlayer({
         fullName,
         email,
         password,
         playtomicUrl,
+        playtomicRating: ptRating,
         joinMarketplace: invite && typeof invite !== "string" ? false : joinMarketplace,
         inviteToken: invite && typeof invite !== "string" && acceptInvite ? invite.token : undefined,
       })
@@ -700,6 +703,21 @@ function PlayerFlow({
             />
             <PlaytomicHelp />
           </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="playerPtRating">Playtomic rating</Label>
+            <Input
+              id="playerPtRating"
+              type="number"
+              min="0"
+              max="7"
+              step="0.01"
+              value={playtomicRating}
+              onChange={(e) => setPlaytomicRating(e.target.value)}
+              placeholder="e.g. 3.50"
+              className="h-12 text-base"
+            />
+            <p className="text-xs text-muted-foreground">Your current Playtomic level (0 – 7). You can update this later from your profile.</p>
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={toReview} size="lg">Continue</Button>
         </div>
@@ -719,7 +737,8 @@ function PlayerFlow({
                 ? "Player marketplace"
                 : "Registered player",
             },
-            { label: "Playtomic", value: playtomicUrl },
+            { label: "Playtomic link", value: playtomicUrl },
+            ...(playtomicRating ? [{ label: "Playtomic rating", value: playtomicRating }] : []),
           ].map(({ label, value }) => (
             <div key={label} className="flex items-start justify-between gap-4 border-b border-border pb-2 last:border-0">
               <span className="text-xs text-muted-foreground shrink-0">{label}</span>

@@ -34,9 +34,16 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
   const bio = String(formData.get("bio") ?? "").slice(0, 500)
   const city = String(formData.get("city") ?? "")
   const playtomicUrl = String(formData.get("playtomicUrl") ?? "")
+  const playtomicRatingRaw = formData.get("playtomicRating")
+  const playtomicRating = playtomicRatingRaw != null && String(playtomicRatingRaw).trim() !== ""
+    ? Number(playtomicRatingRaw)
+    : null
   const lookingForTeam = formData.get("lookingForTeam") === "on"
 
   if (!firstName || !lastName) return { error: "First and last name are required." }
+  if (playtomicRating != null && (playtomicRating < 0 || playtomicRating > 7)) {
+    return { error: "Playtomic rating must be between 0 and 7." }
+  }
 
   // Preferred clubs: "anyClub" checkbox + repeated club id fields.
   const anyClub = formData.get("anyClub") === "on"
@@ -51,6 +58,7 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
       lastName,
       city,
       playtomicUrl: playtomicUrl || null,
+      playtomicRating,
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
