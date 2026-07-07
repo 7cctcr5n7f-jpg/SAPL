@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 
-export function AuthForm({ mode, defaultEmail = "", callbackUrl }: { mode: "sign-in" | "sign-up"; defaultEmail?: string; callbackUrl?: string }) {
+export function AuthForm({ mode, defaultEmail = "", callbackUrl, signUpInviteToken }: { mode: "sign-in" | "sign-up"; defaultEmail?: string; callbackUrl?: string; signUpInviteToken?: string }) {
   const router = useRouter()
   const isSignUp = mode === "sign-up"
   const [name, setName] = useState("")
@@ -89,7 +89,16 @@ export function AuthForm({ mode, defaultEmail = "", callbackUrl }: { mode: "sign
 
       <p className="text-center text-sm text-muted-foreground">
         {isSignUp ? "Already competing? " : "New to the league? "}
-        <Link href={isSignUp ? "/sign-in" : "/sign-up"} className="text-primary hover:underline">
+        <Link
+          href={
+            isSignUp
+              ? "/sign-in"
+              : signUpInviteToken
+                ? `/sign-up?inviteToken=${encodeURIComponent(signUpInviteToken)}`
+                : "/sign-up"
+          }
+          className="text-primary hover:underline"
+        >
           {isSignUp ? "Sign in" : "Create an account"}
         </Link>
       </p>
