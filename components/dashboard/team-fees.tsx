@@ -1,26 +1,13 @@
 "use client"
 
-import { useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { payTeamFee } from "@/lib/actions/player"
 import { fmtZAR } from "@/lib/format"
-import { toast } from "sonner"
 import { CheckCircle2, ShieldCheck } from "lucide-react"
 import type { PlayerTeamFee } from "@/lib/queries-dashboard"
 
 export function TeamFees({ fees }: { fees: PlayerTeamFee[] }) {
-  const [pending, start] = useTransition()
   if (fees.length === 0) return null
-
-  function pay(teamId: number) {
-    start(async () => {
-      const res = await payTeamFee(teamId)
-      if (res?.error) toast.error(res.error)
-      else toast.success(res?.success ?? "Payment received")
-    })
-  }
 
   return (
     <Card className="mb-6">
@@ -51,12 +38,10 @@ export function TeamFees({ fees }: { fees: PlayerTeamFee[] }) {
                   <CheckCircle2 className="h-3.5 w-3.5" /> Paid
                 </Badge>
               ) : (
-                <>
+                <div className="flex flex-col items-end gap-1">
                   <Badge variant="destructive">Due</Badge>
-                  <Button size="sm" disabled={pending} onClick={() => pay(f.teamId)}>
-                    {pending ? "Processing..." : "Pay now"}
-                  </Button>
-                </>
+                  <span className="text-xs text-muted-foreground">Online payment coming next week</span>
+                </div>
               )}
             </div>
           </div>

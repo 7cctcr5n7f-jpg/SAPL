@@ -412,7 +412,7 @@ function TeamFlow({
         <div className="flex flex-col gap-3">
           {[
             { label: "Team name", value: teamName },
-            { label: "Payment", value: paymentModel === "club" ? `Club pays R${teamFee.toLocaleString()}` : `Individual R${playerFee.toLocaleString()} / player` },
+            { label: "Payment", value: paymentModel === "club" ? `Club pays R${teamFee.toLocaleString()} — coming next week` : `R${playerFee.toLocaleString()} / player — coming next week` },
             { label: "Home venue", value: selectedClub?.name ?? "—" },
             { label: "Captain", value: fullName },
             { label: "Email", value: email },
@@ -697,7 +697,7 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
             </div>
           ))}
           <p className="text-xs text-muted-foreground mt-1">
-            Registration fee: <strong className="text-foreground">R{playerFee.toLocaleString()}</strong> — you&apos;ll receive payment details after signing up.
+            Registration fee: <strong className="text-foreground">R{playerFee.toLocaleString()}</strong> — online payment coming next week.
           </p>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={submit} disabled={pending} size="lg">
