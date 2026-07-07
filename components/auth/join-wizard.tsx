@@ -241,8 +241,7 @@ function TeamFlow({
         playtomicUrl,
       })
       if (!res.ok) { setError(res.error); return }
-      router.push(res.redirectTo)
-      router.refresh()
+      window.location.href = res.redirectTo
     })
   }
 
@@ -515,8 +514,9 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
         inviteToken: invite && typeof invite !== "string" && acceptInvite ? invite.token : undefined,
       })
       if (!res.ok) { setError(res.error); return }
-      router.push(res.redirectTo)
-      router.refresh()
+      // Full page navigation so the fresh Better Auth session cookie is sent
+      // with the next request — router.push races with the newly-set cookie.
+      window.location.href = res.redirectTo
     })
   }
 
