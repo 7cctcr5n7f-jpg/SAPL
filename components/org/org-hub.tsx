@@ -49,6 +49,7 @@ type Team = {
   homeClubLogoUrl: string | null
   homeClubContactEmail: string | null
   ownerEmail: string | null
+  ownerName: string | null
   avgLi: number
   playerCount: number
   maxPlayers: number
@@ -279,52 +280,53 @@ export function OrgHub({
               return (
                 <div
                   key={t.id}
-                  className="flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/40 hover:shadow"
+                  className="group flex items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-primary/30 hover:shadow-md"
                 >
-                  <span className={cn("w-1.5 shrink-0", ts.bar)} aria-hidden />
-                  <div className="flex flex-1 flex-col gap-3 p-3.5 lg:flex-row lg:items-center lg:gap-4">
-                    {/* Identity */}
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                  {/* Type accent bar */}
+                  <span className={cn("w-1 shrink-0", ts.bar)} aria-hidden />
+
+                  <div className="flex flex-1 flex-col gap-0 divide-y divide-border/60">
+                    {/* ── Top row: identity + action buttons ── */}
+                    <div className="flex items-center gap-3 px-3.5 py-2.5">
+                      {/* Club logo / placeholder */}
                       {t.homeClubLogoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={t.homeClubLogoUrl || "/placeholder.svg"}
                           alt={`${t.homeClubName ?? "Club"} logo`}
-                          className="mt-0.5 h-9 w-9 shrink-0 rounded-md border border-border object-contain"
+                          className="h-8 w-8 shrink-0 rounded-md border border-border object-contain"
                         />
                       ) : (
-                        <span
-                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground"
-                          aria-hidden
-                        >
-                          <Building2 className="h-4 w-4" />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground" aria-hidden>
+                          <Building2 className="h-3.5 w-3.5" />
                         </span>
                       )}
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate font-semibold">{t.name}</span>
-                          {/* Assignment indicator light */}
+
+                      {/* Team name + division + owner */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="truncate text-sm font-semibold leading-tight">{t.name}</span>
+                          {/* Division dot */}
                           <span
-                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            className="inline-flex items-center gap-1 text-[11px]"
                             title={assigned ? `Assigned to ${t.divisionName}` : "Not yet assigned to a division"}
                           >
                             <span
                               className={cn(
-                                "h-2 w-2 rounded-full ring-2",
-                                assigned
-                                  ? "bg-emerald-500 ring-emerald-500/20"
-                                  : "bg-muted-foreground/40 ring-muted-foreground/10",
+                                "h-1.5 w-1.5 rounded-full",
+                                assigned ? "bg-emerald-500" : "bg-muted-foreground/30",
                               )}
                               aria-hidden
                             />
-                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>
+                            <span className={assigned ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-muted-foreground"}>
                               {assigned ? t.divisionName : "Unassigned"}
                             </span>
                           </span>
                         </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <Badge variant="outline" className={cn("gap-1 font-normal", ts.badge)}>
-                            <span className={cn("h-2 w-2 rounded-full", ts.dot)} />
+                        {/* Meta row: type badge · LI · location · owner */}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                          <Badge variant="outline" className={cn("h-4 gap-1 px-1.5 py-0 text-[10px] font-normal", ts.badge)}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
                             {t.teamType}
                           </Badge>
                           <span className="inline-flex items-center gap-1" title="Average League Index">
@@ -332,85 +334,103 @@ export function OrgHub({
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
-                            {t.homeClubName ? t.homeClubName : "No home club"}
-                            {t.saplRegion ? ` · ${t.saplRegion}` : ""}
+                            {t.homeClubName ?? "No home club"}{t.saplRegion ? ` · ${t.saplRegion}` : ""}
                           </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Squad size + payments */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-4 lg:gap-5">
-                      {/* Players: min 8 required */}
-                      <div className="min-w-[88px]">
-                        <div className="flex items-center gap-1.5 text-sm font-semibold">
-                          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className={cn(!squadComplete && "text-amber-600 dark:text-amber-400")}>
-                            {t.playerCount}/{minPlayers}
-                          </span>
-                          {squadComplete ? (
-                            <CircleCheck className="h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          {/* Owner name — visible inline, tooltip shows email */}
+                          {t.ownerName ? (
+                            <span
+                              className="inline-flex items-center gap-1 font-medium text-foreground/70"
+                              title={t.ownerEmail ? `Owner email: ${t.ownerEmail}` : undefined}
+                            >
+                              <Users className="h-3 w-3" /> {t.ownerName}
+                            </span>
                           ) : (
-                            <CircleAlert className="h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          {squadComplete ? "min squad met" : `${minPlayers - t.playerCount} more needed`}
-                        </p>
-                      </div>
-
-                      {/* Payment indicator + outstanding amount */}
-                      <button
-                        type="button"
-                        onClick={() => setSquadForId(t.id)}
-                        className="min-w-[150px] rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left transition hover:border-primary/40"
-                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
-                      >
-                        <div className="flex items-center gap-1.5 text-sm font-semibold">
-                          <PayDot state={payState} />
-                          {t.outstanding <= 0 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400">Paid up</span>
-                          ) : (
-                            <span>
-                              {fmtZAR(t.outstanding)} <span className="font-normal text-muted-foreground">due</span>
+                            <span className="inline-flex items-center gap-1 italic opacity-50">
+                              <Users className="h-3 w-3" /> No owner
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          {t.clubPaysFees
-                            ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
-                            : `Players pay · ${t.paidCount}/${TEAM_SQUAD_SIZE} paid`}
-                        </p>
-                      </button>
+                      </div>
+
+                      {/* Action icon buttons */}
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditFor(t)}
+                          aria-label="Edit team"
+                          title="Edit team"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setSquadForId(t.id)}
+                          aria-label="View squad & pairings"
+                          title="Squad & Pairings"
+                        >
+                          <Users2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteFor(t)}
+                          aria-label="Delete team"
+                          title="Delete team"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
 
-                    {/* Owner + actions */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
-                      {t.ownerEmail ? (
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300"
-                          title={`Team owner: ${t.ownerEmail}`}
-                        >
-                          <Mail className="h-3 w-3" /> {t.ownerEmail}
-                        </span>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground">No owner</Badge>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => setEditFor(t)} aria-label="Edit team">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setSquadForId(t.id)}>
-                        <Users2 className="mr-1 h-4 w-4" /> Squad
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteFor(t)}
-                        aria-label="Delete team"
+                    {/* ── Bottom row: squad count + payment stats ── */}
+                    <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
+                      {/* Squad */}
+                      <div className="flex items-center gap-2 px-3.5 py-2">
+                        <Users2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <div>
+                          <span className={cn("text-sm font-semibold tabular-nums", !squadComplete && "text-amber-600 dark:text-amber-400")}>
+                            {t.playerCount}<span className="font-normal text-muted-foreground">/{minPlayers}</span>
+                          </span>
+                          {squadComplete ? (
+                            <CircleCheck className="ml-1 inline h-3.5 w-3.5 text-emerald-500" aria-label="Full squad" />
+                          ) : (
+                            <CircleAlert className="ml-1 inline h-3.5 w-3.5 text-amber-500" aria-label="Squad incomplete" />
+                          )}
+                          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                            {squadComplete ? "squad ready" : `${minPlayers - t.playerCount} more needed`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Payment */}
+                      <button
+                        type="button"
+                        onClick={() => setSquadForId(t.id)}
+                        className="flex items-center gap-2 px-3.5 py-2 text-left transition hover:bg-muted/40"
+                        title={t.clubPaysFees ? "Team-funded squad" : "Players pay individually"}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        <PayDot state={payState} />
+                        <div>
+                          {t.outstanding <= 0 ? (
+                            <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Paid up</span>
+                          ) : (
+                            <span className="text-sm font-semibold">
+                              {fmtZAR(t.outstanding)}{" "}
+                              <span className="font-normal text-muted-foreground">due</span>
+                            </span>
+                          )}
+                          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                            {t.clubPaysFees
+                              ? `Team pays · ${fmtZAR(t.amountPaid)} of ${fmtZAR(t.teamTotal)}`
+                              : `Players pay · ${t.paidCount}/${TEAM_SQUAD_SIZE} paid`}
+                          </p>
+                        </div>
+                      </button>
                     </div>
                   </div>
                 </div>
