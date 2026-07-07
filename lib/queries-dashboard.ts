@@ -1333,3 +1333,55 @@ export async function getPairingPartner(playerId: string, teamId: number): Promi
     avatarUrl: partnerUser.avatarUrl ?? null,
   }
 }
+
+// ── Team-owner fee ─────────────────────────────────────────────────────────────
+
+export type TeamOwnerFee = {
+  teamId: number
+  teamName: string
+  /** Total fee for the full squad (perPlayer × TEAM_SQUAD_SIZE), excl. VAT */
+  amount: number
+  vatAmount: number
+  /** "due" = no paid team payment exists yet, "paid" = already settled */
+  status: "due" | "paid"
+  paymentId: number | null
+}
+
+/**
+ * Returns the team-level fee entry for a captain/owner on a clubPaysFees team.
+ * Individual players on the same team have their fees "covered" and see nothing;
+ * the captain sees a single consolidated R4000 (8 × R500) entry with a payment link.
+ */
+export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | null> {
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
+
+  if (!team || !team.clubPaysFees) return null
+
+  const { splitVatInclusive, TEAM_SQUAD_SIZE } = await import("@/lib/constants")
+  const { getPlayerFee } = await import("@/lib/queries")
+
+  const perPlayer = splitVatInclusive(await getPlayerFee(team.seasonId))
+  const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
+  const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+
+  // Check for an existing team payment
+  const [pay] = await db
+    .select({ id: payments.id, status: payments.status })
+    .from(payments)
+    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
+    .orderBy(desc(payments.createdAt))
+    .limit(1)
+
+  return {
+    teamId: team.id,
+    teamName: team.name,
+    amount,
+    vatAmount,
+    status: pay?.status === "paid" ? "paid" : "due",
+    paymentId: pay?.id ?? null,
+  }
+}
