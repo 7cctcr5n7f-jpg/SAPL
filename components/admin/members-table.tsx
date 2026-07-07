@@ -88,11 +88,17 @@ function roleLabel(r: Role) {
 
 // ─── Inline-edit cells ──────────────────────────────────────────────────────
 
-function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: () => void }) {
+function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: (val: number | null) => void }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(member.playtomicRating != null ? String(member.playtomicRating) : "")
   const [pending, start] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Keep local display in sync when the member prop changes (e.g. after patch)
+  const [displayRating, setDisplayRating] = useState(member.playtomicRating)
+  if (!editing && member.playtomicRating !== displayRating) {
+    setDisplayRating(member.playtomicRating)
+  }
 
   function open() {
     setVal(member.playtomicRating != null ? String(member.playtomicRating) : "")
@@ -108,7 +114,7 @@ function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: () => voi
     }
     start(async () => {
       const res = await updateMemberRating(member.id, n)
-      if (res.ok) { setEditing(false); onSaved() }
+      if (res.ok) { setEditing(false); setDisplayRating(n); onSaved(n) }
       else toast.error("Could not save rating")
     })
   }
@@ -126,7 +132,7 @@ function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: () => voi
         className="group flex items-center gap-1 rounded px-1.5 py-0.5 text-sm tabular-nums hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         title="Click to edit"
       >
-        {member.playtomicRating != null ? member.playtomicRating.toFixed(2) : <span className="text-muted-foreground">—</span>}
+        {displayRating != null ? displayRating.toFixed(2) : <span className="text-muted-foreground">—</span>}
         <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
       </button>
     )
@@ -159,11 +165,20 @@ function TeamCell({
 }: {
   member: MemberRow
   allTeams: { id: number; name: string }[]
-  onSaved: () => void
+  onSaved: (teamId: number | null, teamName: string | null) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [search, setSearch] = useState("")
   const [pending, start] = useTransition()
+  const [displayTeam, setDisplayTeam] = useState<{ id: number | null; name: string | null }>({
+    id: member.teamId ?? null,
+    name: member.teamName ?? null,
+  })
+  // Sync when prop changes externally
+  if (!editing && (member.teamId ?? null) !== displayTeam.id) {
+    setDisplayTeam({ id: member.teamId ?? null, name: member.teamName ?? null })
+  }
+
   const ref = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
@@ -172,12 +187,19 @@ function TeamCell({
     return q ? options.filter((t) => t.name.toLowerCase().includes(q)) : options
   }, [search, allTeams])
 
-  function select(teamId: number) {
+  function select(teamId: number, teamName: string) {
     const newId = teamId === 0 ? null : teamId
+    const newName = teamId === 0 ? null : teamName
     start(async () => {
       const res = await updateMemberTeam(member.id, newId)
-      if (res.ok) { setEditing(false); setSearch(""); onSaved() }
-      else toast.error("Could not update team")
+      if (res.ok) {
+        setEditing(false)
+        setSearch("")
+        setDisplayTeam({ id: newId, name: newName })
+        onSaved(newId, newName)
+      } else {
+        toast.error("Could not update team")
+      }
     })
   }
 
@@ -186,9 +208,9 @@ function TeamCell({
       <button
         onClick={() => setEditing(true)}
         className="group flex items-center gap-1 rounded px-1.5 py-0.5 text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-left max-w-[160px] truncate"
-        title={member.teamName ?? "No Team"}
+        title={displayTeam.name ?? "No Team"}
       >
-        <span className="truncate">{member.teamName ?? <span className="text-muted-foreground">No Team</span>}</span>
+        <span className="truncate">{displayTeam.name ?? <span className="text-muted-foreground">No Team</span>}</span>
         <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
       </button>
     )
@@ -208,7 +230,7 @@ function TeamCell({
         {filtered.slice(0, 20).map((t) => (
           <button
             key={t.id}
-            onClick={() => select(t.id)}
+            onClick={() => select(t.id, t.name)}
             disabled={pending}
             className={cn(
               "flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted/60 text-left",
@@ -396,7 +418,7 @@ function MemberEditPanel({
 }: {
   member: MemberRow
   onClose: () => void
-  onSaved: () => void
+  onSaved: (updates: Partial<MemberRow>) => void
   onDeleted: () => void
 }) {
   const [pending, start] = useTransition()
@@ -452,7 +474,18 @@ function MemberEditPanel({
       }
 
       toast.success("Member updated")
-      onSaved()
+      const newName = `${firstName.trim()} ${lastName.trim()}`.trim()
+      onSaved({
+        name: newName,
+        playerName: newName,
+        email: email.trim().toLowerCase(),
+        phone: phone.trim() || null,
+        gender: gender || null,
+        city: city.trim() || null,
+        playtomicRating: ratingVal,
+        playtomicUrl: playtomicUrl.trim() || null,
+        paymentStatus: paid ? "paid" : "outstanding",
+      })
       onClose()
     })
   }
@@ -893,15 +926,16 @@ export function MembersTable({
                     <TeamCell
                       member={m}
                       allTeams={allTeams}
-                      onSaved={() => { patch(m.id, {}); refresh() }}
+                      onSaved={(teamId, teamName) => patch(m.id, { teamId: teamId ?? undefined, teamName: teamName ?? undefined })}
                     />
                   </td>
 
-                  {/* PT Rating */}
-                  <td className="px-3 py-2.5 text-right tabular-nums text-sm text-foreground">
-                    {m.playtomicRating != null
-                      ? m.playtomicRating.toFixed(2)
-                      : <span className="text-border">—</span>}
+                  {/* PT Rating — inline editable */}
+                  <td className="px-3 py-2.5 text-right">
+                    <RatingCell
+                      member={m}
+                      onSaved={(val) => patch(m.id, { playtomicRating: val })}
+                    />
                   </td>
 
                   {/* Payment status */}
@@ -946,7 +980,10 @@ export function MembersTable({
         <MemberEditPanel
           member={editMember}
           onClose={() => setEditMember(null)}
-          onSaved={() => { setMembers((prev) => prev.map((m) => m.id === editMember.id ? { ...m } : m)); refresh() }}
+          onSaved={(updates) => {
+            patch(editMember.id, updates)
+            setEditMember((prev) => prev ? { ...prev, ...updates } : prev)
+          }}
           onDeleted={() => { setMembers((prev) => prev.filter((m) => m.id !== editMember.id)) }}
         />
       )}
