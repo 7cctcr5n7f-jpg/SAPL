@@ -145,13 +145,13 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     .where(eq(user.id, userId))
 
   revalidatePath("/dashboard")
-  // After account creation, send the player to complete their profile.
-  // If they arrived via an invite link, redirect back to the invite accept page
-  // after onboarding so they can explicitly accept — do not auto-join here.
-  const postOnboarding = inviteToken
-    ? `/invite/${encodeURIComponent(inviteToken)}`
-    : "/dashboard"
-  return { ok: true, redirectTo: `/onboarding?next=${encodeURIComponent(postOnboarding)}` }
+  // Invited players skip the onboarding wizard and go straight to the invite
+  // accept page — their basic profile is already set above (name, isPlayer,
+  // playtomicUrl). Non-invited players complete onboarding first.
+  if (inviteToken) {
+    return { ok: true, redirectTo: `/invite/${encodeURIComponent(inviteToken)}` }
+  }
+  return { ok: true, redirectTo: "/onboarding" }
 }
 
 // ---------------------------------------------------------------------------

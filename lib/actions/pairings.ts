@@ -478,7 +478,7 @@ async function joinTeam(
     })
   }
 
-  if (slot?.category && slot.pairIndex && slot.slotIndex) {
+  if (slot?.category && slot.pairIndex != null && slot.slotIndex != null) {
     const [existing] = await db
       .select()
       .from(teamPairings)
