@@ -12,8 +12,7 @@ import {
   Check,
   Clock,
   Lock,
-  UserPlus,
-  Crown,
+  Mail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,8 +39,7 @@ import {
   type CourtSlotMode,
   type SlotTimeslot,
 } from "@/lib/constants"
-import { saveClub, deleteClub, setClubTeamCaptain } from "@/lib/actions/clubs"
-import { createPlayerAccount } from "@/lib/actions/members"
+import { saveClub, deleteClub, updateTeamOwnerEmail } from "@/lib/actions/clubs"
 import type { ClubRow, PlayerOption } from "@/lib/queries-clubs"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -391,23 +389,21 @@ export function ClubsManager({
               </div>
             ) : null}
 
-            {/* Team captains — only when editing an existing venue that has team blocks */}
+            {/* Team owners — only when editing an existing venue that has team blocks */}
             {editingClub && editingClub.clubTeams.length > 0 ? (
               <div className="space-y-2 rounded-md border border-border p-3">
                 <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-amber-500" />
+                  <Mail className="h-4 w-4 text-primary" />
                   <p className="text-sm font-medium">Your teams</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Assign a captain to each team you are entering. Pick an existing player or create a new one.
+                  Set an owner email for each team. The person with that email address will have access to manage the team.
                 </p>
                 <div className="space-y-2">
                   {editingClub.clubTeams.map((t) => (
-                    <CaptainRow
+                    <OwnerEmailRow
                       key={t.teamId}
-                      clubId={editingClub.id}
                       team={t}
-                      players={players}
                       onChanged={() => router.refresh()}
                       disabled={pending}
                     />
@@ -498,158 +494,64 @@ export function ClubsManager({
   )
 }
 
-/** Captain assignment for a single venue team block. */
-function CaptainRow({
-  clubId,
+/** Owner email assignment for a single venue team block. */
+function OwnerEmailRow({
   team,
-  players,
   onChanged,
   disabled,
 }: {
-  clubId: number
   team: ClubRow["clubTeams"][number]
-  players: PlayerOption[]
   onChanged: () => void
   disabled?: boolean
 }) {
   const [pending, startTransition] = useTransition()
-  const [creating, setCreating] = useState(false)
-  const [newFirst, setNewFirst] = useState("")
-  const [newLast, setNewLast] = useState("")
-  const [newEmail, setNewEmail] = useState("")
+  const [email, setEmail] = useState(team.ownerEmail ?? "")
+  const busy = pending || disabled
 
-  function assign(playerId: string | null) {
-    startTransition(async () => {
-      const res = await setClubTeamCaptain({ clubId, teamId: team.teamId, playerId })
-      if (res.ok) {
-        toast.success(playerId ? "Captain assigned" : "Captain cleared")
-        onChanged()
-      } else {
-        toast.error(res.error ?? "Could not update captain")
-      }
-    })
-  }
-
-  function createAndAssign() {
-    if (!newFirst.trim() || !newLast.trim() || !newEmail.trim()) {
-      toast.error("First name, last name and email are required")
+  function save() {
+    const trimmed = email.trim()
+    if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast.error("Please enter a valid email address.")
       return
     }
     startTransition(async () => {
-      const created = await createPlayerAccount({
-        firstName: newFirst,
-        lastName: newLast,
-        email: newEmail,
-      })
-      if (!created.ok || !created.userId) {
-        toast.error(created.error ?? "Could not create player")
-        return
-      }
-      const res = await setClubTeamCaptain({ clubId, teamId: team.teamId, playerId: created.userId })
+      const res = await updateTeamOwnerEmail({ teamId: team.teamId, ownerEmail: trimmed || null })
       if (res.ok) {
-        toast.success(
-          created.password ? `Player created. Temp password: ${created.password}` : "Captain assigned",
-          { duration: 8000 },
-        )
-        setCreating(false)
-        setNewFirst("")
-        setNewLast("")
-        setNewEmail("")
+        toast.success(trimmed ? "Team owner set" : "Team owner cleared")
         onChanged()
       } else {
-        toast.error(res.error ?? "Could not assign captain")
+        toast.error(res.error ?? "Failed to update team owner")
       }
     })
   }
 
-  const busy = pending || disabled
-
   return (
     <div className="rounded-md border border-border bg-card p-2.5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 mb-2">
         <span className="truncate text-sm font-medium">{team.name}</span>
-        {team.captainName ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
-            <Crown className="h-3 w-3" /> {team.captainName}
+        {team.ownerEmail ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600">
+            <Mail className="h-3 w-3" /> Owner set
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">No captain</span>
+          <span className="text-xs text-muted-foreground">No owner</span>
         )}
       </div>
-
-      {creating ? (
-        <div className="mt-2 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="First name" value={newFirst} onChange={(e) => setNewFirst(e.target.value)} />
-            <Input placeholder="Last name" value={newLast} onChange={(e) => setNewLast(e.target.value)} />
-          </div>
-          <Input placeholder="Email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={createAndAssign} disabled={busy}>
-              {pending ? "Creating…" : "Create & assign"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setCreating(false)} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-2 flex items-center gap-2">
-          <Select
-            value={team.captainUserId ? String(currentCaptainPlayerId(players, team) ?? "") : ""}
-            onValueChange={(v) => assign(v ? Number(v) : null)}
-            disabled={busy}
-          >
-            <SelectTrigger className="h-8 flex-1">
-              <SelectValue placeholder="Select captain" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableCaptainOptions(players, team).map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  {p.name} {p.lookingForTeam ? "· free agent" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {team.captainUserId ? (
-            <Button size="sm" variant="ghost" onClick={() => assign(null)} disabled={busy}>
-              Clear
-            </Button>
-          ) : null}
-          <Button
-            size="icon"
-            variant="outline"
-            className="h-8 w-8 shrink-0"
-            onClick={() => setCreating(true)}
-            disabled={busy}
-            aria-label="Create new player"
-          >
-            <UserPlus className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <Input
+          type="email"
+          placeholder="owner@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="h-8 flex-1 text-sm"
+          disabled={busy}
+        />
+        <Button size="sm" onClick={save} disabled={busy || email.trim() === (team.ownerEmail ?? "")}>
+          {pending ? "Saving…" : "Save"}
+        </Button>
+      </div>
     </div>
   )
-}
-
-// The team block only stores captainUserId; map it back to a player option id
-// so the Select can show the current selection.
-function currentCaptainPlayerId(players: PlayerOption[], team: ClubRow["clubTeams"][number]): number | null {
-  if (!team.captainName) return null
-  const match = players.find((p) => p.name === team.captainName)
-  return match?.id ?? null
-}
-
-// Captain candidates for a Club Team: only players who are NOT already on
-// another team's active roster (free players), plus this team's current captain
-// so the existing selection stays visible. A player committed elsewhere can't be
-// poached as captain without first being removed from their other team.
-function availableCaptainOptions(
-  players: PlayerOption[],
-  team: ClubRow["clubTeams"][number],
-): PlayerOption[] {
-  const currentId = currentCaptainPlayerId(players, team)
-  return players.filter((p) => p.activeTeamId == null || p.activeTeamId === team.teamId || p.id === currentId)
 }
 
 function FilterChip({
@@ -709,8 +611,8 @@ function ClubRowItem({
   onDelete: () => void
   deleting: boolean
 }) {
-  // Captains assigned across the venue's own entered teams.
-  const captainsAssigned = club.clubTeams.filter((t) => t.captainUserId).length
+  // Owners assigned across the venue's own entered teams.
+  const ownersAssigned = club.clubTeams.filter((t) => t.ownerEmail).length
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-secondary/30">
       {/* Logo */}
@@ -760,12 +662,12 @@ function ClubRowItem({
           <CapacityStat label="Courts" value={club.courts} />
           <CapacityStat label="Teams" value={club.teamsEntering} />
           <CapacityStat
-            label="Captains"
-            value={club.teamsEntering > 0 ? `${captainsAssigned}/${club.teamsEntering}` : "—"}
+            label="Owners"
+            value={club.teamsEntering > 0 ? `${ownersAssigned}/${club.teamsEntering}` : "—"}
             className={
               club.teamsEntering === 0
                 ? "text-muted-foreground"
-                : captainsAssigned < club.teamsEntering
+                : ownersAssigned < club.teamsEntering
                   ? "text-amber-600"
                   : "text-emerald-600"
             }

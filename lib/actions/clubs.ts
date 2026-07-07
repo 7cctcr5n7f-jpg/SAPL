@@ -292,3 +292,37 @@ export async function setClubTeamCaptain(input: {
   revalidatePath("/admin/placement")
   return { ok: true }
 }
+
+/**
+ * Set or clear the ownerEmail on a Club Team. The person whose email matches
+ * will automatically gain captain_hub + team_management access for this team
+ * (regardless of their player role) via the access context.
+ */
+export async function updateTeamOwnerEmail(input: { teamId: number; ownerEmail: string | null }) {
+  const [team] = await db
+    .select({ id: teams.id, homeClubId: teams.homeClubId, teamType: teams.teamType, organisationId: teams.organisationId })
+    .from(teams)
+    .where(eq(teams.id, input.teamId))
+    .limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+
+  try {
+    await requireClubManager({ clubId: team.homeClubId!, organisationId: team.organisationId })
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const email = (input.ownerEmail ?? "").trim().toLowerCase()
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Invalid email address" }
+  }
+
+  await db
+    .update(teams)
+    .set({ ownerEmail: email || null, updatedAt: new Date() })
+    .where(eq(teams.id, team.id))
+
+  revalidatePath("/admin/clubs")
+  revalidatePath("/dashboard/org")
+  return { ok: true }
+}

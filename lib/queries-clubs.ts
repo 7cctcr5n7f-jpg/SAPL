@@ -53,6 +53,7 @@ export type ClubTeamBlock = {
   name: string
   captainUserId: string | null
   captainName: string | null
+  ownerEmail: string | null
   divisionId: number | null
 }
 
@@ -158,6 +159,7 @@ export async function getClubsWithUsage(
         homeClubId: teams.homeClubId,
         teamType: teams.teamType,
         captainUserId: teams.captainUserId,
+        ownerEmail: teams.ownerEmail,
         divisionId: teams.divisionId,
       })
       .from(teams)
@@ -187,6 +189,7 @@ export async function getClubsWithUsage(
           name: t.name,
           captainUserId: t.captainUserId ?? null,
           captainName: t.captainUserId ? (captainName.get(t.captainUserId) ?? null) : null,
+          ownerEmail: t.ownerEmail ?? null,
           divisionId: t.divisionId ?? null,
         })
         clubTeamsMap.set(t.homeClubId, list)

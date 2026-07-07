@@ -106,13 +106,13 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   // Being assigned a club — via the club's contact email (auto) or a manual
   // assignment — makes the user a club manager for that venue, but ONLY when
   // their role is captain or above. Plain players should never receive
-  // management permissions, even if their email coincidentally matches a
+  // management permissions just because their email coincidentally matches a
   // club's contact address.
   const isElevatedRole = ["captain", "org_admin", "super_admin"].includes(user.role)
   if (clubIds.length > 0 && !isLeagueAdmin && isElevatedRole) {
     permissions.add("club_management")
     permissions.add("fixture_management")
-    // Player Management is league admin only — removed from club managers, captains, and team owners
+    // Player Management is league admin only — removed from club managers and team owners
     permissions.add("team_management")
     permissions.add("captain_hub")
   }
@@ -132,6 +132,14 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
   const teamSourceMap = new Map<number, { name: string; source: TeamAssignment["source"] }>()
   for (const t of autoOwnerTeams) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
   for (const t of captainTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "captain" })
+
+  // Any user who owns teams via ownerEmail (or captainUserId) must have
+  // captain_hub + team_management regardless of their role. A team owner can
+  // be a plain player — we must not gate these permissions on isElevatedRole.
+  if (teamSourceMap.size > 0 && !isLeagueAdmin) {
+    permissions.add("captain_hub")
+    permissions.add("team_management")
+  }
 
   // Teams homed at a club this user manages (via the club's contact email or a
   // manual club assignment) are also in their scope. This gives club managers
