@@ -30,7 +30,18 @@ export default async function InviteAcceptPage({ params }: Props) {
   }
 
   // Fetch invite metadata without mutating anything.
-  const preview = await getInvitePreview(token, me.id)
+  let preview
+  try {
+    preview = await getInvitePreview(token, me.id)
+  } catch (err) {
+    console.log("[v0] getInvitePreview error:", err)
+    return (
+      <InviteAccept
+        token={token}
+        preview={{ error: "Something went wrong loading this invitation. Please try again." }}
+      />
+    )
+  }
 
   if ("needsProfile" in preview) {
     redirect(`/onboarding?inviteToken=${encodeURIComponent(token)}`)
