@@ -836,34 +836,24 @@ export function MembersTable({
         </span>
       </div>
 
-      {/* Spreadsheet table */}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Table: Name, Role, Team, PT Rating, Payment + Edit */}
+      <div className="rounded-lg border border-border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10">
+          <thead>
             <tr className="border-b border-border bg-secondary/60 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <th className="px-3 py-2.5 w-8" />
-              <th className="px-3 py-2.5 min-w-[160px]">Name</th>
-              <th className="px-3 py-2.5 min-w-[180px]">Email</th>
-              <th className="px-3 py-2.5 min-w-[110px]">Mobile</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Role</th>
+              <th className="px-3 py-2.5 min-w-[180px]">Name</th>
+              <th className="px-3 py-2.5 min-w-[130px]">Role</th>
               <th className="px-3 py-2.5 min-w-[160px]">Team</th>
-              <th className="px-3 py-2.5 min-w-[120px]">Club</th>
-              <th className="px-3 py-2.5 min-w-[90px]">Region</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Division</th>
-              <th className="px-3 py-2.5 min-w-[70px] text-right">PT Rating</th>
-              <th className="px-3 py-2.5 min-w-[90px]">Payment</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Account</th>
-              <th className="px-3 py-2.5 min-w-[90px]">Last Login</th>
-              <th className="px-3 py-2.5 min-w-[90px]">Status</th>
-              <th className="px-3 py-2.5 min-w-[100px] text-right">Actions</th>
+              <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
+              <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
+              <th className="px-3 py-2.5 w-16 text-right">Edit</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((m) => {
               const isSelf = m.id === currentUserId
-              const busy = pendingId === m.id
               const payment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
-              const acct = ACCOUNT_BADGE[m.accountLinked]
 
               return (
                 <tr
@@ -871,7 +861,7 @@ export function MembersTable({
                   className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
                 >
                   {/* Avatar */}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     {m.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={m.avatarUrl} alt={m.name} className="h-7 w-7 rounded-full object-cover" />
@@ -883,7 +873,7 @@ export function MembersTable({
                   </td>
 
                   {/* Name */}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <div className="font-medium text-foreground leading-tight">
                       {m.name}
                       {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
@@ -893,23 +883,13 @@ export function MembersTable({
                     )}
                   </td>
 
-                  {/* Email */}
-                  <td className="px-3 py-2 text-muted-foreground max-w-[200px]">
-                    <span className="truncate block" title={m.email}>{m.email}</span>
-                  </td>
-
-                  {/* Mobile */}
-                  <td className="px-3 py-2 text-muted-foreground tabular-nums text-xs">
-                    {m.phone ?? <span className="text-border">—</span>}
-                  </td>
-
                   {/* Role — inline select */}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <RoleCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
                   </td>
 
                   {/* Team — inline searchable dropdown */}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <TeamCell
                       member={m}
                       allTeams={allTeams}
@@ -917,28 +897,15 @@ export function MembersTable({
                     />
                   </td>
 
-                  {/* Club */}
-                  <td className="px-3 py-2 text-xs text-muted-foreground max-w-[130px]">
-                    <span className="truncate block" title={m.clubName ?? ""}>{m.clubName ?? <span className="text-border">—</span>}</span>
-                  </td>
-
-                  {/* Region */}
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {m.regionName ?? <span className="text-border">—</span>}
-                  </td>
-
-                  {/* Division */}
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {m.divisionName ?? <span className="text-border">—</span>}
-                  </td>
-
-                  {/* PT Rating — inline numeric */}
-                  <td className="px-3 py-2 text-right">
-                    <RatingCell member={m} onSaved={() => { patch(m.id, {}); refresh() }} />
+                  {/* PT Rating */}
+                  <td className="px-3 py-2.5 text-right tabular-nums text-sm text-foreground">
+                    {m.playtomicRating != null
+                      ? m.playtomicRating.toFixed(2)
+                      : <span className="text-border">—</span>}
                   </td>
 
                   {/* Payment status */}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     {payment ? (
                       <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", payment.cls)}>{payment.label}</span>
                     ) : (
@@ -946,49 +913,23 @@ export function MembersTable({
                     )}
                   </td>
 
-                  {/* Account linked */}
-                  <td className="px-3 py-2">
-                    <span className={cn("text-xs", acct.cls)}>{acct.label}</span>
-                  </td>
-
-                  {/* Last login */}
-                  <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {fmtDate(m.lastLoginAt)}
-                  </td>
-
-                  {/* Status — inline select */}
-                  <td className="px-3 py-2">
-                    <StatusCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
-                  </td>
-
-                  {/* Row actions */}
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => tempPassword(m)}
-                        title="Set temp password"
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditMember(m)}
-                        title="Edit member"
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
-                      >
-                        <SquarePen className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                  {/* Edit button */}
+                  <td className="px-3 py-2.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setEditMember(m)}
+                      title="Edit member"
+                      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                    >
+                      <SquarePen className="h-3.5 w-3.5" />
+                    </button>
                   </td>
                 </tr>
               )
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={15} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                   {hasFilters ? "No members match the current filters." : "No members yet."}
                 </td>
               </tr>
