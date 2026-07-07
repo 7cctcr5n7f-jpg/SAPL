@@ -34,9 +34,16 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
   const bio = String(formData.get("bio") ?? "").slice(0, 500)
   const city = String(formData.get("city") ?? "")
   const playtomicUrl = String(formData.get("playtomicUrl") ?? "")
+  const playtomicRatingRaw = formData.get("playtomicRating")
+  const playtomicRating = playtomicRatingRaw != null && String(playtomicRatingRaw).trim() !== ""
+    ? Number(playtomicRatingRaw)
+    : null
   const lookingForTeam = formData.get("lookingForTeam") === "on"
 
   if (!firstName || !lastName) return { error: "First and last name are required." }
+  if (playtomicRating != null && (playtomicRating < 0 || playtomicRating > 7)) {
+    return { error: "Playtomic rating must be between 0 and 7." }
+  }
 
   // Preferred clubs: "anyClub" checkbox + repeated club id fields.
   const anyClub = formData.get("anyClub") === "on"
@@ -51,6 +58,7 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
       lastName,
       city,
       playtomicUrl: playtomicUrl || null,
+      playtomicRating,
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
@@ -68,9 +76,21 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
     await db.insert(userMeta).values({ userId: me.id, phone: phone || null, bio: bio || null })
   }
 
+  // If the player's Playtomic rating changed and they are on a team,
+  // recompute that team's average PR so the org-hub card stays in sync.
+  const [membership] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, me.id), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (membership?.teamId) {
+    await recomputeTeamStats(membership.teamId)
+  }
+
   revalidatePath("/dashboard/profile")
   revalidatePath("/dashboard")
   revalidatePath("/marketplace")
+  revalidatePath("/admin")
   return { success: "Profile updated." }
 }
 

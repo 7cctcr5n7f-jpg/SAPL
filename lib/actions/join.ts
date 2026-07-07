@@ -109,7 +109,9 @@ export type RegisterPlayerInput = {
   fullName: string
   email: string
   password: string
+  gender: "male" | "female"
   playtomicUrl: string
+  playtomicRating?: number
   joinMarketplace: boolean
   inviteToken?: string
 }
@@ -117,7 +119,7 @@ export type RegisterPlayerInput = {
 export type RegisterResult = { ok: true; redirectTo: string } | { ok: false; error: string }
 
 export async function registerPlayer(input: RegisterPlayerInput): Promise<RegisterResult> {
-  const { fullName, email, password, playtomicUrl, joinMarketplace, inviteToken } = input
+  const { fullName, email, password, gender, playtomicUrl, playtomicRating, joinMarketplace, inviteToken } = input
 
   if (!fullName.trim()) return { ok: false, error: "Full name is required." }
   if (!email.trim()) return { ok: false, error: "Email is required." }
@@ -164,8 +166,10 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     .set({
       firstName,
       lastName,
+      gender,
       isPlayer: true,
       playtomicUrl: playtomicUrl.trim() || null,
+      playtomicRating: playtomicRating ?? null,
       lookingForTeam: joinMarketplace,
       onMarketplace: joinMarketplace,
       availability: joinMarketplace ? "available" : "unavailable",
@@ -198,11 +202,12 @@ export type RegisterTeamInput = {
   homeClubId: number
   // Captain plays themselves?
   captainPlays: boolean
+  captainGender?: "male" | "female"
   playtomicUrl: string
 }
 
 export async function registerTeam(input: RegisterTeamInput): Promise<RegisterResult> {
-  const { fullName, email, password, teamName, paymentModel, homeClubId, captainPlays, playtomicUrl } = input
+  const { fullName, email, password, teamName, paymentModel, homeClubId, captainPlays, captainGender, playtomicUrl } = input
 
   if (!fullName.trim()) return { ok: false, error: "Full name is required." }
   if (!email.trim()) return { ok: false, error: "Email is required." }
@@ -252,6 +257,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     .set({
       firstName,
       lastName,
+      gender: captainPlays ? (captainGender ?? "male") : null,
       isPlayer: captainPlays,
       playtomicUrl: captainPlays ? playtomicUrl.trim() || null : null,
       availability: captainPlays ? "on_team" : "unavailable",

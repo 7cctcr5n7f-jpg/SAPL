@@ -111,6 +111,7 @@ export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
       first: user.firstName,
       last: user.lastName,
       li: user.currentLi,
+      playtomicRating: user.playtomicRating,
       userId: user.id,
     })
     .from(teamMembers)
@@ -124,6 +125,7 @@ export async function getTeamRoster(teamId: number): Promise<RosterEntry[]> {
     playerId: r.playerId,
     name: `${r.first} ${r.last}`,
     li: r.li,
+    playtomicRating: r.playtomicRating,
     isCaptain: !!team?.captainUserId && r.userId === team.captainUserId,
   }))
 }

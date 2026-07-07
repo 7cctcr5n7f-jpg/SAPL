@@ -58,11 +58,13 @@ function TeamRow({ t }: { t: SeasonReadinessTeam }) {
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Fees</p>
           <p className={cn("text-sm font-semibold tabular-nums", t.feesSettled ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
-            {t.clubPaysFees ? "Club pays" : `${t.paidCount}/${t.playerCount}`}
+            {t.clubPaysFees
+              ? <span className="text-muted-foreground font-normal text-xs">Team pays</span>
+              : `${t.paidCount}/${t.playerCount}`}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Avg rating</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Avg PR</p>
           <p className="text-sm font-semibold tabular-nums text-foreground">{t.avgRating != null ? t.avgRating.toFixed(2) : "—"}</p>
         </div>
       </div>

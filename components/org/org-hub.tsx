@@ -78,20 +78,40 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
     dot: "bg-sky-500",
     badge: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
     bar: "bg-sky-500",
+    prBg: "bg-sky-500/12",
+    prIcon: "bg-sky-500/20 text-sky-600",
+    prLabel: "text-sky-600/80",
+    prValue: "text-sky-900",
   },
   "Company Team": {
     dot: "bg-amber-500",
     badge: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
     bar: "bg-amber-500",
+    prBg: "bg-amber-500/12",
+    prIcon: "bg-amber-500/20 text-amber-600",
+    prLabel: "text-amber-600/80",
+    prValue: "text-amber-900",
   },
   "Private Team": {
     dot: "bg-emerald-500",
     badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     bar: "bg-emerald-500",
+    prBg: "bg-emerald-500/12",
+    prIcon: "bg-emerald-500/20 text-emerald-600",
+    prLabel: "text-emerald-600/80",
+    prValue: "text-emerald-900",
   },
 }
 function typeStyle(t: string) {
-  return TYPE_STYLES[t] ?? { dot: "bg-muted-foreground", badge: "", bar: "bg-muted-foreground" }
+  return TYPE_STYLES[t] ?? {
+    dot: "bg-muted-foreground",
+    badge: "",
+    bar: "bg-muted-foreground",
+    prBg: "bg-muted/40",
+    prIcon: "bg-muted text-muted-foreground",
+    prLabel: "text-muted-foreground",
+    prValue: "text-foreground",
+  }
 }
 
 // Traffic-light dot for a team's payment health.
@@ -273,6 +293,12 @@ export function OrgHub({
               const minPlayers = TEAM_SQUAD_SIZE
               const filledSlots = t.pairingRoster.length
               const squadComplete = filledSlots >= minPlayers
+              // Compute avg PR live from pairingRoster — same logic as the squad board.
+              const ratedRoster = t.pairingRoster.filter((p) => p.playtomicRating != null)
+              const liveAvgPr =
+                ratedRoster.length > 0
+                  ? ratedRoster.reduce((s, p) => s + (p.playtomicRating ?? 0), 0) / ratedRoster.length
+                  : null
               // Payment health drives the indicator colour. Fully settled = green,
               // part-paid = amber, nothing in yet = red.
               const payState =
@@ -330,9 +356,6 @@ export function OrgHub({
                             <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
                             {t.teamType}
                           </Badge>
-                          <span className="inline-flex items-center gap-1" title="Average League Index">
-                            <Activity className="h-3 w-3" /> LI {t.avgLi.toFixed(1)}
-                          </span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
                             {t.homeClubName ?? "No home club"}{t.saplRegion ? ` · ${t.saplRegion}` : ""}
@@ -388,9 +411,22 @@ export function OrgHub({
                       </div>
                     </div>
 
-                    {/* ── Bottom row: squad count + payment stats ── */}
+                    {/* ── Bottom row: PR (left, dark) · slots · payment ── */}
                     <div className="flex flex-wrap items-center gap-x-0 divide-x divide-border/60">
-                      {/* Squad */}
+                      {/* PR — key stat, colored to match team type */}
+                      <div className={cn("flex items-center gap-2 px-3.5 py-2 rounded-bl-lg", ts.prBg)}>
+                        <div className={cn("flex h-6 w-6 items-center justify-center rounded-md shrink-0", ts.prIcon)}>
+                          <Activity className="h-3.5 w-3.5" />
+                        </div>
+                        <div>
+                          <span className={cn("text-sm font-bold tabular-nums", ts.prValue)}>
+                            {liveAvgPr != null ? liveAvgPr.toFixed(2) : "—"}
+                          </span>
+                          <p className={cn("text-[10px] font-semibold leading-none mt-0.5 uppercase tracking-wide", ts.prLabel)}>Avg PR</p>
+                        </div>
+                      </div>
+
+                      {/* Squad slots */}
                       <div className="flex items-center gap-2 px-3.5 py-2">
                         <Users2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <div>
@@ -449,6 +485,7 @@ export function OrgHub({
           {squadFor && (
             <PairingsBoard
               teamId={squadFor.id}
+              teamName={squadFor.name}
               categories={squadFor.pairingCategories}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}

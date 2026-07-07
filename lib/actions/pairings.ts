@@ -18,7 +18,7 @@ import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
 import { sendEmail, teamInviteEmail, appBaseUrl } from "@/lib/email"
 import { getAccessContext } from "@/lib/access"
-import { TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { TEAM_SQUAD_SIZE, CATEGORY_RULES } from "@/lib/constants"
 import { TeamFullError } from "@/lib/team-errors"
 
 // ---------------------------------------------------------------------------
@@ -72,6 +72,28 @@ export async function setPairingSlot(input: {
         .limit(1)
       const who = p ? `${p.firstName} ${p.lastName}` : "That player"
       return { error: `${who} is already assigned to ${elsewhere.category}. Clear that slot first.` }
+    }
+
+    // Gender enforcement: only male players in Mens categories, only female in Ladies.
+    const rule = CATEGORY_RULES.find((r) => r.name === input.category)
+    if (rule) {
+      const [playerUser] = await db
+        .select({ firstName: user.firstName, lastName: user.lastName, gender: user.gender })
+        .from(user)
+        .where(eq(user.id, input.playerId))
+        .limit(1)
+
+      const playerGender = playerUser?.gender ?? null
+      const catGender = rule.gender // "male" | "female" | "mixed"
+
+      if (catGender === "male" && playerGender === "female") {
+        const name = playerUser ? `${playerUser.firstName ?? ""} ${playerUser.lastName ?? ""}`.trim() : "This player"
+        return { error: `${name} is female and cannot be assigned to a Mens category.` }
+      }
+      if (catGender === "female" && playerGender === "male") {
+        const name = playerUser ? `${playerUser.firstName ?? ""} ${playerUser.lastName ?? ""}`.trim() : "This player"
+        return { error: `${name} is male and cannot be assigned to a Ladies category.` }
+      }
     }
   }
 

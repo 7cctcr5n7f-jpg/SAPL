@@ -40,5 +40,6 @@ export type RosterEntry = {
   playerId: string
   name: string
   li: number
+  playtomicRating: number | null
   isCaptain: boolean
 }

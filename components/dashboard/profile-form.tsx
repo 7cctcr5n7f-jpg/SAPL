@@ -16,6 +16,7 @@ type PlayerLike = {
   bio: string | null
   city: string | null
   playtomicUrl: string | null
+  playtomicRating: number | null
   preferredClubIds: number[] | null
   anyClub: boolean
   lookingForTeam: boolean
@@ -121,6 +122,23 @@ export function ProfileForm({
           />
           <p className="text-xs text-muted-foreground">Add your link so the league can verify your rating.</p>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="playtomicRating">Playtomic Rating</Label>
+          <Input
+            id="playtomicRating"
+            name="playtomicRating"
+            type="number"
+            min="0"
+            max="7"
+            step="0.01"
+            defaultValue={player.playtomicRating != null ? String(player.playtomicRating) : ""}
+            placeholder="e.g. 3.50"
+          />
+          <p className="text-xs text-muted-foreground">Your current Playtomic level (0 – 7).</p>
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="city">City</Label>
           <Input id="city" name="city" defaultValue={player.city ?? ""} placeholder="Pretoria" />

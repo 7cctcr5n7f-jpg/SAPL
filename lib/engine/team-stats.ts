@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { teams, teamPairings, user, clubs } from "@/lib/db/schema"
+import { teams, teamPairings, players, clubs } from "@/lib/db/schema"
 import { and, eq, inArray, isNotNull } from "drizzle-orm"
 
 /**
@@ -26,17 +26,23 @@ export async function recomputeTeamStats(teamId: number) {
 
   const uniquePlayerIds = [...new Set(slotRows.map((r) => r.playerId as string))]
 
-  let roster: { li: number | null }[] = []
+  // Read playtomicRating from ppl_players (the canonical source set by admins).
+  // user.playtomicRating is a mirror only — ppl_players is always authoritative.
+  let roster: { pr: number | null }[] = []
   if (uniquePlayerIds.length > 0) {
     roster = await db
-      .select({ li: user.currentLi })
-      .from(user)
-      .where(inArray(user.id, uniquePlayerIds))
+      .select({ pr: players.playtomicRating })
+      .from(players)
+      .where(inArray(players.userId, uniquePlayerIds))
   }
 
   const playerCount = uniquePlayerIds.length
+  // Average only players who have a Playtomic rating set (not null/0 players skew the avg)
+  const ratedPlayers = roster.filter((r) => r.pr != null)
   const avgLi =
-    playerCount > 0 ? Math.round((roster.reduce((s, r) => s + (r.li ?? 0), 0) / playerCount) * 100) / 100 : 0
+    ratedPlayers.length > 0
+      ? Math.round((ratedPlayers.reduce((s, r) => s + (r.pr ?? 0), 0) / ratedPlayers.length) * 100) / 100
+      : 0
 
   let saplRegion = team.saplRegion ?? null
   let regionId = team.regionId ?? null

@@ -52,7 +52,7 @@ export default async function ProfilePage() {
           </CardHeader>
           <CardContent>
             <ProfileForm
-              player={player}
+              player={{ ...player, playtomicRating: player.playtomicRating ?? null }}
               clubs={clubs}
               email={me.email}
               phone={meta?.phone ?? null}

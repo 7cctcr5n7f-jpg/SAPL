@@ -19,6 +19,7 @@ import {
   feeNotes,
   regions,
   clubs,
+  players,
 } from "@/lib/db/schema"
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
@@ -42,6 +43,7 @@ export type PairingPlayer = {
   playerId: string
   name: string
   li: number
+  playtomicRating: number | null
   gender: string | null
   paid: boolean
 }
@@ -91,6 +93,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
         firstName: user.firstName,
         lastName: user.lastName,
         currentLi: user.currentLi,
+        playtomicRating: user.playtomicRating,
         gender: user.gender,
       })
       .from(user)
@@ -100,6 +103,7 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
         li: p.currentLi,
+        playtomicRating: p.playtomicRating,
         gender: p.gender,
         paid: team.clubPaysFees || paidSet.has(p.id),
       })
@@ -275,11 +279,25 @@ export async function getPlayerTeamFees(playerId: string): Promise<PlayerTeamFee
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
 
+  // Cross-check against actual pairing slots: a stale ppl_team_members row
+  // (e.g. from earlier squad experiments) should not generate a fee entry if
+  // the player has no pairing slot on that team.  We only skip the check when
+  // the player has no pairings at all (e.g. newly invited, not yet placed).
+  const pairingRows = await db
+    .select({ teamId: teamPairings.teamId })
+    .from(teamPairings)
+    .where(eq(teamPairings.playerId, playerId))
+  const pairedTeamIds = new Set(pairingRows.map((r) => r.teamId))
+  const hasAnyPairing = pairedTeamIds.size > 0
+
   const { splitVatInclusive } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
 
   const result: PlayerTeamFee[] = []
   for (const { team } of memberRows) {
+    // Skip teams where the player has no pairing slot (stale membership row),
+    // but only when the player has at least one pairing elsewhere.
+    if (hasAnyPairing && !pairedTeamIds.has(team.id)) continue
     const { amount, vatAmount } = splitVatInclusive(await getPlayerFee(team.seasonId))
     if (team.clubPaysFees) {
       result.push({
@@ -1207,4 +1225,163 @@ export async function getStandingForTeam(teamId: number) {
     .where(eq(standings.teamId, teamId))
     .limit(1)
   return s ?? null
+}
+
+// ── Team invite banner ────────────────────────────────────────────────────────
+
+export type PendingTeamInvite = {
+  id: number
+  teamName: string
+  category: string | null
+  token: string
+}
+
+/**
+ * Returns pending team invites for the given email address so the dashboard
+ * can surface them even if the player missed the original email.
+ */
+export async function getPendingInvitesForEmail(email: string): Promise<PendingTeamInvite[]> {
+  const rows = await db
+    .select({
+      id: teamInvites.id,
+      teamId: teamInvites.teamId,
+      category: teamInvites.category,
+      token: teamInvites.token,
+    })
+    .from(teamInvites)
+    .where(and(eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt))
+
+  if (rows.length === 0) return []
+
+  const teamIds = [...new Set(rows.map((r) => r.teamId))]
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(inArray(teams.id, teamIds))
+  const nameById = new Map(teamRows.map((t) => [t.id, t.name]))
+
+  return rows.map((r) => ({
+    id: r.id,
+    teamName: nameById.get(r.teamId) ?? "Unknown Team",
+    category: r.category,
+    token: r.token,
+  }))
+}
+
+// ── Pairing partner ───────────────────────────────────────────────────────────
+
+export type PairingPartner = {
+  name: string
+  playtomicRating: number | null
+  avatarUrl: string | null
+}
+
+/**
+ * Finds the other player paired with playerId in the same pair slot for
+ * the given team. Returns null if the player has no partner yet.
+ */
+export async function getPairingPartner(playerId: string, teamId: number): Promise<PairingPartner | null> {
+  // Find this player's pairing slot
+  const [mySlot] = await db
+    .select({ pairIndex: teamPairings.pairIndex, category: teamPairings.category })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.playerId, playerId)))
+    .limit(1)
+
+  if (!mySlot) return null
+
+  // Find the other player in the same pair
+  const [partnerSlot] = await db
+    .select({ playerId: teamPairings.playerId })
+    .from(teamPairings)
+    .where(
+      and(
+        eq(teamPairings.teamId, teamId),
+        eq(teamPairings.pairIndex, mySlot.pairIndex),
+        eq(teamPairings.category, mySlot.category),
+        ne(teamPairings.playerId, playerId),
+      ),
+    )
+    .limit(1)
+
+  if (!partnerSlot?.playerId) return null
+
+  // Resolve name, rating and avatar in a single join.
+  // ppl_players.playtomicRating is the canonical admin-set value; fall back
+  // to user.playtomicRating for players who registered directly without a
+  // ppl_players row yet.
+  const [partnerUser] = await db
+    .select({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      userPr: user.playtomicRating,
+      playerPr: players.playtomicRating,
+      avatarUrl: players.avatarUrl,
+    })
+    .from(user)
+    .leftJoin(players, eq(players.userId, user.id))
+    .where(eq(user.id, partnerSlot.playerId))
+    .limit(1)
+
+  if (!partnerUser) return null
+
+  return {
+    name: `${partnerUser.firstName ?? ""} ${partnerUser.lastName ?? ""}`.trim(),
+    // Prefer ppl_players value; fall back to user-level value
+    playtomicRating: partnerUser.playerPr ?? partnerUser.userPr ?? null,
+    avatarUrl: partnerUser.avatarUrl ?? null,
+  }
+}
+
+// ── Team-owner fee ─────────────────────────────────────────────────────────────
+
+export type TeamOwnerFee = {
+  teamId: number
+  teamName: string
+  /** Total fee for the full squad (perPlayer × TEAM_SQUAD_SIZE), excl. VAT */
+  amount: number
+  vatAmount: number
+  /** "due" = no paid team payment exists yet, "paid" = already settled */
+  status: "due" | "paid"
+  paymentId: number | null
+}
+
+/**
+ * Returns the team-level fee entry for a captain/owner on a clubPaysFees team.
+ * Individual players on the same team have their fees "covered" and see nothing;
+ * the captain sees a single consolidated R4000 (8 × R500) entry with a payment link.
+ */
+export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | null> {
+  const [team] = await db
+    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1)
+
+  if (!team || !team.clubPaysFees) return null
+
+  const { splitVatInclusive, TEAM_SQUAD_SIZE } = await import("@/lib/constants")
+  const { getPlayerFee } = await import("@/lib/queries")
+
+  const perPlayer = splitVatInclusive(await getPlayerFee(team.seasonId))
+  const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
+  const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+
+  // Check for an existing team payment
+  const [pay] = await db
+    .select({ id: payments.id, status: payments.status })
+    .from(payments)
+    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
+    .orderBy(desc(payments.createdAt))
+    .limit(1)
+
+  return {
+    teamId: team.id,
+    teamName: team.name,
+    amount,
+    vatAmount,
+    status: pay?.status === "paid" ? "paid" : "due",
+    paymentId: pay?.id ?? null,
+  }
 }
