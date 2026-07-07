@@ -428,8 +428,15 @@ export function PairingsBoard({
     setInvites((prev) => prev.filter((i) => i.id !== id))
   }
 
-  function availableFor(_cat: PairingCategory | undefined): PairingPlayer[] {
-    return roster.filter((p) => !placedIds.has(p.playerId))
+  function availableFor(cat: PairingCategory | undefined): PairingPlayer[] {
+    const rule = cat ? ruleByName.get(cat.category) : undefined
+    return roster.filter((p) => {
+      if (placedIds.has(p.playerId)) return false
+      // Filter by gender: only show eligible players in the dropdown
+      if (rule?.gender === "male" && p.gender === "female") return false
+      if (rule?.gender === "female" && p.gender === "male") return false
+      return true
+    })
   }
 
   function PairBlock({ categoryName }: { categoryName: string }) {
@@ -443,7 +450,7 @@ export function PairingsBoard({
           player: null,
         },
     )
-    const avail = availableFor(cat)
+    const avail = availableFor(cat ?? { category: categoryName, pairs: [] })
     const catInvites = invites.filter((i) => i.category === categoryName)
     const filled = pair.filter((s) => s.player).length
     const complete = filled === 2

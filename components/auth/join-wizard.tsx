@@ -199,6 +199,7 @@ function TeamFlow({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [captainPlays, setCaptainPlays] = useState<"yes" | "no">("yes")
+  const [captainGender, setCaptainGender] = useState<"male" | "female">("male")
   const [playtomicUrl, setPlaytomicUrl] = useState("")
 
   const stepIndex = TEAM_STEPS.indexOf(step)
@@ -241,6 +242,7 @@ function TeamFlow({
         paymentModel,
         homeClubId: Number(homeClubId),
         captainPlays: captainPlays === "yes",
+        captainGender,
         playtomicUrl,
       })
       if (!res.ok) { setError(res.error); return }
@@ -393,19 +395,35 @@ function TeamFlow({
           </div>
 
           {captainPlays === "yes" && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="captainPlaytomic">
-                Playtomic profile link <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="captainPlaytomic"
-                value={playtomicUrl}
-                onChange={(e) => setPlaytomicUrl(e.target.value)}
-                placeholder="https://app.playtomic.io/user/..."
-                className="h-12 text-base"
-              />
-              <PlaytomicHelp />
-            </div>
+            <>
+              <div className="flex flex-col gap-2">
+                <Label>Your gender <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground">Determines which categories you are eligible to play in.</p>
+                <RadioGroup value={captainGender} onValueChange={(v: string) => setCaptainGender(v as "male" | "female")} className="flex gap-4">
+                  <label className={cn("flex flex-1 cursor-pointer items-center gap-3 rounded-lg border-2 px-4 py-3 transition-colors", captainGender === "male" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
+                    <RadioGroupItem value="male" id="captain-gender-male" className="shrink-0" />
+                    <span className="text-sm font-medium">Male</span>
+                  </label>
+                  <label className={cn("flex flex-1 cursor-pointer items-center gap-3 rounded-lg border-2 px-4 py-3 transition-colors", captainGender === "female" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
+                    <RadioGroupItem value="female" id="captain-gender-female" className="shrink-0" />
+                    <span className="text-sm font-medium">Female</span>
+                  </label>
+                </RadioGroup>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="captainPlaytomic">
+                  Playtomic profile link <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="captainPlaytomic"
+                  value={playtomicUrl}
+                  onChange={(e) => setPlaytomicUrl(e.target.value)}
+                  placeholder="https://app.playtomic.io/user/..."
+                  className="h-12 text-base"
+                />
+                <PlaytomicHelp />
+              </div>
+            </>
           )}
         </div>
       )}
@@ -419,7 +437,10 @@ function TeamFlow({
             { label: "Captain", value: fullName },
             { label: "Email", value: email },
             { label: "Captain plays", value: captainPlays === "yes" ? "Yes" : "No" },
-            ...(captainPlays === "yes" ? [{ label: "Playtomic", value: playtomicUrl }] : []),
+            ...(captainPlays === "yes" ? [
+              { label: "Gender", value: captainGender === "male" ? "Male" : "Female" },
+              { label: "Playtomic", value: playtomicUrl },
+            ] : []),
           ].map(({ label, value }) => (
             <div key={label} className="flex items-start justify-between gap-4 border-b border-border pb-2 last:border-0">
               <span className="text-xs text-muted-foreground shrink-0">{label}</span>
@@ -478,6 +499,7 @@ function PlayerFlow({
   const [password, setPassword] = useState("")
   const [playtomicUrl, setPlaytomicUrl] = useState("")
   const [playtomicRating, setPlaytomicRating] = useState("")
+  const [gender, setGender] = useState<"male" | "female">("male")
   const [joinMarketplace, setJoinMarketplace] = useState(true)
 
   const [invite, setInvite] = useState<{ teamName: string; category: string; invitedName: string | null; token: string } | null | "loading">(
@@ -541,6 +563,7 @@ function PlayerFlow({
         fullName,
         email,
         password,
+        gender,
         playtomicUrl,
         playtomicRating: ptRating,
         joinMarketplace: invite && typeof invite !== "string" ? false : joinMarketplace,
@@ -691,6 +714,20 @@ function PlayerFlow({
             <Input id="playerPw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
+            <Label>Gender <span className="text-destructive">*</span></Label>
+            <p className="text-xs text-muted-foreground">Your gender determines which categories you are eligible to play in.</p>
+            <RadioGroup value={gender} onValueChange={(v: string) => setGender(v as "male" | "female")} className="flex gap-4">
+              <label className={cn("flex flex-1 cursor-pointer items-center gap-3 rounded-lg border-2 px-4 py-3 transition-colors", gender === "male" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
+                <RadioGroupItem value="male" id="player-gender-male" className="shrink-0" />
+                <span className="text-sm font-medium">Male</span>
+              </label>
+              <label className={cn("flex flex-1 cursor-pointer items-center gap-3 rounded-lg border-2 px-4 py-3 transition-colors", gender === "female" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
+                <RadioGroupItem value="female" id="player-gender-female" className="shrink-0" />
+                <span className="text-sm font-medium">Female</span>
+              </label>
+            </RadioGroup>
+          </div>
+          <div className="flex flex-col gap-2">
             <Label htmlFor="playerPlaytomic">
               Playtomic profile link <span className="text-destructive">*</span>
             </Label>
@@ -729,6 +766,7 @@ function PlayerFlow({
           {[
             { label: "Name", value: fullName },
             { label: "Email", value: email },
+            { label: "Gender", value: gender === "male" ? "Male" : "Female" },
             {
               label: "Joining as",
               value: hasInvite && acceptInvite

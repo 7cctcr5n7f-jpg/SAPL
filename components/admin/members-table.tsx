@@ -32,6 +32,8 @@ import {
   Send,
   Trash2,
   SquarePen,
+  Mars,
+  Venus,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -878,6 +880,7 @@ export function MembersTable({
               <th className="px-3 py-2.5 min-w-[180px]">Name</th>
               <th className="px-3 py-2.5 min-w-[130px]">Role</th>
               <th className="px-3 py-2.5 min-w-[160px]">Team</th>
+              <th className="px-3 py-2.5 w-20">Gender</th>
               <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
               <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
               <th className="px-3 py-2.5 w-16 text-right">Edit</th>
@@ -930,6 +933,21 @@ export function MembersTable({
                     />
                   </td>
 
+                  {/* Gender */}
+                  <td className="px-3 py-2.5">
+                    {m.gender === "male" ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                        <Mars className="h-3.5 w-3.5 shrink-0" /> M
+                      </span>
+                    ) : m.gender === "female" ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-pink-500">
+                        <Venus className="h-3.5 w-3.5 shrink-0" /> F
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+
                   {/* PT Rating — inline editable */}
                   <td className="px-3 py-2.5 text-right">
                     <RatingCell
@@ -963,7 +981,7 @@ export function MembersTable({
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                   {hasFilters ? "No members match the current filters." : "No members yet."}
                 </td>
               </tr>
