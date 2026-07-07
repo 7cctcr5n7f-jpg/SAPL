@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import {
   checkEmailInvite,
+  checkInviteByToken,
   registerPlayer,
   registerTeam,
 } from "@/lib/actions/join"
@@ -39,6 +40,8 @@ interface Props {
   hostingClubs: HostingClub[]
   playerFee: number
   teamFee: number
+  inviteToken?: string
+  defaultEmail?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -452,21 +455,48 @@ function TeamFlow({
 
 const PLAYER_STEPS: PlayerStep[] = ["email", "invite-check", "account", "review"]
 
-function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => void }) {
+function PlayerFlow({
+  playerFee,
+  onBack,
+  initialInviteToken,
+  initialEmail,
+}: {
+  playerFee: number
+  onBack: () => void
+  initialInviteToken?: string
+  initialEmail?: string
+}) {
   const router = useRouter()
-  const [step, setStep] = useState<PlayerStep>("email")
+  // If we have a token, skip straight to invite-check (bypass the email step)
+  const [step, setStep] = useState<PlayerStep>(initialInviteToken ? "invite-check" : "email")
   const [pending, startTransition] = useTransition()
   const [checkingEmail, startEmailCheck] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
-  const [email, setEmail] = useState("")
+  const [email, setEmail] = useState(initialEmail ?? "")
   const [fullName, setFullName] = useState("")
   const [password, setPassword] = useState("")
   const [playtomicUrl, setPlaytomicUrl] = useState("")
   const [joinMarketplace, setJoinMarketplace] = useState(true)
 
-  const [invite, setInvite] = useState<{ teamName: string; category: string; invitedName: string | null; token: string } | null | "loading">(null)
+  const [invite, setInvite] = useState<{ teamName: string; category: string; invitedName: string | null; token: string } | null | "loading">(
+    initialInviteToken ? "loading" : null
+  )
   const [acceptInvite, setAcceptInvite] = useState(true)
+
+  // If we have a token, resolve the invite on mount without needing email input
+  useEffect(() => {
+    if (!initialInviteToken) return
+    startEmailCheck(async () => {
+      const result = await checkInviteByToken(initialInviteToken)
+      setInvite(result)
+      // Pre-fill email from the invite if not already provided
+      if (result?.email && !initialEmail) {
+        setEmail(result.email)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const stepIndex = PLAYER_STEPS.indexOf(step)
 
@@ -720,8 +750,9 @@ function PlayerFlow({ playerFee, onBack }: { playerFee: number; onBack: () => vo
 // Root wizard
 // ---------------------------------------------------------------------------
 
-export function JoinWizard({ hostingClubs, playerFee, teamFee }: Props) {
-  const [path, setPath] = useState<Path>("choose")
+export function JoinWizard({ hostingClubs, playerFee, teamFee, inviteToken, defaultEmail }: Props) {
+  // If arriving via an invite link, skip the path-choose screen and go straight to PlayerFlow
+  const [path, setPath] = useState<Path>(inviteToken ? "player" : "choose")
 
   return (
     <div className="w-full">
@@ -738,6 +769,8 @@ export function JoinWizard({ hostingClubs, playerFee, teamFee }: Props) {
         <PlayerFlow
           playerFee={playerFee}
           onBack={() => setPath("choose")}
+          initialInviteToken={inviteToken}
+          initialEmail={defaultEmail}
         />
       )}
     </div>

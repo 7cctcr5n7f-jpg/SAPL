@@ -26,7 +26,11 @@ export default async function InviteAcceptPage({ params }: Props) {
 
   const me = await getCurrentUser()
   if (!me) {
-    redirect(`/sign-in?callbackUrl=${encodeURIComponent(`/invite/${token}`)}`)
+    // Pass both callbackUrl (for sign-in) and inviteToken (for sign-up link) so
+    // the token is preserved whichever path the player takes.
+    redirect(
+      `/sign-in?callbackUrl=${encodeURIComponent(`/invite/${token}`)}&inviteToken=${encodeURIComponent(token)}`
+    )
   }
 
   // Fetch invite metadata without mutating anything.

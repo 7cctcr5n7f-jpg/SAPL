@@ -7,10 +7,10 @@ export const metadata = { title: "Sign In | SAPL" }
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reset?: string; email?: string; callbackUrl?: string }>
+  searchParams: Promise<{ reset?: string; email?: string; callbackUrl?: string; inviteToken?: string }>
 }) {
   const session = await getOptionalSession()
-  const { reset, email, callbackUrl } = await searchParams
+  const { reset, email, callbackUrl, inviteToken } = await searchParams
   if (session?.user) redirect(callbackUrl ?? "/dashboard")
 
   return (
@@ -24,7 +24,7 @@ export default async function SignInPage({
           Your password has been reset. Sign in with your new password.
         </p>
       ) : null}
-      <AuthForm mode="sign-in" defaultEmail={email ?? ""} callbackUrl={callbackUrl} />
+      <AuthForm mode="sign-in" defaultEmail={email ?? ""} callbackUrl={callbackUrl} signUpInviteToken={inviteToken} />
     </div>
   )
 }

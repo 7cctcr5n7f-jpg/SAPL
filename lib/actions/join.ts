@@ -72,6 +72,35 @@ export async function checkEmailInvite(
   }
 }
 
+/** Look up an invite by token directly — used when arriving via /invite/<token> link. */
+export async function checkInviteByToken(
+  token: string,
+): Promise<{ teamName: string; category: string; invitedName: string | null; token: string; email: string } | null> {
+  const [invite] = await db
+    .select({
+      teamId: teamInvites.teamId,
+      category: teamInvites.category,
+      invitedName: teamInvites.invitedName,
+      token: teamInvites.token,
+      email: teamInvites.email,
+      status: teamInvites.status,
+    })
+    .from(teamInvites)
+    .where(and(eq(teamInvites.token, token), eq(teamInvites.status, "pending")))
+    .limit(1)
+
+  if (!invite) return null
+
+  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+  return {
+    teamName: team?.name ?? "Unknown Team",
+    category: invite.category ?? "Open",
+    invitedName: invite.invitedName,
+    token: invite.token ?? "",
+    email: invite.email ?? "",
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Register as Player
 // ---------------------------------------------------------------------------
