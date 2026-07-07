@@ -150,7 +150,7 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
   const teamRows = await db
     .select({ id: teams.id, name: teams.name, clubPaysFees: teams.clubPaysFees })
     .from(teams)
-    .where(and(eq(teams.seasonId, seasonId), eq(teams.status, "active")))
+    .where(and(eq(teams.seasonId, seasonId), inArray(teams.status, ["active", "pending"])))
 
   const empty: SeasonReadiness = {
     teams: [],
