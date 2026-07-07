@@ -35,10 +35,9 @@ export function MoreInformation({
 
       {open ? (
         <div className="border-t border-border p-4">
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Field label="Playtomic Rating" value={playtomicRating != null ? playtomicRating.toFixed(2) : "—"} />
-            <Field label="League Index" value={leagueIndex != null ? leagueIndex.toFixed(2) : "—"} />
-            <Field label="Highest LI" value={highestLi != null && highestLi > 0 ? highestLi.toFixed(2) : "—"} />
+            <Field label="Eligible Categories" value={eligibleCategories.length > 0 ? String(eligibleCategories.length) : "—"} />
             <Field label="Marketplace" value={lookingForTeam ? "Listed" : "Not listed"} />
           </dl>
 

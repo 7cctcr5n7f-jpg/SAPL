@@ -1,3 +1,4 @@
+import React from "react"
 import Link from "next/link"
 import { getCurrentUser } from "@/lib/session"
 import {
@@ -22,6 +23,17 @@ import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { fmtZAR } from "@/lib/format"
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 mb-5">
+      <h2 className="font-heading text-xl font-bold uppercase tracking-wide text-foreground whitespace-nowrap">
+        {children}
+      </h2>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+}
 
 export default async function DashboardOverview() {
   const me = await getCurrentUser()
@@ -84,7 +96,8 @@ export default async function DashboardOverview() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
+      {/* ── Profile hero ─────────────────────────────────────────────────── */}
       <PlayerSummary
         firstName={me.name.split(" ")[0]}
         leagueIndex={player.currentLi}
@@ -95,32 +108,30 @@ export default async function DashboardOverview() {
         avatarUrl={player.avatarUrl as string | null}
       />
 
+      {/* ── League Fees (only when due) ───────────────────────────────────── */}
       {teamFees.some((f) => f.status === "due") && (
         <section id="fees">
-          <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
-            League Fees
-          </h2>
+          <SectionHeading>League Fees</SectionHeading>
           <TeamFees fees={teamFees} />
         </section>
       )}
 
+      {/* ── Matches ──────────────────────────────────────────────────────── */}
       <section>
-        <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
-          Upcoming Matches
-        </h2>
+        <SectionHeading>Upcoming Matches</SectionHeading>
         <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
       </section>
 
+      {/* ── My Team ──────────────────────────────────────────────────────── */}
       {overviewTeam && (
         <section>
-          <h2 className="mb-4 text-lg font-black uppercase tracking-tight text-foreground">
-            My Team
-          </h2>
+          <SectionHeading>My Team</SectionHeading>
           <MyTeamCard team={overviewTeam} />
         </section>
       )}
 
-      <section className="pt-4">
+      {/* ── More info ────────────────────────────────────────────────────── */}
+      <section>
         <MoreInformation
           playtomicRating={player.playtomicRating}
           leagueIndex={player.currentLi}
@@ -130,9 +141,10 @@ export default async function DashboardOverview() {
         />
       </section>
 
+      {/* ── Find a team ──────────────────────────────────────────────────── */}
       {activeTeams.length === 0 && (
-        <section className="pt-4">
-          <h2 className="text-2xl font-bold mb-6">Find a Team</h2>
+        <section>
+          <SectionHeading>Find a Team</SectionHeading>
           <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
         </section>
       )}

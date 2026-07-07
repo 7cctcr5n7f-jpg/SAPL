@@ -1,90 +1,92 @@
 import Link from "next/link"
 import type { PlayerOverviewTeam } from "@/lib/queries-dashboard"
 import { LeaveTeamButton } from "@/components/dashboard/leave-team-button"
-import { MapPin, Settings2 } from "lucide-react"
+import { MapPin, Settings2, Trophy, ChevronRight } from "lucide-react"
 
 export function MyTeamCard({ team }: { team: PlayerOverviewTeam }) {
   const winRate = team.played > 0 ? Math.round((team.wins / team.played) * 100) : null
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 bg-secondary/40 px-5 py-4">
+    <div>
+      {/* Team identity row */}
+      <div className="flex items-start justify-between gap-3 mb-6">
         <div className="min-w-0">
-          <p className="truncate text-xl font-black tracking-tight text-foreground leading-tight">
+          <h3 className="font-heading text-2xl font-bold tracking-tight text-foreground leading-tight">
             {team.teamName}
-          </p>
+          </h3>
           <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3 shrink-0" />
             {[team.clubName, team.divisionName, team.regionName].filter(Boolean).join(" · ") || "Unassigned"}
           </p>
         </div>
         {team.position != null && (
-          <div className="shrink-0 rounded-xl bg-primary/10 px-3 py-2 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Rank</p>
-            <p className="font-mono text-2xl font-black leading-none tabular-nums text-primary">
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Rank</p>
+            <p className="font-heading text-3xl font-black leading-none tabular-nums text-primary">
               #{team.position}
             </p>
           </div>
         )}
       </div>
 
-      {/* Stat blocks */}
-      <div className="grid grid-cols-3 gap-3 p-4">
-        <StatCard label="Played" value={team.played} accent="bg-secondary" />
-        <StatCard label="Wins" value={team.wins} accent="bg-emerald-500/10 text-emerald-600" textAccent="text-emerald-600" />
-        <StatCard label="Losses" value={team.losses} accent="bg-red-500/10" textAccent="text-red-500" />
+      {/* Stats row — bold numbers with hairline dividers */}
+      <div className="flex items-stretch divide-x divide-border mb-6">
+        <StatItem label="Played" value={team.played} />
+        <StatItem label="Wins" value={team.wins} accent="text-emerald-500" />
+        <StatItem label="Losses" value={team.losses} accent="text-primary" />
+        {winRate !== null && (
+          <StatItem label="Win rate" value={`${winRate}%`} />
+        )}
       </div>
 
+      {/* Win rate bar */}
       {winRate !== null && (
-        <div className="mx-4 mb-4 overflow-hidden rounded-xl bg-secondary/50 px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Win rate</span>
-            <span className="text-sm font-black text-foreground">{winRate}%</span>
-          </div>
-          <div className="h-2 w-full rounded-full bg-border overflow-hidden">
+        <div className="mb-6">
+          <div className="h-1 w-full rounded-full bg-secondary overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary transition-all"
+              className="h-full rounded-full bg-emerald-500 transition-all"
               style={{ width: `${winRate}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Footer actions */}
-      <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      {/* Actions */}
+      <div className="flex items-center justify-between gap-3">
         <Link
           href="/dashboard/org"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
         >
-          <Settings2 className="h-3.5 w-3.5" />
+          <Settings2 className="h-4 w-4" />
           Manage Team
         </Link>
         {team.role !== "captain" && (
-          <LeaveTeamButton membershipId={team.membershipId} className="text-xs" />
+          <LeaveTeamButton membershipId={team.membershipId} className="text-xs text-muted-foreground hover:text-destructive" />
         )}
       </div>
     </div>
   )
 }
 
-function StatCard({
+function StatItem({
   label,
   value,
-  accent = "bg-secondary",
-  textAccent,
+  accent,
 }: {
   label: string
-  value: number
+  value: number | string
   accent?: string
-  textAccent?: string
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center rounded-xl px-3 py-4 text-center ${accent}`}>
-      <span className={`font-mono text-3xl font-black tabular-nums leading-none ${textAccent ?? "text-foreground"}`}>
+    <div className="flex-1 flex flex-col items-center justify-center px-3 py-2 text-center first:pl-0 last:pr-0">
+      <span
+        className={`font-heading text-4xl font-black tabular-nums leading-none ${accent ?? "text-foreground"}`}
+      >
         {value}
       </span>
-      <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="mt-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </span>
     </div>
   )
 }
