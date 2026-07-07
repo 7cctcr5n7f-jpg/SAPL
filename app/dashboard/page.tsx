@@ -115,7 +115,7 @@ export default async function DashboardOverview() {
         team={overviewTeam}
         feesPaid={feesPaid}
         playtomicRating={player.playtomicRating ? String(player.playtomicRating) : null}
-        eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
+        eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.playtomicRating ?? 0)}
         avatarUrl={player.avatarUrl as string | null}
         pendingInvites={pendingInvites}
         partner={pairingPartner}
@@ -147,10 +147,8 @@ export default async function DashboardOverview() {
       <section>
         <MoreInformation
           playtomicRating={player.playtomicRating}
-          leagueIndex={player.currentLi}
-          highestLi={player.highestLi}
           lookingForTeam={!!player.lookingForTeam}
-          eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.currentLi)}
+          eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.playtomicRating ?? 0)}
         />
       </section>
 

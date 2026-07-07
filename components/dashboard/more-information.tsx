@@ -8,14 +8,10 @@ import { cn } from "@/lib/utils"
 // Houses everything not directly tied to playing the next match.
 export function MoreInformation({
   playtomicRating,
-  leagueIndex,
-  highestLi,
   lookingForTeam,
   eligibleCategories,
 }: {
   playtomicRating: number | null
-  leagueIndex: number | null
-  highestLi: number | null
   lookingForTeam: boolean
   eligibleCategories: string[]
 }) {
@@ -56,7 +52,7 @@ export function MoreInformation({
               </div>
             ) : (
               <p className="mt-1 text-xs text-muted-foreground">
-                No eligible categories yet — your League Index determines which categories you can play.
+                No eligible categories yet — your Playtomic Rating determines which categories you can play.
               </p>
             )}
           </div>
