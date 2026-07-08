@@ -220,6 +220,173 @@ export async function listMembers(): Promise<MemberRow[]> {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Unregistered contacts (club contacts / team owners without a user account)
+// ---------------------------------------------------------------------------
+
+export type UnregisteredContact = {
+  /** Synthetic stable id for React key — not a real user id */
+  key: string
+  name: string | null
+  email: string
+  phone: string | null
+  /** Source: club contact or team owner email */
+  source: "club_contact" | "club_contact2" | "team_owner" | "team_owner2"
+  clubId: number | null
+  clubName: string | null
+  ownedTeamId: number | null
+  ownedTeamName: string | null
+}
+
+/**
+ * Returns club contacts and team-owner email addresses that do NOT yet have a
+ * user account, so the admin can see and provision them from the Members page.
+ */
+export async function listUnregisteredContacts(): Promise<UnregisteredContact[]> {
+  await requireMemberManager()
+
+  // All existing user emails so we can exclude them
+  const existingUsers = await db.select({ email: user.email }).from(user)
+  const knownEmails = new Set(existingUsers.map((u) => u.email.trim().toLowerCase()))
+
+  // Club contacts
+  const clubRows = await db
+    .select({
+      id: clubs.id,
+      name: clubs.name,
+      contactName: clubs.contactName,
+      contactEmail: clubs.contactEmail,
+      contactEmail2: clubs.contactEmail2,
+      contactPhone: clubs.contactPhone,
+    })
+    .from(clubs)
+
+  // Team owner emails (active teams)
+  const teamRows = await db
+    .select({
+      id: teams.id,
+      name: teams.name,
+      ownerEmail: teams.ownerEmail,
+      ownerEmail2: teams.ownerEmail2,
+      ownerName: teams.ownerName,
+      ownerPhone: teams.ownerPhone,
+    })
+    .from(teams)
+    .where(eq(teams.status, "active"))
+
+  const contacts: UnregisteredContact[] = []
+  const seen = new Set<string>()
+
+  function push(c: UnregisteredContact) {
+    const norm = c.email.trim().toLowerCase()
+    if (!norm || knownEmails.has(norm) || seen.has(norm)) return
+    seen.add(norm)
+    contacts.push({ ...c, email: norm })
+  }
+
+  for (const club of clubRows) {
+    if (club.contactEmail) {
+      push({
+        key: `club-${club.id}-1`,
+        name: club.contactName ?? null,
+        email: club.contactEmail,
+        phone: club.contactPhone ?? null,
+        source: "club_contact",
+        clubId: club.id,
+        clubName: club.name,
+        ownedTeamId: null,
+        ownedTeamName: null,
+      })
+    }
+    if (club.contactEmail2) {
+      push({
+        key: `club-${club.id}-2`,
+        name: null,
+        email: club.contactEmail2,
+        phone: null,
+        source: "club_contact2",
+        clubId: club.id,
+        clubName: club.name,
+        ownedTeamId: null,
+        ownedTeamName: null,
+      })
+    }
+  }
+
+  for (const team of teamRows) {
+    if (team.ownerEmail) {
+      push({
+        key: `team-${team.id}-1`,
+        name: team.ownerName ?? null,
+        email: team.ownerEmail,
+        phone: team.ownerPhone ?? null,
+        source: "team_owner",
+        clubId: null,
+        clubName: null,
+        ownedTeamId: team.id,
+        ownedTeamName: team.name,
+      })
+    }
+    if (team.ownerEmail2) {
+      push({
+        key: `team-${team.id}-2`,
+        name: null,
+        email: team.ownerEmail2,
+        phone: null,
+        source: "team_owner2",
+        clubId: null,
+        clubName: null,
+        ownedTeamId: team.id,
+        ownedTeamName: team.name,
+      })
+    }
+  }
+
+  return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
+}
+
+/**
+ * Provisions a full user account for an unregistered contact (club contact or
+ * team owner). Reuses createMember under the hood and sets phone if provided.
+ * Does NOT change team ownerEmail — the existing email already matches so
+ * access is granted automatically on first sign-in.
+ */
+export async function createAccountForContact(input: {
+  name: string
+  email: string
+  phone?: string | null
+  role?: Role
+}): Promise<{ ok: boolean; error?: string; password?: string }> {
+  await requireSuperAdmin()
+
+  const nameParts = (input.name ?? "").trim().split(" ")
+  const firstName = nameParts[0] ?? ""
+  const lastName = nameParts.slice(1).join(" ") || ""
+
+  const res = await provisionUser({
+    name: input.name.trim(),
+    email: input.email,
+    role: input.role ?? "org_admin",
+    password: undefined,
+  })
+  if (!res.ok) return res
+
+  // Store phone if provided
+  const phone = input.phone?.trim() || null
+  if (phone) {
+    const [existingMeta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, res.userId)).limit(1)
+    if (existingMeta) {
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, res.userId))
+    } else {
+      await db.insert(userMeta).values({ userId: res.userId, role: input.role ?? "org_admin", phone })
+    }
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true, password: res.password }
+}
+
 export async function setMemberRole(userId: string, role: Role) {
   const { me, isMainAdmin } = await requireMemberManager()
   if (!ASSIGNABLE.includes(role)) return { ok: false, error: "Invalid role" }

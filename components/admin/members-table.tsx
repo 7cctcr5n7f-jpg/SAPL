@@ -16,7 +16,9 @@ import {
   resendInviteEmail,
   deleteMember,
   assignMemberAsTeamOwner,
+  createAccountForContact,
   type MemberRow,
+  type UnregisteredContact,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,6 +39,9 @@ import {
   Venus,
   Crown,
   Clock,
+  UserPlus,
+  Building2,
+  Shield,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -441,10 +446,12 @@ type StatCard = {
 
 function SummaryCards({
   members,
+  unregisteredCount,
   activeFilter,
   onFilter,
 }: {
   members: MemberRow[]
+  unregisteredCount: number
   activeFilter: { key: FilterKey; value: string } | null
   onFilter: (key: FilterKey, value: string) => void
 }) {
@@ -456,6 +463,7 @@ function SummaryCards({
     { label: "Outstanding", value: members.filter((m) => m.paymentStatus === "outstanding").length, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
     { label: "Linked Accounts", value: members.filter((m) => m.accountLinked === "linked").length, filterKey: "status", filterValue: "__linked__", dot: "bg-emerald-500" },
     { label: "Not Registered", value: members.filter((m) => m.accountLinked === "not_registered").length, filterKey: "status", filterValue: "__not_registered__", dot: "bg-slate-300" },
+    { label: "Pending Accounts", value: unregisteredCount, dot: "bg-amber-400" },
   ]
 
   return (
@@ -843,13 +851,17 @@ export function MembersTable({
   members: initialMembers,
   allTeams,
   currentUserId,
+  unregisteredContacts: initialUnregistered = [],
 }: {
   members: MemberRow[]
   allTeams: { id: number; name: string; hasOwner: boolean }[]
   currentUserId: string
+  unregisteredContacts?: UnregisteredContact[]
 }) {
   const router = useRouter()
   const [members, setMembers] = useState<MemberRow[]>(initialMembers)
+  const [unregistered, setUnregistered] = useState<UnregisteredContact[]>(initialUnregistered)
+  const [completingContact, setCompletingContact] = useState<UnregisteredContact | null>(null)
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
@@ -952,7 +964,7 @@ export function MembersTable({
   return (
     <div className="flex flex-col gap-4">
       {/* Summary cards */}
-      <SummaryCards members={members} activeFilter={summaryFilter} onFilter={handleSummaryFilter} />
+      <SummaryCards members={members} unregisteredCount={unregistered.length} activeFilter={summaryFilter} onFilter={handleSummaryFilter} />
 
       {/* Search + filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -1126,12 +1138,99 @@ export function MembersTable({
                 </td>
               </tr>
             )}
+
+            {/* ── Unregistered / pending contacts ─────────────────────────── */}
+            {unregistered.length > 0 && !summaryFilter && !Object.values(filters).some(Boolean) && (
+              <>
+                <tr>
+                  <td colSpan={10} className="px-3 pt-6 pb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Pending accounts — email on file, no account yet
+                    </div>
+                  </td>
+                </tr>
+                {unregistered.map((c) => (
+                  <tr key={c.key} className="border-b border-border/40 bg-amber-50/30 dark:bg-amber-950/10 opacity-80 hover:opacity-100 transition-opacity">
+                    {/* avatar placeholder */}
+                    <td className="px-3 py-2.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-dashed border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+                        <UserPlus className="h-3.5 w-3.5 text-amber-500" />
+                      </div>
+                    </td>
+                    {/* name / email */}
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-foreground/80">
+                          {c.name ?? <span className="italic text-muted-foreground">No name</span>}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{c.email}</span>
+                      </div>
+                    </td>
+                    {/* role — n/a */}
+                    <td className="px-3 py-2.5">
+                      <span className="rounded px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                        No account
+                      </span>
+                    </td>
+                    {/* team */}
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">—</td>
+                    {/* team owner */}
+                    <td className="px-3 py-2.5">
+                      {c.ownedTeamId ? (
+                        <span className="inline-flex items-center gap-1 text-xs">
+                          <Crown className="h-3 w-3 text-amber-500" />
+                          {c.ownedTeamName}
+                        </span>
+                      ) : c.clubName ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Building2 className="h-3 w-3" />
+                          {c.clubName}
+                        </span>
+                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                    </td>
+                    {/* gender */}
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">—</td>
+                    {/* PT Rating */}
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground text-right">—</td>
+                    {/* payment */}
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">—</td>
+                    {/* last log */}
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">Never</td>
+                    {/* complete account button */}
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        title="Complete account"
+                        onClick={() => setCompletingContact(c)}
+                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-950/40 transition-colors"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Temp password modal */}
       {pwModal && <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} />}
+
+      {/* Complete account dialog for unregistered contacts */}
+      {completingContact && (
+        <CompleteAccountDialog
+          contact={completingContact}
+          onClose={() => setCompletingContact(null)}
+          onCreated={(password) => {
+            setPwModal({ name: completingContact.name ?? completingContact.email, email: completingContact.email, password })
+            setUnregistered((prev) => prev.filter((c) => c.key !== completingContact.key))
+            setCompletingContact(null)
+          }}
+        />
+      )}
 
       {/* Member edit panel */}
       {editMember && (
@@ -1145,6 +1244,100 @@ export function MembersTable({
           onDeleted={() => { setMembers((prev) => prev.filter((m) => m.id !== editMember.id)) }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Complete account dialog ──────────────────────────────────────────────────
+
+const ROLE_OPTIONS: { value: MemberRow["role"]; label: string }[] = [
+  { value: "org_admin", label: "Club Admin" },
+  { value: "captain", label: "Captain" },
+  { value: "player", label: "Player" },
+  { value: "super_admin", label: "Main Admin" },
+]
+
+function CompleteAccountDialog({
+  contact,
+  onClose,
+  onCreated,
+}: {
+  contact: UnregisteredContact
+  onClose: () => void
+  onCreated: (password: string) => void
+}) {
+  const [name, setName] = useState(contact.name ?? "")
+  const [phone, setPhone] = useState(contact.phone ?? "")
+  const [role, setRole] = useState<MemberRow["role"]>("org_admin")
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    start(async () => {
+      const res = await createAccountForContact({ name, email: contact.email, phone: phone || null, role })
+      if (res.ok && res.password) {
+        onCreated(res.password)
+      } else {
+        setError(res.error ?? "Could not create account")
+      }
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Complete account</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{contact.email}</p>
+            {contact.ownedTeamName && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                <Crown className="h-3 w-3" /> Team owner of {contact.ownedTeamName}
+              </p>
+            )}
+            {contact.clubName && !contact.ownedTeamName && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3" /> Contact for {contact.clubName}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Full name</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" required className="h-9 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Contact number</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+27 82 000 0000" type="tel" className="h-9 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as MemberRow["role"])}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {ROLE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={pending}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={pending || !name.trim()}>
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create account"}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
