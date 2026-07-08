@@ -278,27 +278,30 @@ function TeamOwnerCell({
     })
   }
 
+  if (pending) {
+    return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+  }
+
   return (
     <div className="flex items-center gap-1">
       {currentId && <Crown className="h-3 w-3 text-amber-500 shrink-0" />}
-      {pending ? (
-        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-      ) : (
-        <select
-          value={currentId ?? 0}
-          onChange={handleChange}
-          disabled={pending}
-          className="max-w-[150px] truncate rounded border-0 bg-transparent py-0 pr-5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer hover:bg-muted/40 transition-colors"
-          title={currentId ? `Owner of ${allTeams.find((t) => t.id === currentId)?.name}` : "No owner — click to assign"}
-        >
-          <option value={0}>No owner</option>
-          {allTeams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      )}
+      <select
+        value={currentId ?? 0}
+        onChange={handleChange}
+        disabled={pending}
+        className={cn(
+          "max-w-[150px] truncate rounded border-0 bg-transparent py-0 pr-5 text-xs focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer hover:bg-muted/40 transition-colors",
+          currentId ? "text-foreground" : "text-muted-foreground",
+        )}
+        title={currentId ? `Owner of ${allTeams.find((t) => t.id === currentId)?.name} — click to change` : "No owner assigned — click to assign"}
+      >
+        <option value={0}>—</option>
+        {allTeams.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }
@@ -436,7 +439,7 @@ function SummaryCards({
   )
 }
 
-// ─── Filter bar ───────────────────────────────────────────────────────────────
+// ─── Filter bar ───────────────────────���───────────────────────────────────────
 
 function uniq(arr: (string | null)[]): string[] {
   return [...new Set(arr.filter(Boolean) as string[])].sort()
@@ -964,13 +967,19 @@ export function MembersTable({
               const isSelf = m.id === currentUserId
               const isAssigned = m.teamId != null
 
-              // Payment display: when team pays fees (clubPaysFees=true) only the
-              // team owner sees a payment status; players show —. When individual
-              // pays, every assigned member defaults to Pending if no record yet.
+              // Payment display rules:
+              // - No team: show payment badge only if a status is recorded.
+              // - On a team, individual fees: always show badge (default Pending).
+              // - On a team, owner pays fees: only the team owner shows a badge;
+              //   regular players owe nothing so show —.
               let displayPayment: typeof PAYMENT_BADGE[string] | null = null
               if (m.teamId != null) {
                 if (m.teamClubPaysFees) {
-                  // individual players don't owe — show nothing
+                  // Only the owner of this team owes — check via ownedTeamId
+                  if (m.ownedTeamId === m.teamId) {
+                    displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                  }
+                  // other players on this team show nothing (—)
                 } else {
                   displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
                 }
