@@ -13,6 +13,8 @@ import {
   Clock,
   Lock,
   Mail,
+  Phone,
+  User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,7 +41,7 @@ import {
   type CourtSlotMode,
   type SlotTimeslot,
 } from "@/lib/constants"
-import { saveClub, deleteClub, updateTeamOwnerEmail } from "@/lib/actions/clubs"
+import { saveClub, deleteClub, updateTeamOwnerEmail, updateTeamContactDetails } from "@/lib/actions/clubs"
 import type { ClubRow, PlayerOption } from "@/lib/queries-clubs"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -494,7 +496,7 @@ export function ClubsManager({
   )
 }
 
-/** Owner email assignment for a single venue team block. */
+/** Contact details for a single venue team block (name, phone, email). */
 function OwnerEmailRow({
   team,
   onChanged,
@@ -505,49 +507,90 @@ function OwnerEmailRow({
   disabled?: boolean
 }) {
   const [pending, startTransition] = useTransition()
+  const [name, setName] = useState(team.ownerName ?? "")
+  const [phone, setPhone] = useState(team.ownerPhone ?? "")
   const [email, setEmail] = useState(team.ownerEmail ?? "")
   const busy = pending || disabled
 
+  const isDirty =
+    name.trim() !== (team.ownerName ?? "") ||
+    phone.trim() !== (team.ownerPhone ?? "") ||
+    email.trim() !== (team.ownerEmail ?? "")
+
   function save() {
-    const trimmed = email.trim()
-    if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    const trimmedEmail = email.trim()
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       toast.error("Please enter a valid email address.")
       return
     }
     startTransition(async () => {
-      const res = await updateTeamOwnerEmail({ teamId: team.teamId, ownerEmail: trimmed || null })
+      const res = await updateTeamContactDetails({
+        teamId: team.teamId,
+        ownerName: name.trim() || null,
+        ownerPhone: phone.trim() || null,
+        ownerEmail: trimmedEmail || null,
+      })
       if (res.ok) {
-        toast.success(trimmed ? "Team owner set" : "Team owner cleared")
+        toast.success("Team contact details saved")
         onChanged()
       } else {
-        toast.error(res.error ?? "Failed to update team owner")
+        toast.error(res.error ?? "Failed to save contact details")
       }
     })
   }
 
+  const hasContact = team.ownerEmail || team.ownerName || team.ownerPhone
+
   return (
-    <div className="rounded-md border border-border bg-card p-2.5">
-      <div className="flex items-center justify-between gap-2 mb-2">
+    <div className="rounded-md border border-border bg-card p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium">{team.name}</span>
-        {team.ownerEmail ? (
+        {hasContact ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600">
-            <Mail className="h-3 w-3" /> Owner set
+            <User className="h-3 w-3" /> Contact set
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">No owner</span>
+          <span className="text-xs text-muted-foreground">No contact</span>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <Input
-          type="email"
-          placeholder="owner@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="h-8 flex-1 text-sm"
-          disabled={busy}
-        />
-        <Button size="sm" onClick={save} disabled={busy || email.trim() === (team.ownerEmail ?? "")}>
-          {pending ? "Saving…" : "Save"}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <Input
+            type="text"
+            placeholder="Owner name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="h-8 flex-1 text-sm"
+            disabled={busy}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <Input
+            type="tel"
+            placeholder="Contact phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="h-8 flex-1 text-sm"
+            disabled={busy}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <Input
+            type="email"
+            placeholder="owner@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="h-8 flex-1 text-sm"
+            disabled={busy}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={save} disabled={busy || !isDirty}>
+          {pending ? "Saving…" : "Save contact"}
         </Button>
       </div>
     </div>

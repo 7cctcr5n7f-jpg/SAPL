@@ -115,13 +115,15 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       captainUserId: teams.captainUserId,
       clubPaysFees: teams.clubPaysFees,
       ownerEmail: teams.ownerEmail,
+      ownerName: teams.ownerName,
+      ownerPhone: teams.ownerPhone,
     })
     .from(teams)
     .where(eq(teams.id, teamId))
     .limit(1)
   if (!team) return null
 
-  // Division, club, captain lookups.
+  // Division and club lookups.
   let divisionName = "Unassigned"
   if (team.divisionId) {
     const [d] = await db.select({ name: divisions.name }).from(divisions).where(eq(divisions.id, team.divisionId)).limit(1)
@@ -136,23 +138,11 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       clubLogoUrl = c.logoUrl
     }
   }
-  console.log("[v0] getMyTeamView: team found, captainUserId=", team.captainUserId, "ownerEmail=", team.ownerEmail)
-  let captainName: string | null = null
-  let captainEmail: string | null = null
-  let captainPhone: string | null = null
-  if (team.captainUserId) {
-    const [cap] = await db
-      .select({ firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone })
-      .from(user)
-      .where(eq(user.id, team.captainUserId))
-      .limit(1)
-    if (cap) {
-      const parts = [cap.firstName, cap.lastName].filter(Boolean)
-      captainName = parts.length > 0 ? parts.join(" ") : null
-      captainEmail = cap.email ?? null
-      captainPhone = cap.phone ?? null
-    }
-  }
+
+  // Contact details come directly from the team row (set by admins in the Teams tab).
+  const captainName = team.ownerName?.trim() || null
+  const captainEmail = team.ownerEmail?.trim() || null
+  const captainPhone = team.ownerPhone?.trim() || null
 
   // Active roster (with ratings + registration + payment status).
   const rosterRows = await db
@@ -312,11 +302,8 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .limit(1)
 
   // Pairing categories for the grouped squad view.
-  console.log("[v0] getMyTeamView: before CATEGORY_RULES", typeof CATEGORY_RULES, Array.isArray(CATEGORY_RULES))
   const catNames = CATEGORY_RULES.map((c) => c.name)
-  console.log("[v0] getMyTeamView: catNames", catNames)
   const pairingData = await getTeamPairingData(teamId, catNames)
-  console.log("[v0] getMyTeamView: pairingData", pairingData ? "ok" : "null")
 
   return {
     team: {

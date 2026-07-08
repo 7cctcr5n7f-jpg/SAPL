@@ -294,6 +294,49 @@ export async function setClubTeamCaptain(input: {
 }
 
 /**
+ * Save the team owner contact details (name, phone, email) directly on the
+ * team row. These fields are displayed to players on the My Team page.
+ */
+export async function updateTeamContactDetails(input: {
+  teamId: number
+  ownerName: string | null
+  ownerPhone: string | null
+  ownerEmail: string | null
+}) {
+  const [team] = await db
+    .select({ id: teams.id, homeClubId: teams.homeClubId, teamType: teams.teamType, organisationId: teams.organisationId })
+    .from(teams)
+    .where(eq(teams.id, input.teamId))
+    .limit(1)
+  if (!team) return { ok: false, error: "Team not found" }
+
+  try {
+    await requireClubManager({ clubId: team.homeClubId!, organisationId: team.organisationId })
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const email = (input.ownerEmail ?? "").trim().toLowerCase()
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Invalid email address" }
+  }
+
+  await db
+    .update(teams)
+    .set({
+      ownerName: input.ownerName?.trim() || null,
+      ownerPhone: input.ownerPhone?.trim() || null,
+      ownerEmail: email || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(teams.id, team.id))
+
+  revalidatePath("/admin/clubs")
+  revalidatePath("/dashboard/org")
+  return { ok: true }
+}
+
+/**
  * Set or clear the ownerEmail on a Club Team. The person whose email matches
  * will automatically gain captain_hub + team_management access for this team
  * (regardless of their player role) via the access context.

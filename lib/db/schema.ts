@@ -304,6 +304,9 @@ export const teams = pgTable(
     // Second team manager email — grants the same owner-level access as
     // ownerEmail so two people can co-manage a team independently.
     ownerEmail2: text("ownerEmail2"),
+    // Direct contact details for the team owner (stored on the team, not resolved from user table).
+    ownerName: text("ownerName"),
+    ownerPhone: text("ownerPhone"),
     // Cached roster aggregates (kept fresh on roster mutations).
     avgLi: doublePrecision("avgLi").notNull().default(0),
     playerCount: integer("playerCount").notNull().default(0),
