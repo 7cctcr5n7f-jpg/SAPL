@@ -71,7 +71,7 @@ export type MemberRow = {
   divisionId: number | null
   divisionName: string | null
   // Payment & account status
-  paymentStatus: "paid" | "pending" | "outstanding" | null
+  paymentStatus: "paid" | "outstanding" | null
   accountLinked: "linked" | "invited" | "not_registered"
   registeredBy: string | null
   /** Team this member is the primary owner of (matched via teams.ownerEmail). */
@@ -178,8 +178,7 @@ export async function listMembers(): Promise<MemberRow[]> {
 
   function toPaymentStatus(s: string | undefined): MemberRow["paymentStatus"] {
     if (s === "paid") return "paid"
-    if (s === "pending") return "pending"
-    if (s === "failed" || s === "overdue" || s === "outstanding") return "outstanding"
+    if (s === "pending" || s === "failed" || s === "overdue" || s === "outstanding") return "outstanding"
     return null
   }
 

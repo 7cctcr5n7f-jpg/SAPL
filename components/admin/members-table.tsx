@@ -76,8 +76,7 @@ const STATUS_DOT: Record<MemberRow["status"], string> = {
 
 const PAYMENT_BADGE: Record<string, { label: string; cls: string; title: string }> = {
   paid:        { label: "Paid",        cls: "bg-emerald-100 text-emerald-700", title: "Fee has been received" },
-  pending:     { label: "Pending",     cls: "bg-slate-100 text-slate-600",     title: "Fee is due — awaiting payment" },
-  outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700",         title: "Fee is overdue and has not been received" },
+  outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700",         title: "Fee has not yet been received" },
 }
 
 const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: string }> = {
@@ -830,7 +829,7 @@ export function MembersTable({
     club: uniq(members.map((m) => m.clubName)),
     team: uniq(members.map((m) => m.teamName)),
     role: uniq(members.map((m) => roleLabel(m.role))),
-    paymentStatus: ["Paid", "Pending", "Outstanding"],
+    paymentStatus: ["Paid", "Outstanding"],
     status: ["Active", "Inactive", "Suspended"],
   }), [members])
 
@@ -862,7 +861,7 @@ export function MembersTable({
       if (filters.team && m.teamName !== filters.team) return false
       if (filters.role && roleLabel(m.role) !== filters.role) return false
       if (filters.paymentStatus) {
-        const map: Record<string, string> = { Paid: "paid", Pending: "pending", Outstanding: "outstanding" }
+        const map: Record<string, string> = { Paid: "paid", Outstanding: "outstanding" }
         if (m.paymentStatus !== (map[filters.paymentStatus] ?? "")) return false
       }
       if (filters.status) {
@@ -979,13 +978,13 @@ export function MembersTable({
                 if (m.teamClubPaysFees) {
                   if (m.ownedTeamId === m.teamId) {
                     // This IS the owner — show their own payment status
-                    displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                    displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["outstanding"]
                   } else {
                     // Regular player — fee is covered by team
                     teamPaidFee = true
                   }
                 } else {
-                  displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                  displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["outstanding"]
                 }
               } else {
                 displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
