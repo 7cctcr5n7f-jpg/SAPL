@@ -57,8 +57,8 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
   const slotsRemaining = readiness.maxPlayers - filled
 
   return (
-    <div className="space-y-6">
-      {/* Team identity + switcher */}
+    <div className="space-y-8">
+      {/* ── Team identity ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Avatar className="h-14 w-14 rounded-lg border border-border">
@@ -96,36 +96,32 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
         ) : null}
       </div>
 
-      {/* League Ready status banner */}
+      {/* ── Readiness strip ───────────────────────────────────────────── */}
       <ReadinessBanner readiness={readiness} />
 
-      {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          icon={<Star className="h-5 w-5" />}
-          label="Avg Team Rating"
+      {/* ── Stat strip — no cards, just bold numbers ──────────────────── */}
+      <div className="flex divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <StatPill
+          label="Avg PR"
           value={avgRating != null ? avgRating.toFixed(2) : "—"}
-          hint="Playtomic"
+          highlight
         />
-        <StatCard
-          icon={<UserPlus className="h-5 w-5" />}
+        <StatPill
           label="Squad"
           value={`${filled} / ${readiness.maxPlayers}`}
-          hint={slotsRemaining > 0 ? `${slotsRemaining} open` : "Full"}
+          sub={slotsRemaining > 0 ? `${slotsRemaining} open` : "Full"}
         />
-        <StatCard
-          icon={<Trophy className="h-5 w-5" />}
-          label="League Position"
+        <StatPill
+          label="Position"
           value={standing?.rank ? `#${standing.rank}` : "—"}
-          hint={standing ? `${standing.points} pts` : "Not started"}
+          sub={standing ? `${standing.points} pts` : "Not started"}
         />
-        <StatCard
-          icon={<CreditCard className="h-5 w-5" />}
+        <StatPill
           label="Fees"
-          value={payment.clubPaysFees ? "Club" : `${payment.paidCount}/${filled}`}
-          hint={
+          value={payment.clubPaysFees ? "Team" : `${payment.paidCount}/${filled}`}
+          sub={
             payment.clubPaysFees
-              ? "Club pays"
+              ? "Team pays"
               : payment.outstandingAmount > 0
                 ? `R${payment.outstandingAmount} due`
                 : "All paid"
@@ -133,13 +129,11 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
         />
       </div>
 
-      {/* Next fixture */}
+      {/* ── Next fixture ──────────────────────────────────────────────── */}
       {nextFixture ? (
-        <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-l-4 border-primary bg-primary/5 px-4 py-3 rounded-r-xl">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-            </div>
+            <Calendar className="h-4 w-4 shrink-0 text-primary" />
             <div>
               <p className="text-sm font-semibold text-foreground">
                 {nextFixture.isHome ? "vs" : "@"} {nextFixture.opponent}
@@ -151,18 +145,22 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
               </p>
             </div>
           </div>
-          <Badge variant="secondary">{nextFixture.isHome ? "Home" : "Away"}</Badge>
-        </Card>
+          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+            {nextFixture.isHome ? "Home" : "Away"}
+          </span>
+        </div>
       ) : null}
 
-      {/* Squad — grouped by category */}
+      {/* ── Squad ─────────────────────────────────────────────────────── */}
       <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="heading text-lg text-foreground">Squad</h2>
+        {/* Section heading */}
+        <div className="mb-5 flex items-end justify-between border-b-2 border-foreground pb-2">
+          <h2 className="heading text-xl font-black uppercase tracking-tight text-foreground">Squad</h2>
           {canManage && slotsRemaining > 0 ? <MyTeamAddPlayer teamId={team.id} slotsRemaining={slotsRemaining} /> : null}
         </div>
+
         {pairingCategories.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {pairingCategories.map((cat) => (
               <CategorySection
                 key={cat.category}
@@ -175,7 +173,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="divide-y divide-border">
             {slots.map((slot, i) => (
               <RosterSlot key={i} slot={slot} teamId={team.id} canManage={canManage} slotsRemaining={slotsRemaining} />
             ))}
@@ -186,57 +184,58 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
   )
 }
 
+function StatPill({
+  label,
+  value,
+  sub,
+  highlight,
+}: {
+  label: string
+  value: string
+  sub?: string
+  highlight?: boolean
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-3 py-4 text-center">
+      <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span className={cn("text-2xl font-black tabular-nums leading-none", highlight ? "text-primary" : "text-foreground")}>
+        {value}
+      </span>
+      {sub ? <span className="mt-1 text-[11px] text-muted-foreground">{sub}</span> : null}
+    </div>
+  )
+}
+
 function ReadinessBanner({ readiness }: { readiness: MyTeamViewData["readiness"] }) {
   if (readiness.isLeagueReady) {
     return (
-      <Card className="flex items-center gap-3 border-emerald-500/30 bg-emerald-500/10 p-4">
-        <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-500" />
+      <div className="flex items-center gap-3 border-l-4 border-emerald-500 bg-emerald-500/8 px-4 py-3 rounded-r-xl">
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
         <div>
-          <p className="font-semibold text-foreground">League Ready</p>
+          <p className="font-bold text-foreground">League Ready</p>
           <p className="text-sm text-muted-foreground">
             Full squad of {readiness.maxPlayers} with all fees settled. You&apos;re set for the season.
           </p>
         </div>
-      </Card>
+      </div>
     )
   }
   return (
-    <Card className="flex items-start gap-3 border-amber-500/30 bg-amber-500/10 p-4">
-      <AlertCircle className="h-6 w-6 shrink-0 text-amber-500" />
+    <div className="flex items-start gap-3 border-l-4 border-amber-500 bg-amber-500/8 px-4 py-3 rounded-r-xl">
+      <AlertCircle className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
       <div>
-        <p className="font-semibold text-foreground">Not League Ready yet</p>
-        <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+        <p className="font-bold text-foreground">Not League Ready yet</p>
+        <ul className="mt-0.5 space-y-0.5 text-sm text-muted-foreground">
           {readiness.reasons.map((r, i) => (
             <li key={i}>{r}</li>
           ))}
         </ul>
       </div>
-    </Card>
+    </div>
   )
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  hint?: string
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        {icon}
-        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </Card>
-  )
-}
+
 
 function RosterSlot({
   slot,
@@ -275,7 +274,7 @@ function RosterSlot({
 
   if (slot.kind === "pending") {
     return (
-      <Card className="flex items-center justify-between gap-3 p-3">
+      <div className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-0">
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="h-10 w-10 border border-border">
             <AvatarFallback className="bg-secondary text-xs">
@@ -311,13 +310,13 @@ function RosterSlot({
             </Button>
           ) : null}
         </div>
-      </Card>
+      </div>
     )
   }
 
   // Active player
   return (
-    <Card className="flex items-center justify-between gap-3 p-3">
+    <div className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-0">
       <div className="flex min-w-0 items-center gap-3">
         <Avatar className="h-10 w-10 border border-border">
           <AvatarImage src={slot.avatarUrl ?? undefined} alt="" />
@@ -384,7 +383,7 @@ function RosterSlot({
           </DropdownMenu>
         ) : null}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -414,64 +413,83 @@ function CategorySection({
   const isFemale = meta?.gender === "female"
   const isFeature = meta?.featureCourt ?? false
   const GenderIcon = isFemale ? Venus : Mars
+  const accentColor = isFemale ? "border-pink-500" : "border-sky-500"
   const allSlots = cat.pairs.flat()
   const filledCount = allSlots.filter((s) => s.player !== null).length
+  const isFull = filledCount === allSlots.length
 
   return (
     <div>
-      {/* Category header */}
-      <div className="mb-2 flex items-center gap-2">
-        <GenderIcon className={cn("h-3.5 w-3.5 shrink-0", isFemale ? "text-pink-500" : "text-sky-500")} />
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">{cat.category}</h3>
+      {/* Category header — editorial accent bar */}
+      <div className={cn("mb-3 flex items-center gap-3 border-l-4 pl-3", accentColor)}>
+        <GenderIcon className={cn("h-4 w-4 shrink-0", isFemale ? "text-pink-500" : "text-sky-500")} />
+        <h3 className="font-black uppercase tracking-widest text-foreground text-sm">{cat.category}</h3>
         {isFeature && (
-          <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[10px] font-normal">
+          <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
             Feature
-          </Badge>
+          </span>
         )}
-        <span className="ml-auto text-[11px] text-muted-foreground">{filledCount}/2 filled</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              isFull ? "bg-emerald-500" : "bg-amber-400",
+            )}
+          />
+          <span className="text-[11px] font-medium text-muted-foreground">{filledCount}/2</span>
+        </div>
       </div>
 
-      {/* Pair of slots side by side */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* Player rows — no cards, just clean horizontal rows */}
+      <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
         {allSlots.map((slot) => {
           const p = slot.player
           if (!p) {
             return (
               <div
                 key={`${slot.pairIndex}-${slot.slotIndex}`}
-                className="flex min-h-[64px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+                className="flex items-center gap-3 px-4 py-3 bg-muted/30"
               >
-                Open slot
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground">
+                  <Plus className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-sm text-muted-foreground italic">Open slot</span>
               </div>
             )
           }
+          const isPaid = clubPaysFees || p.paid
           return (
-            <Card key={`${slot.pairIndex}-${slot.slotIndex}`} className="flex items-center gap-3 p-3">
-              <Avatar className="h-9 w-9 shrink-0 border border-border">
-                <AvatarFallback className="bg-secondary text-xs">{initials(p.name)}</AvatarFallback>
-              </Avatar>
+            <div
+              key={`${slot.pairIndex}-${slot.slotIndex}`}
+              className="flex items-center gap-3 px-4 py-3 bg-card"
+            >
+              {/* Avatar */}
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold text-foreground uppercase">
+                {initials(p.name)}
+              </div>
+
+              {/* Name + rating */}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{p.name}</p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {p.playtomicRating != null ? (
-                    <span className="flex items-center gap-0.5">
-                      <Star className="h-3 w-3" /> {p.playtomicRating.toFixed(1)}
-                    </span>
-                  ) : (
-                    <span>Unrated</span>
-                  )}
+                <p className="truncate text-sm font-bold text-foreground leading-tight">{p.name}</p>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Star className="h-3 w-3" />
+                  <span>{p.playtomicRating != null ? p.playtomicRating.toFixed(1) : "—"}</span>
                 </div>
               </div>
-              {(clubPaysFees || p.paid) ? (
-                <Badge variant="secondary" className="shrink-0 gap-1 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-3 w-3" /> Paid
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="shrink-0 text-amber-600 dark:text-amber-400">
-                  Unpaid
-                </Badge>
-              )}
-            </Card>
+
+              {/* Fee dot */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    isPaid ? "bg-emerald-500" : "bg-amber-400",
+                  )}
+                />
+                <span className={cn("text-xs font-medium", isPaid ? "text-emerald-600" : "text-amber-600")}>
+                  {isPaid ? "Paid" : "Unpaid"}
+                </span>
+              </div>
+            </div>
           )
         })}
       </div>
