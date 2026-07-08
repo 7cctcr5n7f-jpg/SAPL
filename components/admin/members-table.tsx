@@ -74,10 +74,10 @@ const STATUS_DOT: Record<MemberRow["status"], string> = {
   suspended: "bg-red-500",
 }
 
-const PAYMENT_BADGE: Record<string, { label: string; cls: string }> = {
-  paid: { label: "Paid", cls: "bg-emerald-100 text-emerald-700" },
-  pending: { label: "Pending", cls: "bg-amber-100 text-amber-700" },
-  outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700" },
+const PAYMENT_BADGE: Record<string, { label: string; cls: string; title: string }> = {
+  paid:        { label: "Paid",        cls: "bg-emerald-100 text-emerald-700", title: "Fee has been received" },
+  pending:     { label: "Pending",     cls: "bg-slate-100 text-slate-600",     title: "Fee is due — awaiting payment" },
+  outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700",         title: "Fee is overdue and has not been received" },
 }
 
 const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: string }> = {
@@ -439,7 +439,7 @@ function SummaryCards({
   )
 }
 
-// ─── Filter bar ───────────────────────���───────────────────────────────────────
+// ─── Filter bar ─���─────────────────────���───────────────────────────────────────
 
 function uniq(arr: (string | null)[]): string[] {
   return [...new Set(arr.filter(Boolean) as string[])].sort()
@@ -968,18 +968,22 @@ export function MembersTable({
               const isAssigned = m.teamId != null
 
               // Payment display rules:
-              // - No team: show payment badge only if a status is recorded.
+              // - No team: show badge only if a status is on record.
               // - On a team, individual fees: always show badge (default Pending).
-              // - On a team, owner pays fees: only the team owner shows a badge;
-              //   regular players owe nothing so show —.
+              // - On a team, owner pays fees:
+              //     · the owner themselves shows their payment badge
+              //     · other players show a "Team" pill (fee covered by team)
               let displayPayment: typeof PAYMENT_BADGE[string] | null = null
+              let teamPaidFee = false // true = this player's fee is paid by the team owner
               if (m.teamId != null) {
                 if (m.teamClubPaysFees) {
-                  // Only the owner of this team owes — check via ownedTeamId
                   if (m.ownedTeamId === m.teamId) {
+                    // This IS the owner — show their own payment status
                     displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                  } else {
+                    // Regular player — fee is covered by team
+                    teamPaidFee = true
                   }
-                  // other players on this team show nothing (—)
                 } else {
                   displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
                 }
@@ -1071,7 +1075,20 @@ export function MembersTable({
                   {/* Payment */}
                   <td className="px-2 py-3">
                     {displayPayment ? (
-                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", displayPayment.cls)}>{displayPayment.label}</span>
+                      <span
+                        className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium cursor-default", displayPayment.cls)}
+                        title={displayPayment.title}
+                      >
+                        {displayPayment.label}
+                      </span>
+                    ) : teamPaidFee ? (
+                      <span
+                        className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium bg-teal-50 text-teal-700 cursor-default"
+                        title="Fee is covered by the team owner"
+                      >
+                        <Building2 className="h-3 w-3 shrink-0" />
+                        Team
+                      </span>
                     ) : (
                       <span className="text-xs text-border">—</span>
                     )}
