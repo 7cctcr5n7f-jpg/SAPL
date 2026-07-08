@@ -180,6 +180,10 @@ function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: (val: num
   )
 }
 
+/**
+ * Native-select team cell — renders a browser-native <select> so the option
+ * list is never clipped by td overflow-hidden or table stacking context.
+ */
 function TeamCell({
   member,
   allTeams,
@@ -189,83 +193,49 @@ function TeamCell({
   allTeams: { id: number; name: string }[]
   onSaved: (teamId: number | null, teamName: string | null) => void
 }) {
-  const [editing, setEditing] = useState(false)
-  const [search, setSearch] = useState("")
   const [pending, start] = useTransition()
-  const [displayTeam, setDisplayTeam] = useState<{ id: number | null; name: string | null }>({
-    id: member.teamId ?? null,
-    name: member.teamName ?? null,
-  })
-  // Sync when prop changes externally
-  if (!editing && (member.teamId ?? null) !== displayTeam.id) {
-    setDisplayTeam({ id: member.teamId ?? null, name: member.teamName ?? null })
+  const [currentId, setCurrentId] = useState<number | null>(member.teamId ?? null)
+
+  // Sync when parent row is patched externally
+  if ((member.teamId ?? null) !== currentId && !pending) {
+    setCurrentId(member.teamId ?? null)
   }
 
-  const ref = useRef<HTMLDivElement>(null)
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    const options = [{ id: 0, name: "No Team" }, ...allTeams]
-    return q ? options.filter((t) => t.name.toLowerCase().includes(q)) : options
-  }, [search, allTeams])
-
-  function select(teamId: number, teamName: string) {
-    const newId = teamId === 0 ? null : teamId
-    const newName = teamId === 0 ? null : teamName
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const val = Number(e.target.value)
+    const newId = val === 0 ? null : val
+    const newName = allTeams.find((t) => t.id === newId)?.name ?? null
+    setCurrentId(newId)
     start(async () => {
       const res = await updateMemberTeam(member.id, newId)
       if (res.ok) {
-        setEditing(false)
-        setSearch("")
-        setDisplayTeam({ id: newId, name: newName })
         onSaved(newId, newName)
       } else {
+        setCurrentId(member.teamId ?? null) // revert on error
         toast.error("Could not update team")
       }
     })
   }
 
-  if (!editing) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        className="group flex items-center gap-1 rounded px-1.5 py-0.5 text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-left max-w-[160px] truncate"
-        title={displayTeam.name ?? "No Team"}
-      >
-        <span className="truncate">{displayTeam.name ?? <span className="text-muted-foreground">No Team</span>}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
-      </button>
-    )
+  if (pending) {
+    return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
   }
 
   return (
-    <div ref={ref} className="relative z-20">
-      <input
-        autoFocus
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search teams…"
-        className="w-44 rounded border border-primary bg-background px-2 py-1 text-sm focus:outline-none"
-        onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setSearch("") } }}
-      />
-      <div className="absolute left-0 top-full mt-1 w-52 max-h-52 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-        {filtered.slice(0, 20).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => select(t.id, t.name)}
-            disabled={pending}
-            className={cn(
-              "flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted/60 text-left",
-              t.id === (member.teamId ?? 0) && "bg-primary/10 font-medium",
-            )}
-          >
-            {pending ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-            {t.name}
-          </button>
-        ))}
-        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No teams found</p>}
-      </div>
-    </div>
+    <select
+      value={currentId ?? 0}
+      onChange={handleChange}
+      disabled={pending}
+      className="max-w-[160px] truncate rounded border-0 bg-transparent py-0 pr-5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer hover:bg-muted/40 transition-colors"
+      title={currentId ? (allTeams.find((t) => t.id === currentId)?.name ?? "Team") : "No Team"}
+    >
+      <option value={0}>No Team</option>
+      {allTeams.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name}
+        </option>
+      ))}
+    </select>
   )
 }
 

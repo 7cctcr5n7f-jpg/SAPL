@@ -2,8 +2,8 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players } from "@/lib/db/schema"
-import { eq, and, asc, desc, max, sql } from "drizzle-orm"
+import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players, categories, teamPairings } from "@/lib/db/schema"
+import { eq, and, asc, desc, max, sql, gte, lte } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -431,6 +431,9 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
 
   if (current) {
     await db.update(teamMembers).set({ status: "inactive", updatedAt: new Date() }).where(eq(teamMembers.id, current.id))
+    // Clear any pairing slots this player occupied on their old team
+    await db.update(teamPairings).set({ playerId: null, updatedAt: new Date() })
+      .where(and(eq(teamPairings.teamId, current.teamId), eq(teamPairings.playerId, userId)))
     await recomputeTeamStats(current.teamId)
   }
 
@@ -448,6 +451,9 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
     }
     await recomputeTeamStats(newTeamId)
     await db.update(user).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(user.id, userId))
+
+    // Auto-assign to the best available squad category slot based on rating + gender.
+    await autoAssignPairingSlot(userId, newTeamId)
   } else {
     // Removed from all teams — mark as looking
     await db.update(user).set({ lookingForTeam: true, availability: "available" }).where(eq(user.id, userId))
@@ -456,6 +462,80 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
   revalidatePath("/admin/members")
   revalidatePath("/admin/teams")
   return { ok: true }
+}
+
+/**
+ * Places a player into the highest available pairing slot they qualify for.
+ *
+ * Category matching rules:
+ *   - Gender derived from the player's gender field (male → men's categories,
+ *     female → ladies categories). Gender is matched by category.gender in DB,
+ *     but we also fall back to name-based matching for bad DB data.
+ *   - Rating eligibility: player's playtomicRating must be >= category.playerMinLi.
+ *   - "Highest" = highest playerMinLi threshold the player clears (most competitive).
+ *   - Within that category, fills the first empty slot (pairIndex 1 slot 1 → 1/2 → 2/1 → 2/2).
+ *   - If already assigned to a slot in this team, no-op.
+ */
+async function autoAssignPairingSlot(userId: string, teamId: number) {
+  // Fetch player details
+  const [playerRow] = await db
+    .select({ gender: user.gender, playtomicRating: user.playtomicRating })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!playerRow) return
+
+  const rating = playerRow.playtomicRating ?? 0
+  const gender = (playerRow.gender ?? "male").toLowerCase() // "male" | "female"
+  const dbGender = gender === "female" ? "female" : "male"
+
+  // Check if already in a slot for this team
+  const [alreadySlotted] = await db
+    .select({ id: teamPairings.id })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.playerId, userId)))
+    .limit(1)
+  if (alreadySlotted) return // already placed, don't move
+
+  // Fetch all categories matching the player's gender and rating eligibility,
+  // sorted by playerMinLi DESC (highest / most competitive first).
+  const eligibleCats = await db
+    .select({ name: categories.name, playerMinLi: categories.playerMinLi })
+    .from(categories)
+    .where(and(eq(categories.gender, dbGender), lte(categories.playerMinLi, rating)))
+    .orderBy(desc(categories.playerMinLi))
+
+  if (eligibleCats.length === 0) return // no eligible category
+
+  // Fetch existing pairing rows for this team to find occupied slots
+  const existingSlots = await db
+    .select({ category: teamPairings.category, pairIndex: teamPairings.pairIndex, slotIndex: teamPairings.slotIndex, playerId: teamPairings.playerId })
+    .from(teamPairings)
+    .where(eq(teamPairings.teamId, teamId))
+
+  // Try each eligible category (most competitive first) until we find a free slot
+  for (const cat of eligibleCats) {
+    // All possible slots: pair 1 slot 1, pair 1 slot 2, pair 2 slot 1, pair 2 slot 2
+    const slotCombos = [{ pairIndex: 1, slotIndex: 1 }, { pairIndex: 1, slotIndex: 2 }, { pairIndex: 2, slotIndex: 1 }, { pairIndex: 2, slotIndex: 2 }]
+    for (const { pairIndex, slotIndex } of slotCombos) {
+      const existing = existingSlots.find(
+        (s) => s.category === cat.name && s.pairIndex === pairIndex && s.slotIndex === slotIndex
+      )
+      if (!existing) {
+        // Slot row doesn't exist yet — insert it
+        await db.insert(teamPairings).values({ teamId, category: cat.name, pairIndex, slotIndex, playerId: userId })
+        return
+      }
+      if (existing.playerId === null) {
+        // Slot exists but is empty — claim it
+        await db.update(teamPairings).set({ playerId: userId, updatedAt: new Date() })
+          .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.category, cat.name), eq(teamPairings.pairIndex, pairIndex), eq(teamPairings.slotIndex, slotIndex)))
+        return
+      }
+    }
+    // All 4 slots in this category are occupied — try the next eligible one
+  }
+  // No slot found in any eligible category — player is still on the team but unslotted
 }
 
 /** Inline-edit: update a member's account status (stored as a meta note for now). */
