@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth"
 import { pool } from "@/lib/db"
-import { sendEmail, resetPasswordEmail, verifyEmail } from "@/lib/email"
+import { sendEmail, resetPasswordEmail, verifyEmail, adminNewMemberEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 
 // Email verification is built but NOT enforced yet: users can still sign in
 // before activating. Flip `requireEmailVerification` to true (below) once a
@@ -39,6 +39,12 @@ export const auth = betterAuth({
         // toggled on later without a backfill.
         before: async (user) => {
           return { data: { ...user, emailVerified: ENFORCE_EMAIL_VERIFICATION ? user.emailVerified : true } }
+        },
+        // Fire-and-forget admin alert — never blocks the registration flow.
+        after: async (user) => {
+          const adminUrl = `${appBaseUrl()}/admin/members`
+          const { subject, html, text } = adminNewMemberEmail({ name: user.name ?? "", email: user.email, adminUrl })
+          sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
         },
       },
     },

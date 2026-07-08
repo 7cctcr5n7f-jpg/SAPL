@@ -1,6 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
+import { sendEmail, adminNewTeamEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 import {
   teams,
   organisations,
@@ -139,6 +140,9 @@ export async function createTeam(formData: FormData) {
     tpr: 1000,
     status: "active",
   })
+  // Fire-and-forget admin alert — never blocks the action.
+  const { subject, html, text } = adminNewTeamEmail({ teamName: name, ownerEmail, adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
   return { ok: true }
@@ -488,6 +492,11 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
   })
 
   await grantTeamOwnerPermissions(user.id)
+
+  // Fire-and-forget admin alert — never blocks the action.
+  const ownerName = (user.name ?? "").trim() || null
+  const { subject, html, text } = adminNewTeamEmail({ teamName: name, ownerName, ownerEmail: user.email, adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
 
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/org")

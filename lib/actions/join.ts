@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { sendEmail, adminNewTeamEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 import {
   user,
   userMeta,
@@ -374,6 +375,10 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       initiatedBy: "self",
     })
   }
+
+  // Fire-and-forget admin alert — never blocks the sign-up flow.
+  const { subject, html, text } = adminNewTeamEmail({ teamName: teamName.trim(), ownerName: fullName.trim(), ownerEmail: email.trim().toLowerCase(), adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
 
   revalidatePath("/dashboard")
   return { ok: true, redirectTo: "/dashboard" }
