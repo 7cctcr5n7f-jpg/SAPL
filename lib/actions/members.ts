@@ -240,7 +240,7 @@ export type UnregisteredContact = {
   name: string | null
   email: string
   phone: string | null
-  source: "club_contact" | "club_contact2" | "team_owner"
+  source: "club_contact" | "club_contact2" | "team_owner" | "team_co_owner"
   clubId: number | null
   clubName: string | null
   ownedTeamId: number | null
@@ -258,9 +258,9 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
     .from(clubs)
 
   // Include ALL teams regardless of status — a pending/inactive team's
-  // ownerEmail is still a real person who needs to show up in Members.
+  // ownerEmail / coOwnerEmail is still a real person who needs to show up in Members.
   const teamRows = await db
-    .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail, ownerName: teams.ownerName, ownerPhone: teams.ownerPhone })
+    .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail, ownerName: teams.ownerName, ownerPhone: teams.ownerPhone, coOwnerEmail: teams.coOwnerEmail })
     .from(teams)
 
   const contacts: UnregisteredContact[] = []
@@ -290,6 +290,9 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
       const realName = team.ownerName && !team.ownerName.includes("@") ? team.ownerName.trim() : null
       const displayName = realName || `Owner of ${team.name}`
       push({ key: `team-${team.id}-1`, name: displayName, email: team.ownerEmail, phone: team.ownerPhone ?? null, source: "team_owner", clubId: null, clubName: null, ownedTeamId: team.id, ownedTeamName: team.name })
+    }
+    if (team.coOwnerEmail) {
+      push({ key: `team-${team.id}-2`, name: `Co-owner of ${team.name}`, email: team.coOwnerEmail, phone: null, source: "team_co_owner", clubId: null, clubName: null, ownedTeamId: team.id, ownedTeamName: team.name })
     }
   }
 
