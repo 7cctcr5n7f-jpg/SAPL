@@ -73,6 +73,12 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
               {team.divisionName}
               {team.clubName ? ` · ${team.clubName}` : ""}
             </p>
+            {team.captainName ? (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Crown className="h-3 w-3 text-amber-500" />
+                <span>Captain: <span className="font-semibold text-foreground">{team.captainName}</span></span>
+              </p>
+            ) : null}
           </div>
         </div>
         {otherTeams.length > 0 ? (
