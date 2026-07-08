@@ -152,6 +152,8 @@ export async function updateTeamRegistration(input: {
   saplRegion?: string | null
   managerPlayerId?: string | null
   clubPaysFees?: boolean
+  ownerName?: string | null
+  ownerPhone?: string | null
   ownerEmail?: string | null
   ownerEmail2?: string | null
 }) {
@@ -171,6 +173,8 @@ export async function updateTeamRegistration(input: {
   }
   if (input.teamType) patch.teamType = input.teamType
   if (input.clubPaysFees !== undefined) patch.clubPaysFees = input.clubPaysFees
+  if (input.ownerName !== undefined) patch.ownerName = input.ownerName?.trim() || null
+  if (input.ownerPhone !== undefined) patch.ownerPhone = input.ownerPhone?.trim() || null
   if (input.ownerEmail !== undefined) {
     const e = (input.ownerEmail ?? "").trim().toLowerCase()
     if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {

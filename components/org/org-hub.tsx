@@ -51,6 +51,7 @@ type Team = {
   ownerEmail: string | null
   ownerEmail2: string | null
   ownerName: string | null
+  ownerPhone: string | null
   avgLi: number
   playerCount: number
   maxPlayers: number
@@ -705,6 +706,8 @@ function EditTeamDialog({
   // For a Club Team, the venue that entered it owns it by default — so when no
   // owner email has been set yet, pre-fill the club's contact email. The field
   // stays editable so the org can hand ownership to a different person.
+  const [ownerName, setOwnerName] = useState(team.ownerName ?? "")
+  const [ownerPhone, setOwnerPhone] = useState(team.ownerPhone ?? "")
   const [ownerEmail, setOwnerEmail] = useState(
     team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
   )
@@ -730,6 +733,8 @@ function EditTeamDialog({
         homeClubId: homeClubId ? Number(homeClubId) : null,
         saplRegion: homeClubId ? undefined : saplRegion || null,
         clubPaysFees,
+        ownerName: ownerName.trim() || null,
+        ownerPhone: ownerPhone.trim() || null,
         ownerEmail: ownerEmail.trim() || null,
         ownerEmail2: ownerEmail2.trim() || null,
       })
@@ -830,8 +835,30 @@ function EditTeamDialog({
             </div>
             <Switch checked={clubPaysFees} onCheckedChange={setClubPaysFees} aria-label="Toggle team pays fees" />
           </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+            <p className="text-sm font-medium">Team owner / contact details</p>
+            <div className="space-y-2">
+              <Label htmlFor="editOwnerName">Name</Label>
+              <Input
+                id="editOwnerName"
+                type="text"
+                value={ownerName}
+                placeholder="Owner full name"
+                onChange={(e) => setOwnerName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editOwnerPhone">Contact number</Label>
+              <Input
+                id="editOwnerPhone"
+                type="tel"
+                value={ownerPhone}
+                placeholder="+27 82 000 0000"
+                onChange={(e) => setOwnerPhone(e.target.value)}
+              />
+            </div>
           <div className="space-y-2">
-            <Label htmlFor="editOwnerEmail">Team owner email</Label>
+            <Label htmlFor="editOwnerEmail">Email</Label>
             <Input
               id="editOwnerEmail"
               type="email"
@@ -840,8 +867,7 @@ function EditTeamDialog({
               onChange={(e) => setOwnerEmail(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Whoever signs in with this email automatically gets team-owner access to manage this team. Leave blank to
-              remove.
+              Whoever signs in with this email automatically gets team-owner access. Leave blank to remove.
               {team.teamType === "Club Team" && team.homeClubContactEmail
                 ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
                 : ""}
@@ -859,6 +885,7 @@ function EditTeamDialog({
                   Use venue contact ({team.homeClubContactEmail})
                 </Button>
               )}
+          </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="editOwnerEmail2">Second manager email <span className="text-muted-foreground font-normal">(optional)</span></Label>

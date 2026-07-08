@@ -197,6 +197,7 @@ function TeamFlow({
   const [homeClubId, setHomeClubId] = useState<string>("")
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
   const [captainPlays, setCaptainPlays] = useState<"yes" | "no">("yes")
   const [captainGender, setCaptainGender] = useState<"male" | "female">("male")
@@ -237,6 +238,7 @@ function TeamFlow({
       const res = await registerTeam({
         fullName,
         email,
+        phone,
         password,
         teamName,
         paymentModel,
@@ -376,6 +378,10 @@ function TeamFlow({
           <div className="flex flex-col gap-2">
             <Label htmlFor="captainEmail">Email</Label>
             <Input id="captainEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="h-12 text-base" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="captainPhone">Contact number</Label>
+            <Input id="captainPhone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+27 82 000 0000" className="h-12 text-base" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="captainPw">Password</Label>

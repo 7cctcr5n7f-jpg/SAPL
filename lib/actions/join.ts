@@ -196,6 +196,7 @@ export type RegisterTeamInput = {
   fullName: string
   email: string
   password: string
+  phone?: string
   // Team details
   teamName: string
   paymentModel: "club" | "individual" // club = R4,000 lump sum | individual = R500 per player
@@ -207,7 +208,7 @@ export type RegisterTeamInput = {
 }
 
 export async function registerTeam(input: RegisterTeamInput): Promise<RegisterResult> {
-  const { fullName, email, password, teamName, paymentModel, homeClubId, captainPlays, captainGender, playtomicUrl } = input
+  const { fullName, email, password, phone, teamName, paymentModel, homeClubId, captainPlays, captainGender, playtomicUrl } = input
 
   if (!fullName.trim()) return { ok: false, error: "Full name is required." }
   if (!email.trim()) return { ok: false, error: "Email is required." }
@@ -257,6 +258,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     .set({
       firstName,
       lastName,
+      phone: phone?.trim() || null,
       gender: captainPlays ? (captainGender ?? "male") : null,
       isPlayer: captainPlays,
       playtomicUrl: captainPlays ? playtomicUrl.trim() || null : null,
@@ -315,6 +317,8 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       seasonId: currentSeason?.id ?? null,
       captainUserId: userId,
       ownerEmail: email.trim().toLowerCase(),
+      ownerName: fullName.trim() || null,
+      ownerPhone: phone?.trim() || null,
       clubPaysFees: paymentModel === "club",
       status: "pending",
     })

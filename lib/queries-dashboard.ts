@@ -1163,6 +1163,8 @@ const teamRowFields = {
     managerUserId: teams.managerUserId,
     ownerEmail: teams.ownerEmail,
     ownerEmail2: teams.ownerEmail2,
+    ownerName: teams.ownerName,
+    ownerPhone: teams.ownerPhone,
     avgLi: teams.avgLi,
     tpr: teams.tpr,
     playerCount: teams.playerCount,
