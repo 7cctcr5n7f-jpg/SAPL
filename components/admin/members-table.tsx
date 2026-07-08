@@ -1014,20 +1014,20 @@ export function MembersTable({
       </div>
 
       {/* Table: Name, Role, Team, PT Rating, Payment + Edit */}
-      <div className="rounded-lg border border-border overflow-x-auto">
-        <table className="min-w-max w-full text-sm">
+      <div className="rounded-lg border border-border overflow-hidden">
+        <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/60 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2.5 w-8" />
-              <th className="px-3 py-2.5 min-w-[180px]">Name</th>
-              <th className="px-3 py-2.5 min-w-[130px]">Role</th>
-              <th className="px-3 py-2.5 min-w-[160px]">Team</th>
-              <th className="px-3 py-2.5 min-w-[140px]">Team owner</th>
-              <th className="px-3 py-2.5 w-20">Gender</th>
-              <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
-              <th className="px-3 py-2.5 min-w-[90px] whitespace-nowrap">Last Login</th>
-              <th className="px-3 py-2.5 w-14 text-right">Edit</th>
+              <th className="px-2 py-2.5 w-9" />
+              <th className="px-2 py-2.5 w-[17%]">Name</th>
+              <th className="px-2 py-2.5 w-[13%]">Role</th>
+              <th className="px-2 py-2.5 w-[12%]">Team</th>
+              <th className="px-2 py-2.5 w-[13%]">Team Owner</th>
+              <th className="px-2 py-2.5 w-[7%]">Gender</th>
+              <th className="px-2 py-2.5 w-[8%] text-right">PT Rtg</th>
+              <th className="px-2 py-2.5 w-[9%]">Payment</th>
+              <th className="px-2 py-2.5 w-[12%]">Last Login</th>
+              <th className="px-2 py-2.5 w-10 text-right">Edit</th>
             </tr>
           </thead>
           <tbody>
@@ -1067,42 +1067,42 @@ export function MembersTable({
                   )}
                 >
                   {/* Avatar */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3">
                     {m.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.avatarUrl} alt={m.name} className="h-7 w-7 rounded-full object-cover" />
+                      <img src={m.avatarUrl} alt={m.name} className="h-6 w-6 rounded-full object-cover" />
                     ) : (
-                      <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center">
-                        <UserCircle className="h-4 w-4 text-muted-foreground" />
+                      <div className="h-6 w-6 rounded-full bg-secondary flex items-center justify-center">
+                        <UserCircle className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                     )}
                   </td>
 
                   {/* Name */}
-                  <td className="px-3 py-3.5">
-                    <div className="flex items-center gap-1.5">
+                  <td className="px-2 py-3 overflow-hidden">
+                    <div className="flex items-center gap-1">
                       {isAssigned && (
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title={`Assigned to ${m.teamName}`} />
                       )}
-                      <div>
-                        <div className="font-medium text-foreground leading-tight">
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground leading-tight truncate">
                           {m.name}
-                          {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
+                          {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
                         </div>
                         {m.playerName && m.playerName !== m.name && (
-                          <div className="text-[11px] text-muted-foreground leading-tight">{m.playerName}</div>
+                          <div className="text-[11px] text-muted-foreground leading-tight truncate">{m.playerName}</div>
                         )}
                       </div>
                     </div>
                   </td>
 
                   {/* Role — inline select */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3">
                     <RoleCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
                   </td>
 
                   {/* Team — inline searchable dropdown */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3 overflow-hidden">
                     <TeamCell
                       member={m}
                       allTeams={allTeams}
@@ -1111,7 +1111,7 @@ export function MembersTable({
                   </td>
 
                   {/* Team owner — inline dropdown */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3 overflow-hidden">
                     <TeamOwnerCell
                       member={m}
                       allTeams={allTeams}
@@ -1120,14 +1120,14 @@ export function MembersTable({
                   </td>
 
                   {/* Gender */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3">
                     {m.gender === "male" ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
-                        <Mars className="h-3.5 w-3.5 shrink-0" /> M
+                      <span className="inline-flex items-center gap-0.5 text-xs text-blue-600">
+                        <Mars className="h-3 w-3 shrink-0" /> M
                       </span>
                     ) : m.gender === "female" ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-pink-500">
-                        <Venus className="h-3.5 w-3.5 shrink-0" /> F
+                      <span className="inline-flex items-center gap-0.5 text-xs text-pink-500">
+                        <Venus className="h-3 w-3 shrink-0" /> F
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -1135,7 +1135,7 @@ export function MembersTable({
                   </td>
 
                   {/* PT Rating — inline editable */}
-                  <td className="px-3 py-3.5 text-right">
+                  <td className="px-2 py-3 text-right">
                     <RatingCell
                       member={m}
                       onSaved={(val) => patch(m.id, { playtomicRating: val })}
@@ -1143,7 +1143,7 @@ export function MembersTable({
                   </td>
 
                   {/* Payment status */}
-                  <td className="px-3 py-3.5">
+                  <td className="px-2 py-3">
                     {displayPayment ? (
                       <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", displayPayment.cls)}>{displayPayment.label}</span>
                     ) : (
@@ -1151,10 +1151,10 @@ export function MembersTable({
                     )}
                   </td>
 
-                  {/* Last log */}
-                  <td className="px-3 py-3.5">
+                  {/* Last login */}
+                  <td className="px-2 py-3 overflow-hidden">
                     <span
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                      className="inline-flex items-center gap-0.5 text-xs text-muted-foreground whitespace-nowrap"
                       title={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("en-ZA") : "Never logged in"}
                     >
                       <Clock className="h-3 w-3 shrink-0" />
@@ -1163,7 +1163,7 @@ export function MembersTable({
                   </td>
 
                   {/* Edit button */}
-                  <td className="px-3 py-3.5 text-right">
+                  <td className="px-2 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => setEditMember(m)}
