@@ -503,15 +503,27 @@ async function autoAssignPairingSlot(userId: string, teamId: number) {
     .limit(1)
   if (alreadySlotted) return // already placed, don't move
 
-  // Fetch all categories matching the player's gender and rating eligibility,
-  // sorted by playerMinLi DESC (highest / most competitive first).
-  const eligibleCats = await db
+  // Fetch all categories matching the player's gender, sorted best-fit first.
+  // Primary list: categories where playerMinLi <= rating (player meets the minimum),
+  // ordered by playerMinLi DESC so the most competitive eligible category is tried first.
+  // Fallback: if the player's rating is below every category's minimum (e.g. a 2.28
+  // female with only a "Ladies Open" min 2.5 category), use the category with the
+  // lowest playerMinLi for that gender — the most accessible one available.
+  const allGenderCats = await db
     .select({ name: categories.name, playerMinLi: categories.playerMinLi })
     .from(categories)
-    .where(and(eq(categories.gender, dbGender), lte(categories.playerMinLi, rating)))
+    .where(eq(categories.gender, dbGender))
     .orderBy(desc(categories.playerMinLi))
 
-  if (eligibleCats.length === 0) return // no eligible category
+  const eligibleCats = allGenderCats.filter((c) => c.playerMinLi <= rating)
+
+  // If no category meets the minimum threshold, fall back to the lowest-threshold
+  // gender category so the player is still placed somewhere sensible.
+  const catsToTry = eligibleCats.length > 0
+    ? eligibleCats
+    : [...allGenderCats].sort((a, b) => a.playerMinLi - b.playerMinLi).slice(0, 1)
+
+  if (catsToTry.length === 0) return // no categories exist for this gender at all
 
   // Fetch existing pairing rows for this team to find occupied slots
   const existingSlots = await db
@@ -519,8 +531,8 @@ async function autoAssignPairingSlot(userId: string, teamId: number) {
     .from(teamPairings)
     .where(eq(teamPairings.teamId, teamId))
 
-  // Try each eligible category (most competitive first) until we find a free slot
-  for (const cat of eligibleCats) {
+  // Try each category (most competitive first, fallback to most accessible) until we find a free slot
+  for (const cat of catsToTry) {
     // All possible slots: pair 1 slot 1, pair 1 slot 2, pair 2 slot 1, pair 2 slot 2
     const slotCombos = [{ pairIndex: 1, slotIndex: 1 }, { pairIndex: 1, slotIndex: 2 }, { pairIndex: 2, slotIndex: 1 }, { pairIndex: 2, slotIndex: 2 }]
     for (const { pairIndex, slotIndex } of slotCombos) {
