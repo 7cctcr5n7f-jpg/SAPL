@@ -38,8 +38,6 @@ export const user = pgTable("user", {
   lookingForTeam: boolean("lookingForTeam").notNull().default(true),
   bio: text("bio"),
   avatarUrl: text("avatarUrl"),
-  // Stamped on every authenticated request — the definitive "last used" time.
-  lastActiveAt: timestamp("lastActiveAt"),
 })
 
 export const session = pgTable("session", {

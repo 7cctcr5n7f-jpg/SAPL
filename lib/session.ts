@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { userMeta, user } from "@/lib/db/schema"
-import { eq, sql } from "drizzle-orm"
+import { userMeta, user as user } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { cookies, headers } from "next/headers"
 
 export type Role = "player" | "captain" | "org_admin" | "super_admin"
@@ -42,15 +42,6 @@ export async function getOptionalSession() {
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
-
-  // Fire-and-forget: stamp the exact moment this user touched the system.
-  // Never awaited so it never delays the request. This is the single source of
-  // truth for the "Last Login" column in the admin members table.
-  db.update(user)
-    .set({ lastActiveAt: sql`now()` })
-    .where(eq(user.id, session.user.id))
-    .execute()
-    .catch(() => {})
 
   const [meta] = await db
     .select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone })
