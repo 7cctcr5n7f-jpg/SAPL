@@ -15,6 +15,8 @@ export type CurrentUser = {
   id: string
   name: string
   email: string
+  /** Contact phone number from the user's meta row. */
+  phone: string | null
   /** Effective role used for display / page rendering (may be impersonated). */
   role: Role
   /** The user's actual role stored in the database. */
@@ -73,6 +75,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     id: session.user.id,
     name: session.user.name,
     email: session.user.email,
+    phone: meta?.phone ?? null,
     role: actingRole ?? realRole,
     realRole,
     isSuperAdmin,

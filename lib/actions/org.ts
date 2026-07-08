@@ -87,19 +87,26 @@ async function requireCanManageTeam(teamId: number) {
 
 export async function createTeam(formData: FormData) {
   const orgId = Number(formData.get("orgId"))
+  const currentUser = await getCurrentUser()
   await requireOrgOwner(orgId)
   const name = String(formData.get("name") ?? "").trim()
   const divisionId = formData.get("divisionId") ? Number(formData.get("divisionId")) : null
   const teamType = String(formData.get("teamType") ?? "Club Team").trim() || "Club Team"
   const homeClubId = formData.get("homeClubId") ? Number(formData.get("homeClubId")) : null
-  // Team Owner Email: the address that auto-grants team-management access to its
-  // holder (see lib/access.ts). Optional, normalised to lowercase.
-  const ownerEmailRaw = String(formData.get("ownerEmail") ?? "").trim().toLowerCase()
+  // Team Owner Email: prefer the form field (admin override); fall back to the
+  // currently signed-in user so the creator is automatically the owner.
+  const ownerEmailRaw = (String(formData.get("ownerEmail") ?? "").trim().toLowerCase()
+    || currentUser?.email?.trim().toLowerCase()
+    || "")
   if (!name) return { ok: false, error: "Team name is required" }
   if (ownerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmailRaw)) {
     return { ok: false, error: "Enter a valid team owner email" }
   }
   const ownerEmail = ownerEmailRaw || null
+  // Populate owner name + phone from the current user so the team row is
+  // immediately complete without a separate edit step.
+  const ownerName = currentUser?.name?.trim() || null
+  const ownerPhone = currentUser?.phone?.trim() || null
 
   // Region: derive from the chosen home club when one is set, otherwise fall
   // back to an explicitly chosen region so venue-less teams (Company/Private)
@@ -136,11 +143,14 @@ export async function createTeam(formData: FormData) {
     regionId,
     saplRegion,
     ownerEmail,
+    ownerName,
+    ownerPhone,
     tpr: 1000,
     status: "active",
   })
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
+  revalidatePath("/admin/teams")
   return { ok: true }
 }
 
@@ -234,6 +244,7 @@ export async function updateTeamRegistration(input: {
   revalidatePath("/dashboard/org")
   revalidatePath("/dashboard/captain")
   revalidatePath("/admin/placement")
+  revalidatePath("/admin/teams")
   return { ok: true }
 }
 
@@ -291,6 +302,7 @@ export async function assignCaptain(formData: FormData) {
   await recomputeTeamStats(teamId)
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
+  revalidatePath("/admin/teams")
   return { ok: true }
 }
 
@@ -329,6 +341,7 @@ export async function updateCaptainContact(input: {
 
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
+  revalidatePath("/admin/teams")
   return { ok: true }
 }
 

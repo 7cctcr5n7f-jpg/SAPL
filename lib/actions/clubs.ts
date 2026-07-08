@@ -332,6 +332,7 @@ export async function updateTeamContactDetails(input: {
     .where(eq(teams.id, team.id))
 
   revalidatePath("/admin/clubs")
+  revalidatePath("/admin/teams")
   revalidatePath("/dashboard/org")
   return { ok: true }
 }
