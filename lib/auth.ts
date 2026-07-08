@@ -82,7 +82,10 @@ export const auth = betterAuth({
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    // Update the session timestamp every 10 minutes so the "Last Login" column
+    // in the admin members table reflects the last time the user actually used
+    // the system, not just when they first signed in that day.
+    updateAge: 60 * 10, // 10 minutes
   },
   advanced: {
     // The app runs inside a cross-site preview iframe (and may be embedded
