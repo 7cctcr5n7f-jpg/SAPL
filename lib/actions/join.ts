@@ -343,7 +343,10 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     .where(eq(clubs.id, homeClubId))
     .limit(1)
 
-  // Create the team
+  // Create the team — the registrant is automatically the owner.
+  // ownerName and ownerEmail are the single source of truth for the owner
+  // and are written here so the Teams admin page and My Team view both
+  // reflect the owner immediately after sign-up without any manual step.
   const [newTeam] = await db
     .insert(teams)
     .values({
@@ -355,6 +358,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       seasonId: currentSeason?.id ?? null,
       captainUserId: userId,
       ownerEmail: email.trim().toLowerCase(),
+      ownerName: fullName.trim(),
       clubPaysFees: paymentModel === "club",
       status: "pending",
     })

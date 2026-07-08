@@ -8,6 +8,7 @@ import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
+import { grantTeamOwnerPermissions, revokeTeamOwnerPermissionsIfOrphaned } from "@/lib/actions/org"
 import {
   PERMISSIONS,
   ROLE_DEFAULTS,
@@ -73,6 +74,9 @@ export type MemberRow = {
   paymentStatus: "paid" | "pending" | "outstanding" | null
   accountLinked: "linked" | "invited" | "not_registered"
   registeredBy: string | null
+  /** Team this member is the primary owner of (matched via teams.ownerEmail). */
+  ownedTeamId: number | null
+  ownedTeamName: string | null
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
@@ -136,6 +140,24 @@ export async function listMembers(): Promise<MemberRow[]> {
     .leftJoin(divisions, eq(divisions.id, teams.divisionId))
     .where(eq(teamMembers.status, "active"))
   const membershipMap = new Map(membershipRows.map((r) => [r.playerId, r]))
+
+  // Owned teams: match teams.ownerEmail OR teams.coOwnerEmail to each user's email.
+  // This is the single source of truth — teams.ownerEmail drives access AND display.
+  const allOwnedTeams = await db
+    .select({ ownerEmail: teams.ownerEmail, coOwnerEmail: teams.coOwnerEmail, teamId: teams.id, teamName: teams.name })
+    .from(teams)
+  // Build lookup: normalised email → first team found (primary owner takes priority)
+  const ownerMap = new Map<string, { teamId: number; teamName: string }>()
+  for (const t of allOwnedTeams) {
+    if (t.ownerEmail) {
+      const k = t.ownerEmail.trim().toLowerCase()
+      if (!ownerMap.has(k)) ownerMap.set(k, { teamId: t.teamId, teamName: t.teamName })
+    }
+    if (t.coOwnerEmail) {
+      const k = t.coOwnerEmail.trim().toLowerCase()
+      if (!ownerMap.has(k)) ownerMap.set(k, { teamId: t.teamId, teamName: t.teamName })
+    }
+  }
 
   // Payment status: most recent individual payment per user
   const paymentRows = await db
@@ -203,7 +225,9 @@ export async function listMembers(): Promise<MemberRow[]> {
       divisionName: ms?.divisionName ?? null,
       paymentStatus: payStatus,
       accountLinked,
-      registeredBy: null, // not stored yet — placeholder for future
+      registeredBy: null,
+      ownedTeamId: ownerMap.get(r.email.trim().toLowerCase())?.teamId ?? null,
+      ownedTeamName: ownerMap.get(r.email.trim().toLowerCase())?.teamName ?? null,
     }
   })
 }
@@ -635,6 +659,57 @@ export async function setMemberTeamAssignment(userId: string, teamId: number, as
   await upsertMeta(userId, { teamOverrides: ov })
   revalidatePath("/admin/members")
   return { ok: true }
+}
+
+/**
+ * Assign a registered member as the owner of a team (or clear the owner).
+ * This is the single write path: it updates teams.ownerEmail + teams.ownerName
+ * so that the Teams admin page, the My Team view, and the access layer all
+ * read from the same source of truth. If teamId is null the member's current
+ * team ownership is cleared and permissions are revoked if no other team
+ * still depends on them.
+ */
+export async function setMemberAsTeamOwner(userId: string, teamId: number | null) {
+  await requireMemberManager()
+
+  // Fetch the member's current email + name.
+  const [member] = await db
+    .select({ email: user.email, name: user.name, firstName: user.firstName, lastName: user.lastName })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!member) return { ok: false as const, error: "Member not found." }
+
+  const memberEmail = member.email.trim().toLowerCase()
+  const memberName =
+    (member.firstName ? `${member.firstName} ${member.lastName ?? ""}`.trim() : null) ||
+    member.name?.trim() ||
+    member.email
+
+  // Clear owner from any team that currently lists this member as owner
+  // (enforces one primary-owner assignment per member at a time).
+  await db
+    .update(teams)
+    .set({ ownerEmail: null, ownerName: null, updatedAt: new Date() })
+    .where(sql`lower(${teams.ownerEmail}) = ${memberEmail}`)
+
+  if (teamId !== null) {
+    // Stamp the new team.
+    await db
+      .update(teams)
+      .set({ ownerEmail: memberEmail, ownerName: memberName, updatedAt: new Date() })
+      .where(eq(teams.id, teamId))
+
+    // Grant team-owner permissions to the member.
+    await grantTeamOwnerPermissions(userId)
+  } else {
+    // No new team — revoke owner permissions if this was their only team.
+    await revokeTeamOwnerPermissionsIfOrphaned(userId, memberEmail)
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true as const }
 }
 
 export async function sendMemberResetEmail(userId: string) {

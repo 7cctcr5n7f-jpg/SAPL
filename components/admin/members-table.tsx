@@ -16,6 +16,7 @@ import {
   resendInviteEmail,
   deleteMember,
   createAccountForContact,
+  setMemberAsTeamOwner,
   type MemberRow,
   type UnregisteredContact,
 } from "@/lib/actions/members"
@@ -268,6 +269,109 @@ function TeamCell({
   )
 }
 
+/**
+ * Editable team-owner cell.
+ * Shows the team this member owns (matched via teams.ownerEmail) and lets
+ * an admin click to reassign ownership to any team. The change writes
+ * ownerEmail + ownerName back to teams — keeping them as the single source
+ * of truth. Selecting "No owner" clears the assignment.
+ */
+function TeamOwnerCell({
+  member,
+  allTeams,
+  onSaved,
+}: {
+  member: MemberRow
+  allTeams: { id: number; name: string }[]
+  onSaved: (teamId: number | null, teamName: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [search, setSearch] = useState("")
+  const [pending, start] = useTransition()
+  const [display, setDisplay] = useState<{ id: number | null; name: string | null }>({
+    id: member.ownedTeamId ?? null,
+    name: member.ownedTeamName ?? null,
+  })
+
+  if (!editing && (member.ownedTeamId ?? null) !== display.id) {
+    setDisplay({ id: member.ownedTeamId ?? null, name: member.ownedTeamName ?? null })
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    const options = [{ id: 0, name: "No owner" }, ...allTeams]
+    return q ? options.filter((t) => t.name.toLowerCase().includes(q)) : options
+  }, [search, allTeams])
+
+  function select(teamId: number, teamName: string) {
+    const newId = teamId === 0 ? null : teamId
+    const newName = teamId === 0 ? null : teamName
+    start(async () => {
+      const res = await setMemberAsTeamOwner(member.id, newId)
+      if (res.ok) {
+        setEditing(false)
+        setSearch("")
+        setDisplay({ id: newId, name: newName })
+        onSaved(newId, newName)
+        toast.success(newId ? `${member.name} set as owner of ${newName}` : "Owner assignment cleared")
+      } else {
+        toast.error(res.error ?? "Could not update team owner")
+      }
+    })
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        title={display.name ? `Owner of ${display.name} — click to change` : "No owner assignment — click to assign"}
+        className="group flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-left max-w-[160px]"
+      >
+        {display.name ? (
+          <>
+            <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+            <span className="truncate text-xs">{display.name}</span>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">No</span>
+        )}
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity ml-0.5" />
+      </button>
+    )
+  }
+
+  return (
+    <div className="relative z-20">
+      <input
+        autoFocus
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search teams…"
+        className="w-44 rounded border border-primary bg-background px-2 py-1 text-sm focus:outline-none"
+        onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setSearch("") } }}
+      />
+      <div className="absolute left-0 top-full mt-1 w-52 max-h-52 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+        {filtered.slice(0, 20).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => select(t.id, t.name)}
+            disabled={pending}
+            className={cn(
+              "flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted/60 text-left",
+              t.id === (display.id ?? 0) && "bg-primary/10 font-medium",
+            )}
+          >
+            {pending ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+            {t.id === 0 ? <span className="text-muted-foreground">{t.name}</span> : t.name}
+          </button>
+        ))}
+        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No teams found</p>}
+      </div>
+    </div>
+  )
+}
+
 function RoleCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: boolean; onSaved: () => void }) {
   const [pending, start] = useTransition()
   const router = useRouter()
@@ -431,7 +535,7 @@ function FilterSelect({
   )
 }
 
-// ─── Member edit slide-out panel ─────────────────────────────────────────────
+// ─── Member edit slide-out panel ─────────────────────��───────────────────────
 
 const GENDERS = [
   { value: "male", label: "Male" },
@@ -995,16 +1099,13 @@ export function MembersTable({
                     />
                   </td>
 
-                  {/* Team owner */}
+                  {/* Team owner — editable inline */}
                   <td className="px-2 py-3 overflow-hidden">
-                    {m.ownedTeamId ? (
-                      <span className="inline-flex items-center gap-1 text-xs truncate">
-                        <Crown className="h-3 w-3 text-amber-500 shrink-0" />
-                        <span className="truncate">{m.ownedTeamName}</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No</span>
-                    )}
+                    <TeamOwnerCell
+                      member={m}
+                      allTeams={allTeams}
+                      onSaved={(teamId, teamName) => patch(m.id, { ownedTeamId: teamId ?? undefined, ownedTeamName: teamName ?? undefined })}
+                    />
                   </td>
 
                   {/* Gender */}

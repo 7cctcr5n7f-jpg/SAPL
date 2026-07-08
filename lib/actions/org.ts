@@ -482,6 +482,7 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
     saplRegion,
     regionId,
     ownerEmail: user.email.trim().toLowerCase(),
+    ownerName: (user.name ?? "").trim() || null,
     tpr: 1000,
     status: "active",
   })
