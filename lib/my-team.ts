@@ -238,22 +238,49 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     invitesByCategory.get(cat)!.push({ email: p.email, name: (p.invitedName as string | null) ?? null })
   }
 
+  // Desired display order: Ladies Open → Mens Open → Mens Intermediate → Mens Beginner.
+  // Any other categories fall after these four in their original sortOrder.
+  const CATEGORY_SORT: Record<string, number> = {
+    "Ladies Open": 0,
+    "Mens Open": 1,
+    "Mens Intermediate": 2,
+    "Mens Beginner": 3,
+  }
+
   // Build MyTeamCategory objects: one per league category, each with 2 slots.
-  const pairingCategories: MyTeamCategory[] = catMeta.map((cat) => {
-    const slot1 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 1)
-    const slot2 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 2)
-    const catInvites = invitesByCategory.get(cat.name) ?? []
-    return {
-      name: cat.name,
-      gender: cat.gender,
-      isFeatureCourt: cat.isFeatureCourt,
-      slots: [slot1, slot2].map((s, idx) => {
-        const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
-        const invite = !player ? (catInvites[idx] ?? null) : null
-        return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
-      }),
-    }
-  })
+  // Derive gender defensively from the name so a wrong DB value can't cause
+  // a "mens" category to render with a female (pink) accent.
+  const pairingCategories: MyTeamCategory[] = catMeta
+    .map((cat) => {
+      const slot1 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 1)
+      const slot2 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 2)
+      const catInvites = invitesByCategory.get(cat.name) ?? []
+
+      // Derive gender from the category name so a stale DB value can't
+      // cause a men's category to display with the ladies (pink) accent.
+      const nameLower = cat.name.toLowerCase()
+      const derivedGender: string = nameLower.startsWith("ladies") || nameLower.startsWith("women")
+        ? "female"
+        : nameLower.startsWith("mixed")
+        ? "mixed"
+        : "male"
+
+      return {
+        name: cat.name,
+        gender: derivedGender,
+        isFeatureCourt: cat.isFeatureCourt,
+        slots: [slot1, slot2].map((s, idx) => {
+          const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
+          const invite = !player ? (catInvites[idx] ?? null) : null
+          return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
+        }),
+      }
+    })
+    .sort((a, b) => {
+      const aOrder = CATEGORY_SORT[a.name] ?? 99
+      const bOrder = CATEGORY_SORT[b.name] ?? 99
+      return aOrder - bOrder
+    })
 
   // Build the ordered slot list: active players, pending invites, empties → 8.
   const slots: MyTeamSlot[] = []

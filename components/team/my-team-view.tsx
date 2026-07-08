@@ -61,7 +61,7 @@ function fmtZAR(amount: number) {
 // ── Section heading with full-width hairline rule ─────────────────────────────
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-4 mb-5">
+    <div className="flex items-center gap-4 mb-3">
       <h2 className="font-heading text-base font-bold uppercase tracking-wide text-foreground whitespace-nowrap">
         {children}
       </h2>
@@ -83,7 +83,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
   const hasOwnerInfo = team.ownerName || team.ownerPhone || team.ownerEmail
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* ── Team identity header ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -287,7 +287,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
             </div>
           )}
         </div>
-        <div className="space-y-6">
+        <div className="space-y-3">
           {pairingCategories.map((cat) => (
             <CategorySection
               key={cat.name}
@@ -351,7 +351,7 @@ function StatPill({
   accent?: string
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-4 py-5 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center px-4 py-3 text-center">
       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
         {label}
       </span>
@@ -397,7 +397,7 @@ function CategorySection({
   return (
     <div>
       {/* Category header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <div className={cn("w-1 self-stretch rounded-full", accentColor)} />
           <span className="text-muted-foreground">
@@ -465,9 +465,9 @@ function CategorySlotRow({
   // Pending invite
   if (!slot.player && slot.inviteEmail) {
     return (
-      <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+      <div className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar className="h-9 w-9 border border-border shrink-0">
+          <Avatar className="h-8 w-8 border border-border shrink-0">
             <AvatarFallback className="bg-secondary text-xs text-muted-foreground">
               {slot.inviteName ? initials(slot.inviteName) : "?"}
             </AvatarFallback>
@@ -494,8 +494,8 @@ function CategorySlotRow({
           teamId={teamId}
           slotsRemaining={slotsRemaining}
           trigger={
-            <button className="flex w-full items-center gap-3 border-b border-border py-3 last:border-0 text-sm text-muted-foreground hover:text-primary transition-colors">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
+            <button className="flex w-full items-center gap-3 border-b border-border py-2 last:border-0 text-sm text-muted-foreground hover:text-primary transition-colors">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
                 <Plus className="h-4 w-4" />
               </div>
               <span>Open slot</span>
@@ -505,8 +505,8 @@ function CategorySlotRow({
       )
     }
     return (
-      <div className="flex items-center gap-3 border-b border-border py-3 last:border-0 text-sm text-muted-foreground">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
+      <div className="flex items-center gap-3 border-b border-border py-2 last:border-0 text-sm text-muted-foreground">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
           <Plus className="h-4 w-4" />
         </div>
         <span>Open slot</span>
@@ -519,10 +519,10 @@ function CategorySlotRow({
   const payBadge = clubPaysFees ? null : player.paid ? "paid" : "unpaid"
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+    <div className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
       <div className="flex items-center gap-3 min-w-0">
-        <Avatar className="h-9 w-9 border border-border shrink-0">
-          <AvatarFallback className="bg-secondary text-sm font-semibold">
+        <Avatar className="h-8 w-8 border border-border shrink-0">
+          <AvatarFallback className="bg-secondary text-xs font-semibold">
             {initials(player.name)}
           </AvatarFallback>
         </Avatar>
