@@ -48,6 +48,7 @@ type Team = {
   homeClubName: string | null
   homeClubLogoUrl: string | null
   homeClubContactEmail: string | null
+  homeClubContactEmail2: string | null
   ownerEmail: string | null
   ownerName: string | null
   avgLi: number
@@ -843,19 +844,35 @@ function EditTeamDialog({
                 ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
                 : ""}
             </p>
-            {team.teamType === "Club Team" &&
-              team.homeClubContactEmail &&
-              ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
-                >
-                  Use venue contact ({team.homeClubContactEmail})
-                </Button>
-              )}
+            {/* Quick-fill buttons for the venue's registered contact emails */}
+            {team.teamType === "Club Team" && (
+              <div className="flex flex-wrap gap-1.5">
+                {team.homeClubContactEmail &&
+                  ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
+                    >
+                      Use contact 1 ({team.homeClubContactEmail})
+                    </Button>
+                  )}
+                {team.homeClubContactEmail2 &&
+                  ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail2.trim().toLowerCase() && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setOwnerEmail(team.homeClubContactEmail2 ?? "")}
+                    >
+                      Use contact 2 ({team.homeClubContactEmail2})
+                    </Button>
+                  )}
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
