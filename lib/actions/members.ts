@@ -61,6 +61,8 @@ export type MemberRow = {
   // Team / club / region / division assignment
   teamId: number | null
   teamName: string | null
+  /** When true the team owner pays fees; individual player rows show no payment. */
+  teamClubPaysFees: boolean | null
   clubId: number | null
   clubName: string | null
   regionId: number | null
@@ -104,9 +106,11 @@ export async function listMembers(): Promise<MemberRow[]> {
   const userIds = rows.map((r) => r.id)
   if (userIds.length === 0) return []
 
-  // Last login: max session.createdAt per user
+  // Last login: max session.updatedAt per user. Better Auth bumps updatedAt on
+  // every request — createdAt is only written once at session creation and never
+  // changes, so it would show the original login date not the most recent activity.
   const lastLogins = await db
-    .select({ userId: session.userId, lastLogin: max(session.createdAt) })
+    .select({ userId: session.userId, lastLogin: max(session.updatedAt) })
     .from(session)
     .groupBy(session.userId)
   const loginMap = new Map(lastLogins.map((l) => [l.userId, l.lastLogin]))
@@ -117,6 +121,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       playerId: teamMembers.playerId,
       teamId: teams.id,
       teamName: teams.name,
+      teamClubPaysFees: teams.clubPaysFees,
       clubId: clubs.id,
       clubName: clubs.name,
       regionId: regions.id,
@@ -189,6 +194,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       avatarUrl: r.avatarUrl ?? null,
       teamId: ms?.teamId ?? null,
       teamName: ms?.teamName ?? null,
+      teamClubPaysFees: ms?.teamClubPaysFees ?? null,
       clubId: ms?.clubId ?? null,
       clubName: ms?.clubName ?? null,
       regionId: ms?.regionId ?? null,
@@ -200,6 +206,91 @@ export async function listMembers(): Promise<MemberRow[]> {
       registeredBy: null, // not stored yet — placeholder for future
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Unregistered contacts — club contacts / team owner emails with no account
+// ---------------------------------------------------------------------------
+
+export type UnregisteredContact = {
+  key: string
+  name: string | null
+  email: string
+  phone: string | null
+  source: "club_contact" | "club_contact2" | "team_owner"
+  clubId: number | null
+  clubName: string | null
+  ownedTeamId: number | null
+  ownedTeamName: string | null
+}
+
+export async function listUnregisteredContacts(): Promise<UnregisteredContact[]> {
+  await requireMemberManager()
+
+  const existingUsers = await db.select({ email: user.email }).from(user)
+  const knownEmails = new Set(existingUsers.map((u) => u.email.trim().toLowerCase()))
+
+  const clubRows = await db
+    .select({ id: clubs.id, name: clubs.name, contactName: clubs.contactName, contactEmail: clubs.contactEmail, contactEmail2: clubs.contactEmail2, contactPhone: clubs.contactPhone })
+    .from(clubs)
+
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail })
+    .from(teams)
+    .where(eq(teams.status, "active"))
+
+  const contacts: UnregisteredContact[] = []
+  const seen = new Set<string>()
+
+  function push(c: UnregisteredContact) {
+    const norm = c.email.trim().toLowerCase()
+    if (!norm || knownEmails.has(norm) || seen.has(norm)) return
+    seen.add(norm)
+    contacts.push({ ...c, email: norm })
+  }
+
+  for (const club of clubRows) {
+    if (club.contactEmail) {
+      push({ key: `club-${club.id}-1`, name: club.contactName ?? null, email: club.contactEmail, phone: club.contactPhone ?? null, source: "club_contact", clubId: club.id, clubName: club.name, ownedTeamId: null, ownedTeamName: null })
+    }
+    if (club.contactEmail2) {
+      push({ key: `club-${club.id}-2`, name: null, email: club.contactEmail2, phone: null, source: "club_contact2", clubId: club.id, clubName: club.name, ownedTeamId: null, ownedTeamName: null })
+    }
+  }
+
+  for (const team of teamRows) {
+    if (team.ownerEmail) {
+      push({ key: `team-${team.id}-1`, name: null, email: team.ownerEmail, phone: null, source: "team_owner", clubId: null, clubName: null, ownedTeamId: team.id, ownedTeamName: team.name })
+    }
+  }
+
+  return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
+}
+
+export async function createAccountForContact(input: {
+  name: string
+  email: string
+  phone?: string | null
+  role?: Role
+}): Promise<{ ok: boolean; error?: string; password?: string }> {
+  await requireMemberManager()
+
+  const res = await provisionUser({ name: input.name.trim(), email: input.email, role: input.role ?? "org_admin", password: undefined })
+  if (!res.ok) return res
+
+  const phone = input.phone?.trim() || null
+  if (phone) {
+    const [existing] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, res.userId)).limit(1)
+    if (existing) {
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, res.userId))
+    } else {
+      await db.insert(userMeta).values({ userId: res.userId, role: input.role ?? "org_admin", phone })
+    }
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true, password: res.password }
 }
 
 export async function setMemberRole(userId: string, role: Role) {

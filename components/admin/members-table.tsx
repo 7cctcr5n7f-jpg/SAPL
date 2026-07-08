@@ -15,7 +15,9 @@ import {
   updateMemberPaid,
   resendInviteEmail,
   deleteMember,
+  createAccountForContact,
   type MemberRow,
+  type UnregisteredContact,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -34,6 +36,10 @@ import {
   SquarePen,
   Mars,
   Venus,
+  Crown,
+  Clock,
+  UserPlus,
+  Building2,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -81,6 +87,19 @@ const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: st
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—"
+  return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+function fmtRelative(iso: string | null) {
+  if (!iso) return "Never"
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return "Just now"
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 7) return `${d}d ago`
   return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
 }
 
@@ -323,25 +342,38 @@ type StatCard = {
 
 function SummaryCards({
   members,
+  unregisteredCount,
   activeFilter,
   onFilter,
 }: {
   members: MemberRow[]
+  unregisteredCount: number
   activeFilter: { key: FilterKey; value: string } | null
   onFilter: (key: FilterKey, value: string) => void
 }) {
+  // Outstanding = explicitly outstanding OR on a team with no payment record
+  const outstandingCount = members.filter((m) => {
+    if (m.paymentStatus === "outstanding") return true
+    if (m.paymentStatus === "paid") return false
+    if (m.teamId != null) {
+      if (m.teamClubPaysFees) return false // team pays, player doesn't owe
+      return true // individual player owes
+    }
+    return false
+  }).length
+
   const cards: StatCard[] = [
     { label: "Total Members", value: members.length },
     { label: "Assigned to Teams", value: members.filter((m) => m.teamId != null).length, filterKey: "team", filterValue: "__assigned__", dot: "bg-emerald-500" },
-    { label: "Unassigned", value: members.filter((m) => m.teamId == null).length, filterKey: "team", filterValue: "__unassigned__", dot: "bg-amber-400" },
     { label: "Paid", value: members.filter((m) => m.paymentStatus === "paid").length, filterKey: "paymentStatus", filterValue: "paid", dot: "bg-emerald-500" },
-    { label: "Outstanding", value: members.filter((m) => m.paymentStatus === "outstanding").length, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
+    { label: "Outstanding", value: outstandingCount, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
     { label: "Linked Accounts", value: members.filter((m) => m.accountLinked === "linked").length, filterKey: "status", filterValue: "__linked__", dot: "bg-emerald-500" },
-    { label: "Not Registered", value: members.filter((m) => m.accountLinked === "not_registered").length, filterKey: "status", filterValue: "__not_registered__", dot: "bg-slate-300" },
+    { label: "Pending Invites", value: members.filter((m) => m.accountLinked === "invited").length, filterKey: "status", filterValue: "__invited__", dot: "bg-amber-300" },
+    { label: "Pending Accounts", value: unregisteredCount, dot: "bg-amber-400" },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {cards.map((c) => {
         const isActive = activeFilter != null && activeFilter.key === c.filterKey && activeFilter.value === c.filterValue
         const clickable = c.filterKey != null
@@ -352,16 +384,16 @@ function SummaryCards({
             disabled={!clickable}
             onClick={() => c.filterKey && onFilter(c.filterKey, c.filterValue!)}
             className={cn(
-              "rounded-lg border p-3 text-left transition-colors",
+              "rounded-lg border px-3 py-2 text-left transition-colors",
               clickable ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : "cursor-default",
               isActive ? "border-primary bg-primary/5" : "border-border bg-card",
             )}
           >
-            <div className="flex items-center gap-1.5">
-              {c.dot && <span className={cn("h-2 w-2 rounded-full shrink-0", c.dot)} />}
-              <span className="text-xs text-muted-foreground leading-tight">{c.label}</span>
+            <div className="flex items-center gap-1">
+              {c.dot && <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", c.dot)} />}
+              <span className="text-[11px] text-muted-foreground leading-tight whitespace-nowrap">{c.label}</span>
             </div>
-            <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">{c.value}</div>
+            <div className="mt-0.5 text-xl font-bold tabular-nums text-foreground">{c.value}</div>
           </button>
         )
       })}
@@ -725,13 +757,17 @@ export function MembersTable({
   members: initialMembers,
   allTeams,
   currentUserId,
+  unregisteredContacts: initialUnregistered = [],
 }: {
   members: MemberRow[]
   allTeams: { id: number; name: string }[]
   currentUserId: string
+  unregisteredContacts?: UnregisteredContact[]
 }) {
   const router = useRouter()
   const [members, setMembers] = useState<MemberRow[]>(initialMembers)
+  const [unregistered, setUnregistered] = useState<UnregisteredContact[]>(initialUnregistered)
+  const [completingContact, setCompletingContact] = useState<UnregisteredContact | null>(null)
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
@@ -834,7 +870,7 @@ export function MembersTable({
   return (
     <div className="flex flex-col gap-4">
       {/* Summary cards */}
-      <SummaryCards members={members} activeFilter={summaryFilter} onFilter={handleSummaryFilter} />
+      <SummaryCards members={members} unregisteredCount={unregistered.length} activeFilter={summaryFilter} onFilter={handleSummaryFilter} />
 
       {/* Search + filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -871,61 +907,87 @@ export function MembersTable({
         </span>
       </div>
 
-      {/* Table: Name, Role, Team, PT Rating, Payment + Edit */}
+      {/* Table */}
       <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/60 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2.5 w-8" />
-              <th className="px-3 py-2.5 min-w-[180px]">Name</th>
-              <th className="px-3 py-2.5 min-w-[130px]">Role</th>
-              <th className="px-3 py-2.5 min-w-[160px]">Team</th>
-              <th className="px-3 py-2.5 w-20">Gender</th>
-              <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
-              <th className="px-3 py-2.5 w-16 text-right">Edit</th>
+              <th className="px-2 py-2.5 w-9" />
+              <th className="px-2 py-2.5 w-[17%]">Name</th>
+              <th className="px-2 py-2.5 w-[13%]">Role</th>
+              <th className="px-2 py-2.5 w-[12%]">Team</th>
+              <th className="px-2 py-2.5 w-[13%]">Team Owner</th>
+              <th className="px-2 py-2.5 w-[7%]">Gender</th>
+              <th className="px-2 py-2.5 w-[8%] text-right">PT Rtg</th>
+              <th className="px-2 py-2.5 w-[9%]">Payment</th>
+              <th className="px-2 py-2.5 w-[12%]">Last Login</th>
+              <th className="px-2 py-2.5 w-10 text-right">Edit</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((m) => {
               const isSelf = m.id === currentUserId
-              const payment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
+              const isAssigned = m.teamId != null
+
+              // Payment display: when team pays fees (clubPaysFees=true) only the
+              // team owner sees a payment status; players show —. When individual
+              // pays, every assigned member defaults to Pending if no record yet.
+              let displayPayment: typeof PAYMENT_BADGE[string] | null = null
+              if (m.teamId != null) {
+                if (m.teamClubPaysFees) {
+                  // individual players don't owe — show nothing
+                } else {
+                  displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                }
+              } else {
+                displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
+              }
 
               return (
                 <tr
                   key={m.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                  className={cn(
+                    "border-b border-border last:border-0 transition-colors",
+                    isAssigned
+                      ? "bg-emerald-50/40 hover:bg-emerald-50/70 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20"
+                      : "hover:bg-muted/30",
+                  )}
                 >
                   {/* Avatar */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-3">
                     {m.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.avatarUrl} alt={m.name} className="h-7 w-7 rounded-full object-cover" />
+                      <img src={m.avatarUrl} alt={m.name} className="h-6 w-6 rounded-full object-cover" />
                     ) : (
-                      <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center">
-                        <UserCircle className="h-4 w-4 text-muted-foreground" />
+                      <div className="h-6 w-6 rounded-full bg-secondary flex items-center justify-center">
+                        <UserCircle className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                     )}
                   </td>
 
                   {/* Name */}
-                  <td className="px-3 py-2.5">
-                    <div className="font-medium text-foreground leading-tight">
-                      {m.name}
-                      {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
+                  <td className="px-2 py-3 overflow-hidden">
+                    <div className="flex items-center gap-1">
+                      {isAssigned && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title={`On ${m.teamName}`} />}
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground leading-tight truncate">
+                          {m.name}
+                          {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
+                        </div>
+                        {m.playerName && m.playerName !== m.name && (
+                          <div className="text-[11px] text-muted-foreground leading-tight truncate">{m.playerName}</div>
+                        )}
+                      </div>
                     </div>
-                    {m.playerName && m.playerName !== m.name && (
-                      <div className="text-[11px] text-muted-foreground leading-tight">{m.playerName}</div>
-                    )}
                   </td>
 
-                  {/* Role — inline select */}
-                  <td className="px-3 py-2.5">
+                  {/* Role */}
+                  <td className="px-2 py-3">
                     <RoleCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
                   </td>
 
-                  {/* Team — inline searchable dropdown */}
-                  <td className="px-3 py-2.5">
+                  {/* Team */}
+                  <td className="px-2 py-3 overflow-hidden">
                     <TeamCell
                       member={m}
                       allTeams={allTeams}
@@ -933,40 +995,60 @@ export function MembersTable({
                     />
                   </td>
 
+                  {/* Team owner */}
+                  <td className="px-2 py-3 overflow-hidden">
+                    {m.ownedTeamId ? (
+                      <span className="inline-flex items-center gap-1 text-xs truncate">
+                        <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+                        <span className="truncate">{m.ownedTeamName}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No</span>
+                    )}
+                  </td>
+
                   {/* Gender */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-3">
                     {m.gender === "male" ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
-                        <Mars className="h-3.5 w-3.5 shrink-0" /> M
+                      <span className="inline-flex items-center gap-0.5 text-xs text-blue-600">
+                        <Mars className="h-3 w-3 shrink-0" /> M
                       </span>
                     ) : m.gender === "female" ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-pink-500">
-                        <Venus className="h-3.5 w-3.5 shrink-0" /> F
+                      <span className="inline-flex items-center gap-0.5 text-xs text-pink-500">
+                        <Venus className="h-3 w-3 shrink-0" /> F
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
 
-                  {/* PT Rating — inline editable */}
-                  <td className="px-3 py-2.5 text-right">
-                    <RatingCell
-                      member={m}
-                      onSaved={(val) => patch(m.id, { playtomicRating: val })}
-                    />
+                  {/* PT Rating */}
+                  <td className="px-2 py-3 text-right">
+                    <RatingCell member={m} onSaved={(val) => patch(m.id, { playtomicRating: val })} />
                   </td>
 
-                  {/* Payment status */}
-                  <td className="px-3 py-2.5">
-                    {payment ? (
-                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", payment.cls)}>{payment.label}</span>
+                  {/* Payment */}
+                  <td className="px-2 py-3">
+                    {displayPayment ? (
+                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", displayPayment.cls)}>{displayPayment.label}</span>
                     ) : (
                       <span className="text-xs text-border">—</span>
                     )}
                   </td>
 
-                  {/* Edit button */}
-                  <td className="px-3 py-2.5 text-right">
+                  {/* Last Login */}
+                  <td className="px-2 py-3 overflow-hidden">
+                    <span
+                      className="inline-flex items-center gap-0.5 text-xs text-muted-foreground whitespace-nowrap"
+                      title={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("en-ZA") : "Never logged in"}
+                    >
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {fmtRelative(m.lastLoginAt)}
+                    </span>
+                  </td>
+
+                  {/* Edit */}
+                  <td className="px-2 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => setEditMember(m)}
@@ -979,12 +1061,71 @@ export function MembersTable({
                 </tr>
               )
             })}
+
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">
                   {hasFilters ? "No members match the current filters." : "No members yet."}
                 </td>
               </tr>
+            )}
+
+            {/* Pending / unregistered contacts */}
+            {unregistered.length > 0 && !summaryFilter && !Object.values(filters).some(Boolean) && (
+              <>
+                <tr>
+                  <td colSpan={10} className="px-3 pt-5 pb-1.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Pending accounts — email on file, no account yet
+                    </div>
+                  </td>
+                </tr>
+                {unregistered.map((c) => (
+                  <tr key={c.key} className="border-b border-border/40 bg-amber-50/30 dark:bg-amber-950/10 opacity-80 hover:opacity-100 transition-opacity">
+                    <td className="px-2 py-2.5">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-dashed border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+                        <UserPlus className="h-3 w-3 text-amber-500" />
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 overflow-hidden">
+                      <div className="font-medium text-foreground/80 truncate text-sm">{c.name ?? <span className="italic text-muted-foreground text-xs">No name</span>}</div>
+                      <div className="text-xs text-muted-foreground truncate">{c.email}</div>
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <span className="rounded px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/40">No account</span>
+                    </td>
+                    <td className="px-2 py-2.5 text-xs text-muted-foreground">—</td>
+                    <td className="px-2 py-2.5">
+                      {c.ownedTeamId ? (
+                        <span className="inline-flex items-center gap-1 text-xs">
+                          <Crown className="h-3 w-3 text-amber-500" />
+                          <span className="truncate">{c.ownedTeamName}</span>
+                        </span>
+                      ) : c.clubName ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Building2 className="h-3 w-3" />
+                          <span className="truncate">{c.clubName}</span>
+                        </span>
+                      ) : <span className="text-xs text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-2 py-2.5 text-xs text-muted-foreground">—</td>
+                    <td className="px-2 py-2.5 text-xs text-muted-foreground text-right">—</td>
+                    <td className="px-2 py-2.5 text-xs text-muted-foreground">—</td>
+                    <td className="px-2 py-2.5 text-xs text-muted-foreground">Never</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <button
+                        type="button"
+                        title="Complete account"
+                        onClick={() => setCompletingContact(c)}
+                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50 transition-colors"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </>
             )}
           </tbody>
         </table>
@@ -992,6 +1133,19 @@ export function MembersTable({
 
       {/* Temp password modal */}
       {pwModal && <TempPasswordModal data={pwModal} onClose={() => setPwModal(null)} />}
+
+      {/* Complete account dialog */}
+      {completingContact && (
+        <CompleteAccountDialog
+          contact={completingContact}
+          onClose={() => setCompletingContact(null)}
+          onCreated={(password) => {
+            setPwModal({ name: completingContact.name ?? completingContact.email, email: completingContact.email, password })
+            setUnregistered((prev) => prev.filter((c) => c.key !== completingContact.key))
+            setCompletingContact(null)
+          }}
+        />
+      )}
 
       {/* Member edit panel */}
       {editMember && (
@@ -1005,6 +1159,97 @@ export function MembersTable({
           onDeleted={() => { setMembers((prev) => prev.filter((m) => m.id !== editMember.id)) }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Complete account dialog ──────────────────────────────────────────────────
+
+const ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "org_admin", label: "Club Admin" },
+  { value: "captain", label: "Captain" },
+  { value: "player", label: "Player" },
+  { value: "super_admin", label: "Main Admin" },
+]
+
+function CompleteAccountDialog({
+  contact,
+  onClose,
+  onCreated,
+}: {
+  contact: UnregisteredContact
+  onClose: () => void
+  onCreated: (password: string) => void
+}) {
+  const [name, setName] = useState(contact.name ?? "")
+  const [phone, setPhone] = useState(contact.phone ?? "")
+  const [role, setRole] = useState<Role>("org_admin")
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    start(async () => {
+      const res = await createAccountForContact({ name, email: contact.email, phone: phone || null, role })
+      if (res.ok && res.password) {
+        onCreated(res.password)
+      } else {
+        setError(res.error ?? "Could not create account")
+      }
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Complete account</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{contact.email}</p>
+            {contact.ownedTeamName && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                <Crown className="h-3 w-3" /> Team owner of {contact.ownedTeamName}
+              </p>
+            )}
+            {contact.clubName && !contact.ownedTeamName && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3" /> Contact for {contact.clubName}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Full name</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" required className="h-9 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Contact number</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+27 82 000 0000" type="tel" className="h-9 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={pending}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={pending || !name.trim()}>
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create account"}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
