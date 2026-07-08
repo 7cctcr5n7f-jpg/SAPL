@@ -153,6 +153,7 @@ export async function updateTeamRegistration(input: {
   managerPlayerId?: string | null
   clubPaysFees?: boolean
   ownerEmail?: string | null
+  ownerEmail2?: string | null
 }) {
   const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId, homeClubId: teams.homeClubId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team) return { ok: false, error: "Team not found" }
@@ -176,6 +177,13 @@ export async function updateTeamRegistration(input: {
       return { ok: false, error: "Enter a valid team owner email" }
     }
     patch.ownerEmail = e || null
+  }
+  if (input.ownerEmail2 !== undefined) {
+    const e = (input.ownerEmail2 ?? "").trim().toLowerCase()
+    if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      return { ok: false, error: "Enter a valid second manager email" }
+    }
+    patch.ownerEmail2 = e || null
   }
   if (input.homeClubId !== undefined) {
     patch.homeClubId = input.homeClubId

@@ -4,6 +4,8 @@ import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixt
 import { and, eq, ne, or, desc } from "drizzle-orm"
 import { getTeamReadiness, suggestDivision, type TeamReadiness } from "@/lib/team-readiness"
 import { getPlayerFee } from "@/lib/queries"
+import { getTeamPairingData, type PairingCategory } from "@/lib/queries-dashboard"
+import { CATEGORY_RULES } from "@/lib/constants"
 
 export type MyTeamSlot =
   | {
@@ -68,6 +70,8 @@ export type MyTeamView = {
   otherTeams: { id: number; name: string }[]
   /** Whether the viewer may add players (owner / captain / manager / admin). */
   canManage: boolean
+  /** Pairings grouped by category for the squad section. */
+  pairingCategories: PairingCategory[]
 }
 
 const SQUAD_SIZE = 8
@@ -295,6 +299,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(eq(standings.teamId, teamId))
     .limit(1)
 
+  // Pairing categories for the grouped squad view.
+  const catNames = CATEGORY_RULES.map((c) => c.name)
+  const pairingData = await getTeamPairingData(teamId, catNames)
+
   return {
     team: {
       id: team.id,
@@ -315,5 +323,6 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     standing: standing ?? null,
     otherTeams,
     canManage: opts?.canManage ?? false,
+    pairingCategories: pairingData?.categories ?? [],
   }
 }

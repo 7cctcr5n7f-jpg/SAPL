@@ -49,6 +49,7 @@ type Team = {
   homeClubLogoUrl: string | null
   homeClubContactEmail: string | null
   ownerEmail: string | null
+  ownerEmail2: string | null
   ownerName: string | null
   avgLi: number
   playerCount: number
@@ -707,6 +708,7 @@ function EditTeamDialog({
   const [ownerEmail, setOwnerEmail] = useState(
     team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
   )
+  const [ownerEmail2, setOwnerEmail2] = useState(team.ownerEmail2 ?? "")
 
   // When a home club is set, the region is inherited from it and can't be edited.
   const hasHomeClub = Boolean(homeClubId)
@@ -729,6 +731,7 @@ function EditTeamDialog({
         saplRegion: homeClubId ? undefined : saplRegion || null,
         clubPaysFees,
         ownerEmail: ownerEmail.trim() || null,
+        ownerEmail2: ownerEmail2.trim() || null,
       })
       if (res.ok) {
         toast.success("Team updated")
@@ -856,6 +859,23 @@ function EditTeamDialog({
                   Use venue contact ({team.homeClubContactEmail})
                 </Button>
               )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editOwnerEmail2">Second manager email <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="editOwnerEmail2"
+                type="email"
+                value={ownerEmail2}
+                placeholder="co-manager@example.com"
+                className="pl-9"
+                onChange={(e) => setOwnerEmail2(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A second person who signs in with this email gets the same full team-management access as the primary owner. Leave blank to remove.
+            </p>
           </div>
         </div>
         <DialogFooter>

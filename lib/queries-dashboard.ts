@@ -1162,6 +1162,7 @@ const teamRowFields = {
     clubPaysFees: teams.clubPaysFees,
     managerUserId: teams.managerUserId,
     ownerEmail: teams.ownerEmail,
+    ownerEmail2: teams.ownerEmail2,
     avgLi: teams.avgLi,
     tpr: teams.tpr,
     playerCount: teams.playerCount,

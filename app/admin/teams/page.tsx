@@ -137,6 +137,7 @@ export default async function AdminTeamsPage() {
       homeClubLogoUrl: club?.logoUrl ?? null,
       homeClubContactEmail: club?.contactEmail ?? null,
       ownerEmail: row.team.ownerEmail ?? null,
+      ownerEmail2: row.team.ownerEmail2 ?? null,
       ownerName,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,

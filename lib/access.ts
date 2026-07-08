@@ -122,7 +122,7 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     ? await db
         .select({ id: teams.id, name: teams.name })
         .from(teams)
-        .where(sql`lower(${teams.ownerEmail}) = ${email}`)
+        .where(sql`lower(${teams.ownerEmail}) = ${email} OR lower(${teams.ownerEmail2}) = ${email}`)
     : []
   const captainTeams = await db
     .select({ id: teams.id, name: teams.name })

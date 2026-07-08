@@ -29,8 +29,12 @@ import {
   Clock,
   UserPlus,
   ExternalLink,
+  Mars,
+  Venus,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { MyTeamView as MyTeamViewData, MyTeamSlot } from "@/lib/my-team"
+import type { PairingCategory } from "@/lib/queries-dashboard"
 
 function initials(name: string) {
   return name
@@ -48,7 +52,7 @@ function fmtDate(iso: string | null) {
 }
 
 export function MyTeamView({ data }: { data: MyTeamViewData }) {
-  const { team, readiness, avgRating, slots, payment, nextFixture, standing, otherTeams, canManage } = data
+  const { team, readiness, avgRating, slots, payment, nextFixture, standing, otherTeams, canManage, pairingCategories } = data
   const filled = slots.filter((s) => s.kind !== "empty").length
   const slotsRemaining = readiness.maxPlayers - filled
 
@@ -151,17 +155,32 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
         </Card>
       ) : null}
 
-      {/* Roster */}
+      {/* Squad — grouped by category */}
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="heading text-lg text-foreground">Squad</h2>
           {canManage && slotsRemaining > 0 ? <MyTeamAddPlayer teamId={team.id} slotsRemaining={slotsRemaining} /> : null}
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {slots.map((slot, i) => (
-            <RosterSlot key={i} slot={slot} teamId={team.id} canManage={canManage} slotsRemaining={slotsRemaining} />
-          ))}
-        </div>
+        {pairingCategories.length > 0 ? (
+          <div className="space-y-4">
+            {pairingCategories.map((cat) => (
+              <CategorySection
+                key={cat.category}
+                cat={cat}
+                teamId={team.id}
+                canManage={canManage}
+                slotsRemaining={slotsRemaining}
+                clubPaysFees={payment.clubPaysFees}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {slots.map((slot, i) => (
+              <RosterSlot key={i} slot={slot} teamId={team.id} canManage={canManage} slotsRemaining={slotsRemaining} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -366,5 +385,96 @@ function RosterSlot({
         ) : null}
       </div>
     </Card>
+  )
+}
+
+// ── Category-grouped squad section ────────────────────────────────────────────
+
+const CATEGORY_META: Record<string, { gender: "male" | "female"; session: 1 | 2; featureCourt: boolean }> = {
+  "Mens Beginner": { gender: "male", session: 1, featureCourt: false },
+  "Mens Intermediate": { gender: "male", session: 1, featureCourt: false },
+  "Mens Open": { gender: "male", session: 2, featureCourt: true },
+  "Ladies Open": { gender: "female", session: 2, featureCourt: true },
+}
+
+function CategorySection({
+  cat,
+  teamId,
+  canManage,
+  slotsRemaining,
+  clubPaysFees,
+}: {
+  cat: PairingCategory
+  teamId: number
+  canManage: boolean
+  slotsRemaining: number
+  clubPaysFees: boolean
+}) {
+  const meta = CATEGORY_META[cat.category]
+  const isFemale = meta?.gender === "female"
+  const isFeature = meta?.featureCourt ?? false
+  const GenderIcon = isFemale ? Venus : Mars
+  const allSlots = cat.pairs.flat()
+  const filledCount = allSlots.filter((s) => s.player !== null).length
+
+  return (
+    <div>
+      {/* Category header */}
+      <div className="mb-2 flex items-center gap-2">
+        <GenderIcon className={cn("h-3.5 w-3.5 shrink-0", isFemale ? "text-pink-500" : "text-sky-500")} />
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">{cat.category}</h3>
+        {isFeature && (
+          <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[10px] font-normal">
+            Feature
+          </Badge>
+        )}
+        <span className="ml-auto text-[11px] text-muted-foreground">{filledCount}/2 filled</span>
+      </div>
+
+      {/* Pair of slots side by side */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {allSlots.map((slot) => {
+          const p = slot.player
+          if (!p) {
+            return (
+              <div
+                key={`${slot.pairIndex}-${slot.slotIndex}`}
+                className="flex min-h-[64px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+              >
+                Open slot
+              </div>
+            )
+          }
+          return (
+            <Card key={`${slot.pairIndex}-${slot.slotIndex}`} className="flex items-center gap-3 p-3">
+              <Avatar className="h-9 w-9 shrink-0 border border-border">
+                <AvatarFallback className="bg-secondary text-xs">{initials(p.name)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{p.name}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {p.playtomicRating != null ? (
+                    <span className="flex items-center gap-0.5">
+                      <Star className="h-3 w-3" /> {p.playtomicRating.toFixed(1)}
+                    </span>
+                  ) : (
+                    <span>Unrated</span>
+                  )}
+                </div>
+              </div>
+              {(clubPaysFees || p.paid) ? (
+                <Badge variant="secondary" className="shrink-0 gap-1 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3 w-3" /> Paid
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="shrink-0 text-amber-600 dark:text-amber-400">
+                  Unpaid
+                </Badge>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+    </div>
   )
 }
