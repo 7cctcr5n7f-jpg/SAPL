@@ -116,16 +116,17 @@ export default async function AdminTeamsPage() {
     }
     const outstanding = Math.max(teamTotal - amountPaid, 0)
 
-    // Resolve the owner's display name from their email so the UI can show
-    // "Ruan Broe" instead of the raw email address.
-    let ownerName: string | null = null
-    if (row.team.ownerEmail) {
+    // ownerName: prefer the name stored directly on the team row (set via Edit
+    // Team dialog or sign-up). Fall back to resolving from the user table only
+    // when the stored name is blank, so existing data keeps working.
+    let ownerName: string | null = row.team.ownerName?.trim() || null
+    if (!ownerName && row.team.ownerEmail) {
       const [ownerUser] = await db
         .select({ firstName: userTable.firstName, lastName: userTable.lastName })
         .from(userTable)
         .where(eq(userTable.email, row.team.ownerEmail))
         .limit(1)
-      if (ownerUser) ownerName = `${ownerUser.firstName} ${ownerUser.lastName}`.trim()
+      if (ownerUser) ownerName = `${ownerUser.firstName} ${ownerUser.lastName}`.trim() || null
     }
 
     teamData.push({
@@ -139,6 +140,7 @@ export default async function AdminTeamsPage() {
       ownerEmail: row.team.ownerEmail ?? null,
       ownerEmail2: row.team.ownerEmail2 ?? null,
       ownerName,
+      ownerPhone: row.team.ownerPhone ?? null,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
       maxPlayers: row.team.maxPlayers,
