@@ -136,6 +136,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       clubLogoUrl = c.logoUrl
     }
   }
+  console.log("[v0] getMyTeamView: team found, captainUserId=", team.captainUserId, "ownerEmail=", team.ownerEmail)
   let captainName: string | null = null
   let captainEmail: string | null = null
   let captainPhone: string | null = null
@@ -311,8 +312,11 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .limit(1)
 
   // Pairing categories for the grouped squad view.
+  console.log("[v0] getMyTeamView: before CATEGORY_RULES", typeof CATEGORY_RULES, Array.isArray(CATEGORY_RULES))
   const catNames = CATEGORY_RULES.map((c) => c.name)
+  console.log("[v0] getMyTeamView: catNames", catNames)
   const pairingData = await getTeamPairingData(teamId, catNames)
+  console.log("[v0] getMyTeamView: pairingData", pairingData ? "ok" : "null")
 
   return {
     team: {
