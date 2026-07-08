@@ -2,8 +2,8 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players, categories, teamPairings } from "@/lib/db/schema"
-import { eq, and, asc, desc, max, sql, gte, lte } from "drizzle-orm"
+import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, account, teamInvites, players, categories, teamPairings } from "@/lib/db/schema"
+import { eq, and, asc, desc, sql, gte, lte } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -82,7 +82,9 @@ export type MemberRow = {
 export async function listMembers(): Promise<MemberRow[]> {
   await requireMemberManager()
 
-  // Core user + meta query
+  // Core user + meta query — also fetches lastActiveAt which is stamped on
+  // every authenticated request in getCurrentUser(), making it the reliable
+  // single source of truth for "Last Login" rather than session timestamps.
   const rows = await db
     .select({
       id: user.id,
@@ -94,6 +96,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       firstName: user.firstName,
       lastName: user.lastName,
       createdAt: user.createdAt,
+      lastActiveAt: user.lastActiveAt,
       gender: user.gender,
       city: user.city,
       province: user.province,
@@ -109,21 +112,6 @@ export async function listMembers(): Promise<MemberRow[]> {
 
   const userIds = rows.map((r) => r.id)
   if (userIds.length === 0) return []
-
-  // Last login: take the maximum of GREATEST(createdAt, updatedAt) across all
-  // sessions for each user.
-  //  - createdAt is written once when a new session is created (i.e. a fresh login).
-  //  - updatedAt is bumped by Better Auth on activity (subject to updateAge).
-  // Using GREATEST ensures that a fresh sign-in today (new createdAt) is always
-  // preferred over a stale updatedAt from a session that hasn't been refreshed yet.
-  const lastLogins = await db
-    .select({
-      userId: session.userId,
-      lastLogin: max(sql<Date>`GREATEST(${session.createdAt}, ${session.updatedAt})`),
-    })
-    .from(session)
-    .groupBy(session.userId)
-  const loginMap = new Map(lastLogins.map((l) => [l.userId, l.lastLogin]))
 
   // Team membership: one active team_member row per user (join to team → club → region → division)
   const membershipRows = await db
@@ -190,7 +178,6 @@ export async function listMembers(): Promise<MemberRow[]> {
 
   return rows.map((r) => {
     const ms = membershipMap.get(r.id)
-    const rawLogin = loginMap.get(r.id)
     const hasAccount = accountMap.get(r.id)
     const payStatus = toPaymentStatus(paymentMap.get(r.id))
 
@@ -210,7 +197,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       status: memberStatus,
       playerName: r.firstName ? `${r.firstName} ${r.lastName ?? ""}`.trim() : null,
       createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
-      lastLoginAt: rawLogin ? (rawLogin instanceof Date ? rawLogin : new Date(rawLogin)).toISOString() : null,
+      lastLoginAt: r.lastActiveAt ? (r.lastActiveAt instanceof Date ? r.lastActiveAt : new Date(r.lastActiveAt)).toISOString() : null,
       hasPermissionOverride: r.permissions != null,
       gender: r.gender ?? null,
       city: r.city ?? null,
