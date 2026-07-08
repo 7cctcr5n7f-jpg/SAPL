@@ -2,12 +2,13 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players } from "@/lib/db/schema"
-import { eq, and, asc, desc, max, sql } from "drizzle-orm"
+import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players, categories, teamPairings } from "@/lib/db/schema"
+import { eq, and, asc, desc, max, sql, gte, lte } from "drizzle-orm"
 import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
+
 import {
   PERMISSIONS,
   ROLE_DEFAULTS,
@@ -61,6 +62,8 @@ export type MemberRow = {
   // Team / club / region / division assignment
   teamId: number | null
   teamName: string | null
+  /** When true the team owner pays fees; individual player rows show no payment. */
+  teamClubPaysFees: boolean | null
   clubId: number | null
   clubName: string | null
   regionId: number | null
@@ -68,9 +71,12 @@ export type MemberRow = {
   divisionId: number | null
   divisionName: string | null
   // Payment & account status
-  paymentStatus: "paid" | "pending" | "outstanding" | null
+  paymentStatus: "paid" | "outstanding" | null
   accountLinked: "linked" | "invited" | "not_registered"
   registeredBy: string | null
+  /** Team this member is the primary owner of (matched via teams.ownerEmail). */
+  ownedTeamId: number | null
+  ownedTeamName: string | null
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
@@ -104,9 +110,11 @@ export async function listMembers(): Promise<MemberRow[]> {
   const userIds = rows.map((r) => r.id)
   if (userIds.length === 0) return []
 
-  // Last login: max session.createdAt per user
+  // Last login: max session.updatedAt per user. Better Auth bumps updatedAt on
+  // every request — createdAt is only written once at session creation and never
+  // changes, so it would show the original login date not the most recent activity.
   const lastLogins = await db
-    .select({ userId: session.userId, lastLogin: max(session.createdAt) })
+    .select({ userId: session.userId, lastLogin: max(session.updatedAt) })
     .from(session)
     .groupBy(session.userId)
   const loginMap = new Map(lastLogins.map((l) => [l.userId, l.lastLogin]))
@@ -117,6 +125,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       playerId: teamMembers.playerId,
       teamId: teams.id,
       teamName: teams.name,
+      teamClubPaysFees: teams.clubPaysFees,
       clubId: clubs.id,
       clubName: clubs.name,
       regionId: regions.id,
@@ -131,6 +140,24 @@ export async function listMembers(): Promise<MemberRow[]> {
     .leftJoin(divisions, eq(divisions.id, teams.divisionId))
     .where(eq(teamMembers.status, "active"))
   const membershipMap = new Map(membershipRows.map((r) => [r.playerId, r]))
+
+  // Owned teams: match teams.ownerEmail OR teams.coOwnerEmail to each user's email.
+  // This is the single source of truth — teams.ownerEmail drives access AND display.
+  const allOwnedTeams = await db
+    .select({ ownerEmail: teams.ownerEmail, coOwnerEmail: teams.coOwnerEmail, teamId: teams.id, teamName: teams.name })
+    .from(teams)
+  // Build lookup: normalised email → first team found (primary owner takes priority)
+  const ownerMap = new Map<string, { teamId: number; teamName: string }>()
+  for (const t of allOwnedTeams) {
+    if (t.ownerEmail) {
+      const k = t.ownerEmail.trim().toLowerCase()
+      if (!ownerMap.has(k)) ownerMap.set(k, { teamId: t.teamId, teamName: t.teamName })
+    }
+    if (t.coOwnerEmail) {
+      const k = t.coOwnerEmail.trim().toLowerCase()
+      if (!ownerMap.has(k)) ownerMap.set(k, { teamId: t.teamId, teamName: t.teamName })
+    }
+  }
 
   // Payment status: most recent individual payment per user
   const paymentRows = await db
@@ -151,8 +178,7 @@ export async function listMembers(): Promise<MemberRow[]> {
 
   function toPaymentStatus(s: string | undefined): MemberRow["paymentStatus"] {
     if (s === "paid") return "paid"
-    if (s === "pending") return "pending"
-    if (s === "failed" || s === "overdue" || s === "outstanding") return "outstanding"
+    if (s === "pending" || s === "failed" || s === "overdue" || s === "outstanding") return "outstanding"
     return null
   }
 
@@ -189,6 +215,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       avatarUrl: r.avatarUrl ?? null,
       teamId: ms?.teamId ?? null,
       teamName: ms?.teamName ?? null,
+      teamClubPaysFees: ms?.teamClubPaysFees ?? null,
       clubId: ms?.clubId ?? null,
       clubName: ms?.clubName ?? null,
       regionId: ms?.regionId ?? null,
@@ -197,9 +224,102 @@ export async function listMembers(): Promise<MemberRow[]> {
       divisionName: ms?.divisionName ?? null,
       paymentStatus: payStatus,
       accountLinked,
-      registeredBy: null, // not stored yet — placeholder for future
+      registeredBy: null,
+      ownedTeamId: ownerMap.get(r.email.trim().toLowerCase())?.teamId ?? null,
+      ownedTeamName: ownerMap.get(r.email.trim().toLowerCase())?.teamName ?? null,
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Unregistered contacts — club contacts / team owner emails with no account
+// ---------------------------------------------------------------------------
+
+export type UnregisteredContact = {
+  key: string
+  name: string | null
+  email: string
+  phone: string | null
+  source: "club_contact" | "club_contact2" | "team_owner"
+  clubId: number | null
+  clubName: string | null
+  ownedTeamId: number | null
+  ownedTeamName: string | null
+}
+
+export async function listUnregisteredContacts(): Promise<UnregisteredContact[]> {
+  await requireMemberManager()
+
+  const existingUsers = await db.select({ email: user.email }).from(user)
+  const knownEmails = new Set(existingUsers.map((u) => u.email.trim().toLowerCase()))
+
+  const clubRows = await db
+    .select({ id: clubs.id, name: clubs.name, contactName: clubs.contactName, contactEmail: clubs.contactEmail, contactEmail2: clubs.contactEmail2, contactPhone: clubs.contactPhone })
+    .from(clubs)
+
+  // Include ALL teams regardless of status — a pending/inactive team's
+  // ownerEmail is still a real person who needs to show up in Members.
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail, ownerName: teams.ownerName, ownerPhone: teams.ownerPhone })
+    .from(teams)
+
+  const contacts: UnregisteredContact[] = []
+  const seen = new Set<string>()
+
+  function push(c: UnregisteredContact) {
+    const norm = c.email.trim().toLowerCase()
+    if (!norm || knownEmails.has(norm) || seen.has(norm)) return
+    seen.add(norm)
+    contacts.push({ ...c, email: norm })
+  }
+
+  for (const club of clubRows) {
+    if (club.contactEmail) {
+      push({ key: `club-${club.id}-1`, name: club.contactName ?? null, email: club.contactEmail, phone: club.contactPhone ?? null, source: "club_contact", clubId: club.id, clubName: club.name, ownedTeamId: null, ownedTeamName: null })
+    }
+    if (club.contactEmail2) {
+      push({ key: `club-${club.id}-2`, name: null, email: club.contactEmail2, phone: null, source: "club_contact2", clubId: club.id, clubName: club.name, ownedTeamId: null, ownedTeamName: null })
+    }
+  }
+
+  for (const team of teamRows) {
+    if (team.ownerEmail) {
+      // Use ownerName only if it's a real name (not an email address — guards bad data).
+      // Fall back to "Owner of <team name>" so the entry is identifiable even when
+      // no real name has been recorded yet.
+      const realName = team.ownerName && !team.ownerName.includes("@") ? team.ownerName.trim() : null
+      const displayName = realName || `Owner of ${team.name}`
+      push({ key: `team-${team.id}-1`, name: displayName, email: team.ownerEmail, phone: team.ownerPhone ?? null, source: "team_owner", clubId: null, clubName: null, ownedTeamId: team.id, ownedTeamName: team.name })
+    }
+  }
+
+  return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
+}
+
+export async function createAccountForContact(input: {
+  name: string
+  email: string
+  phone?: string | null
+  role?: Role
+}): Promise<{ ok: boolean; error?: string; password?: string }> {
+  await requireMemberManager()
+
+  const res = await provisionUser({ name: input.name.trim(), email: input.email, role: input.role ?? "org_admin", password: undefined })
+  if (!res.ok) return res
+
+  const phone = input.phone?.trim() || null
+  if (phone) {
+    const [existing] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, res.userId)).limit(1)
+    if (existing) {
+      await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, res.userId))
+    } else {
+      await db.insert(userMeta).values({ userId: res.userId, role: input.role ?? "org_admin", phone })
+    }
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true, password: res.password }
 }
 
 export async function setMemberRole(userId: string, role: Role) {
@@ -316,6 +436,9 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
 
   if (current) {
     await db.update(teamMembers).set({ status: "inactive", updatedAt: new Date() }).where(eq(teamMembers.id, current.id))
+    // Clear any pairing slots this player occupied on their old team
+    await db.update(teamPairings).set({ playerId: null, updatedAt: new Date() })
+      .where(and(eq(teamPairings.teamId, current.teamId), eq(teamPairings.playerId, userId)))
     await recomputeTeamStats(current.teamId)
   }
 
@@ -333,6 +456,9 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
     }
     await recomputeTeamStats(newTeamId)
     await db.update(user).set({ availability: "on_team", lookingForTeam: false, onMarketplace: false }).where(eq(user.id, userId))
+
+    // Auto-assign to the best available squad category slot based on rating + gender.
+    await autoAssignPairingSlot(userId, newTeamId)
   } else {
     // Removed from all teams — mark as looking
     await db.update(user).set({ lookingForTeam: true, availability: "available" }).where(eq(user.id, userId))
@@ -341,6 +467,92 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
   revalidatePath("/admin/members")
   revalidatePath("/admin/teams")
   return { ok: true }
+}
+
+/**
+ * Places a player into the highest available pairing slot they qualify for.
+ *
+ * Category matching rules:
+ *   - Gender derived from the player's gender field (male → men's categories,
+ *     female → ladies categories). Gender is matched by category.gender in DB,
+ *     but we also fall back to name-based matching for bad DB data.
+ *   - Rating eligibility: player's playtomicRating must be >= category.playerMinLi.
+ *   - "Highest" = highest playerMinLi threshold the player clears (most competitive).
+ *   - Within that category, fills the first empty slot (pairIndex 1 slot 1 → 1/2 → 2/1 → 2/2).
+ *   - If already assigned to a slot in this team, no-op.
+ */
+async function autoAssignPairingSlot(userId: string, teamId: number) {
+  // Fetch player details
+  const [playerRow] = await db
+    .select({ gender: user.gender, playtomicRating: user.playtomicRating })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!playerRow) return
+
+  const rating = playerRow.playtomicRating ?? 0
+  const gender = (playerRow.gender ?? "male").toLowerCase() // "male" | "female"
+  const dbGender = gender === "female" ? "female" : "male"
+
+  // Check if already in a slot for this team
+  const [alreadySlotted] = await db
+    .select({ id: teamPairings.id })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.playerId, userId)))
+    .limit(1)
+  if (alreadySlotted) return // already placed, don't move
+
+  // Fetch all categories matching the player's gender, sorted best-fit first.
+  // Primary list: categories where playerMinLi <= rating (player meets the minimum),
+  // ordered by playerMinLi DESC so the most competitive eligible category is tried first.
+  // Fallback: if the player's rating is below every category's minimum (e.g. a 2.28
+  // female with only a "Ladies Open" min 2.5 category), use the category with the
+  // lowest playerMinLi for that gender — the most accessible one available.
+  const allGenderCats = await db
+    .select({ name: categories.name, playerMinLi: categories.playerMinLi })
+    .from(categories)
+    .where(eq(categories.gender, dbGender))
+    .orderBy(desc(categories.playerMinLi))
+
+  const eligibleCats = allGenderCats.filter((c) => c.playerMinLi <= rating)
+
+  // If no category meets the minimum threshold, fall back to the lowest-threshold
+  // gender category so the player is still placed somewhere sensible.
+  const catsToTry = eligibleCats.length > 0
+    ? eligibleCats
+    : [...allGenderCats].sort((a, b) => a.playerMinLi - b.playerMinLi).slice(0, 1)
+
+  if (catsToTry.length === 0) return // no categories exist for this gender at all
+
+  // Fetch existing pairing rows for this team to find occupied slots
+  const existingSlots = await db
+    .select({ category: teamPairings.category, pairIndex: teamPairings.pairIndex, slotIndex: teamPairings.slotIndex, playerId: teamPairings.playerId })
+    .from(teamPairings)
+    .where(eq(teamPairings.teamId, teamId))
+
+  // Try each category (most competitive first, fallback to most accessible) until we find a free slot
+  for (const cat of catsToTry) {
+    // All possible slots: pair 1 slot 1, pair 1 slot 2, pair 2 slot 1, pair 2 slot 2
+    const slotCombos = [{ pairIndex: 1, slotIndex: 1 }, { pairIndex: 1, slotIndex: 2 }, { pairIndex: 2, slotIndex: 1 }, { pairIndex: 2, slotIndex: 2 }]
+    for (const { pairIndex, slotIndex } of slotCombos) {
+      const existing = existingSlots.find(
+        (s) => s.category === cat.name && s.pairIndex === pairIndex && s.slotIndex === slotIndex
+      )
+      if (!existing) {
+        // Slot row doesn't exist yet — insert it
+        await db.insert(teamPairings).values({ teamId, category: cat.name, pairIndex, slotIndex, playerId: userId })
+        return
+      }
+      if (existing.playerId === null) {
+        // Slot exists but is empty — claim it
+        await db.update(teamPairings).set({ playerId: userId, updatedAt: new Date() })
+          .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.category, cat.name), eq(teamPairings.pairIndex, pairIndex), eq(teamPairings.slotIndex, slotIndex)))
+        return
+      }
+    }
+    // All 4 slots in this category are occupied — try the next eligible one
+  }
+  // No slot found in any eligible category — player is still on the team but unslotted
 }
 
 /** Inline-edit: update a member's account status (stored as a meta note for now). */
@@ -358,10 +570,11 @@ export async function updateMemberStatus(userId: string, status: "active" | "ina
 /** Fetch all active teams for the team-assignment dropdown. */
 export async function listTeamsForAssignment(): Promise<{ id: number; name: string }[]> {
   await requireMemberManager()
+  // Include all teams regardless of status — pending/inactive teams still
+  // have real members and a real owner who needs to be assignable.
   return db
     .select({ id: teams.id, name: teams.name })
     .from(teams)
-    .where(eq(teams.status, "active"))
     .orderBy(asc(teams.name))
 }
 
@@ -544,6 +757,54 @@ export async function setMemberTeamAssignment(userId: string, teamId: number, as
   await upsertMeta(userId, { teamOverrides: ov })
   revalidatePath("/admin/members")
   return { ok: true }
+}
+
+/**
+ * Assign a registered member as the owner of a team (or clear the owner).
+ * This is the single write path: it updates teams.ownerEmail + teams.ownerName
+ * so that the Teams admin page, the My Team view, and the access layer all
+ * read from the same source of truth. If teamId is null the member's current
+ * team ownership is cleared and permissions are revoked if no other team
+ * still depends on them.
+ */
+export async function setMemberAsTeamOwner(userId: string, teamId: number | null) {
+  await requireMemberManager()
+
+  // Fetch the member's current email + name.
+  const [member] = await db
+    .select({ email: user.email, name: user.name, firstName: user.firstName, lastName: user.lastName })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!member) return { ok: false as const, error: "Member not found." }
+
+  const memberEmail = member.email.trim().toLowerCase()
+  const memberName =
+    (member.firstName ? `${member.firstName} ${member.lastName ?? ""}`.trim() : null) ||
+    member.name?.trim() ||
+    member.email
+
+  // Clear owner from any team that currently lists this member as owner
+  // (enforces one primary-owner assignment per member at a time).
+  await db
+    .update(teams)
+    .set({ ownerEmail: null, ownerName: null, updatedAt: new Date() })
+    .where(sql`lower(${teams.ownerEmail}) = ${memberEmail}`)
+
+  if (teamId !== null) {
+    // Stamp the new team.
+    await db
+      .update(teams)
+      .set({ ownerEmail: memberEmail, ownerName: memberName, updatedAt: new Date() })
+      .where(eq(teams.id, teamId))
+  }
+  // Access is derived live from teams.ownerEmail by getAccessContext on every
+  // request — no separate permission-grant call is needed. Clearing ownerEmail
+  // above is sufficient to revoke access for the previous assignment.
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  return { ok: true as const }
 }
 
 export async function sendMemberResetEmail(userId: string) {

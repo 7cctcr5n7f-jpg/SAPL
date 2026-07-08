@@ -1,6 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
+import { sendEmail, adminNewTeamEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 import {
   teams,
   organisations,
@@ -139,6 +140,9 @@ export async function createTeam(formData: FormData) {
     tpr: 1000,
     status: "active",
   })
+  // Fire-and-forget admin alert — never blocks the action.
+  const { subject, html, text } = adminNewTeamEmail({ teamName: name, ownerEmail, adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
   revalidatePath("/dashboard/org")
   revalidatePath("/admin/placement")
   return { ok: true }
@@ -153,6 +157,9 @@ export async function updateTeamRegistration(input: {
   managerPlayerId?: string | null
   clubPaysFees?: boolean
   ownerEmail?: string | null
+  ownerName?: string | null
+  ownerPhone?: string | null
+  coOwnerEmail?: string | null
 }) {
   const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId, homeClubId: teams.homeClubId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
   if (!team) return { ok: false, error: "Team not found" }
@@ -176,6 +183,19 @@ export async function updateTeamRegistration(input: {
       return { ok: false, error: "Enter a valid team owner email" }
     }
     patch.ownerEmail = e || null
+  }
+  if (input.ownerName !== undefined) {
+    patch.ownerName = (input.ownerName ?? "").trim() || null
+  }
+  if (input.ownerPhone !== undefined) {
+    patch.ownerPhone = (input.ownerPhone ?? "").trim() || null
+  }
+  if (input.coOwnerEmail !== undefined) {
+    const e = (input.coOwnerEmail ?? "").trim().toLowerCase()
+    if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      return { ok: false, error: "Enter a valid co-owner email" }
+    }
+    patch.coOwnerEmail = e || null
   }
   if (input.homeClubId !== undefined) {
     patch.homeClubId = input.homeClubId
@@ -466,11 +486,17 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
     saplRegion,
     regionId,
     ownerEmail: user.email.trim().toLowerCase(),
+    ownerName: (user.name ?? "").trim() || null,
     tpr: 1000,
     status: "active",
   })
 
   await grantTeamOwnerPermissions(user.id)
+
+  // Fire-and-forget admin alert — never blocks the action.
+  const ownerName = (user.name ?? "").trim() || null
+  const { subject, html, text } = adminNewTeamEmail({ teamName: name, ownerName, ownerEmail: user.email, adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
 
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/org")

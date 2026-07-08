@@ -205,6 +205,61 @@ export function teamInviteEmail(opts: {
   return { subject, html, text }
 }
 
+/** Admin alert: a new member has registered. Sent to ADMIN_EMAIL. */
+export function adminNewMemberEmail(opts: { name: string; email: string; adminUrl: string }) {
+  const { name, email, adminUrl } = opts
+  const subject = `New member registered: ${name || email}`
+  const html = `
+  <div style="background:#0a0a0a;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden;">
+      <div style="padding:28px 32px;border-bottom:1px solid #262626;">
+        <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:2px;">${BRAND.short}</span>
+        <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
+      </div>
+      <div style="padding:32px;">
+        <h1 style="color:#ffffff;font-size:20px;margin:0 0 16px;">New member registered</h1>
+        <table style="border-collapse:collapse;width:100%;margin-bottom:24px;" cellpadding="0" cellspacing="0">
+          <tr><td style="color:#737373;font-size:13px;padding:6px 0;width:80px;">Name</td><td style="color:#ffffff;font-size:13px;padding:6px 0;">${name || "—"}</td></tr>
+          <tr><td style="color:#737373;font-size:13px;padding:6px 0;">Email</td><td style="color:#ffffff;font-size:13px;padding:6px 0;">${email}</td></tr>
+        </table>
+        <a href="${adminUrl}" style="display:inline-block;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:8px;">
+          View in Members
+        </a>
+      </div>
+    </div>
+  </div>`
+  const text = `New member registered on ${BRAND.name}.\n\nName: ${name || "—"}\nEmail: ${email}\n\nView: ${adminUrl}`
+  return { subject, html, text }
+}
+
+/** Admin alert: a new team has been created. Sent to ADMIN_EMAIL. */
+export function adminNewTeamEmail(opts: { teamName: string; ownerName?: string | null; ownerEmail?: string | null; adminUrl: string }) {
+  const { teamName, ownerName, ownerEmail, adminUrl } = opts
+  const subject = `New team registered: ${teamName}`
+  const html = `
+  <div style="background:#0a0a0a;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden;">
+      <div style="padding:28px 32px;border-bottom:1px solid #262626;">
+        <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:2px;">${BRAND.short}</span>
+        <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
+      </div>
+      <div style="padding:32px;">
+        <h1 style="color:#ffffff;font-size:20px;margin:0 0 16px;">New team registered</h1>
+        <table style="border-collapse:collapse;width:100%;margin-bottom:24px;" cellpadding="0" cellspacing="0">
+          <tr><td style="color:#737373;font-size:13px;padding:6px 0;width:80px;">Team</td><td style="color:#ffffff;font-size:13px;padding:6px 0;font-weight:700;">${teamName}</td></tr>
+          ${ownerName ? `<tr><td style="color:#737373;font-size:13px;padding:6px 0;">Owner</td><td style="color:#ffffff;font-size:13px;padding:6px 0;">${ownerName}</td></tr>` : ""}
+          ${ownerEmail ? `<tr><td style="color:#737373;font-size:13px;padding:6px 0;">Email</td><td style="color:#ffffff;font-size:13px;padding:6px 0;">${ownerEmail}</td></tr>` : ""}
+        </table>
+        <a href="${adminUrl}" style="display:inline-block;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:8px;">
+          View in Teams
+        </a>
+      </div>
+    </div>
+  </div>`
+  const text = `New team registered on ${BRAND.name}.\n\nTeam: ${teamName}${ownerName ? `\nOwner: ${ownerName}` : ""}${ownerEmail ? `\nEmail: ${ownerEmail}` : ""}\n\nView: ${adminUrl}`
+  return { subject, html, text }
+}
+
 /**
  * @deprecated Use teamInviteEmail instead. Kept for backwards compatibility.
  */

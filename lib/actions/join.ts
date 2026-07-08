@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { sendEmail, adminNewTeamEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 import {
   user,
   userMeta,
@@ -12,7 +13,7 @@ import {
   organisations,
   seasons,
 } from "@/lib/db/schema"
-import { eq, and, asc, desc } from "drizzle-orm"
+import { eq, and, asc, desc, gt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { headers } from "next/headers"
@@ -21,12 +22,37 @@ import { headers } from "next/headers"
 // Public data loaders (no auth required)
 // ---------------------------------------------------------------------------
 
-/** Hosting clubs — clubs that have publicSlots > 0 (available for external teams). */
+/**
+ * Hosting clubs available for an external (public) team to select as their home venue.
+ * A club is only listed when:
+ *   1. It hosts Thursday fixtures (hostsThursday = true)
+ *   2. It has at least one public slot (publicSlots > 0)
+ *   3. The number of non-Club-Team teams already homed here is less than publicSlots
+ *      (i.e. there is at least one public slot still free)
+ */
 export async function getHostingClubs(): Promise<{ id: number; name: string; saplRegion: string | null; courts: number }[]> {
+  // Count non-Club-Team teams per club to determine public-slot usage.
+  const publicUsageRows = await db
+    .select({
+      homeClubId: clubs.id,
+      publicUsed: sql<number>`count(case when ${teams.teamType} != 'Club Team' then 1 end)::int`,
+      publicSlots: clubs.publicSlots,
+    })
+    .from(clubs)
+    .leftJoin(teams, eq(teams.homeClubId, clubs.id))
+    .where(and(eq(clubs.hostsThursday, true), gt(clubs.publicSlots, 0)))
+    .groupBy(clubs.id, clubs.publicSlots)
+
+  const availableIds = publicUsageRows
+    .filter((r) => (r.publicUsed ?? 0) < (r.publicSlots ?? 0))
+    .map((r) => r.homeClubId)
+
+  if (availableIds.length === 0) return []
+
   return db
     .select({ id: clubs.id, name: clubs.name, saplRegion: clubs.saplRegion, courts: clubs.courts })
     .from(clubs)
-    .where(eq(clubs.hostsThursday, true))
+    .where(sql`${clubs.id} = ANY(ARRAY[${sql.raw(availableIds.join(","))}]::int[])`)
     .orderBy(asc(clubs.name))
 }
 
@@ -216,6 +242,21 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
   if (!homeClubId) return { ok: false, error: "Please select a home club." }
   if (captainPlays && !playtomicUrl.trim()) return { ok: false, error: "Playtomic profile link is required when you play in the team." }
 
+  // Guard: the chosen venue must still have a public slot available.
+  const [venueCheck] = await db
+    .select({ name: clubs.name, publicSlots: clubs.publicSlots, teamsEntering: clubs.teamsEntering })
+    .from(clubs)
+    .where(eq(clubs.id, homeClubId))
+    .limit(1)
+  if (!venueCheck) return { ok: false, error: "Selected venue not found." }
+  const [{ publicUsed }] = await db
+    .select({ publicUsed: sql<number>`count(*)::int` })
+    .from(teams)
+    .where(and(eq(teams.homeClubId, homeClubId), sql`${teams.teamType} != 'Club Team'`))
+  if ((publicUsed ?? 0) >= (venueCheck.publicSlots ?? 0)) {
+    return { ok: false, error: `${venueCheck.name} has no remaining public hosting slots. Please choose another venue.` }
+  }
+
   const nameParts = fullName.trim().split(" ")
   const firstName = nameParts[0]
   const lastName = nameParts.slice(1).join(" ") || ""
@@ -303,7 +344,10 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     .where(eq(clubs.id, homeClubId))
     .limit(1)
 
-  // Create the team
+  // Create the team — the registrant is automatically the owner.
+  // ownerName and ownerEmail are the single source of truth for the owner
+  // and are written here so the Teams admin page and My Team view both
+  // reflect the owner immediately after sign-up without any manual step.
   const [newTeam] = await db
     .insert(teams)
     .values({
@@ -315,6 +359,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       seasonId: currentSeason?.id ?? null,
       captainUserId: userId,
       ownerEmail: email.trim().toLowerCase(),
+      ownerName: fullName.trim(),
       clubPaysFees: paymentModel === "club",
       status: "pending",
     })
@@ -330,6 +375,10 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       initiatedBy: "self",
     })
   }
+
+  // Fire-and-forget admin alert — never blocks the sign-up flow.
+  const { subject, html, text } = adminNewTeamEmail({ teamName: teamName.trim(), ownerName: fullName.trim(), ownerEmail: email.trim().toLowerCase(), adminUrl: `${appBaseUrl()}/admin/teams` })
+  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
 
   revalidatePath("/dashboard")
   return { ok: true, redirectTo: "/dashboard" }

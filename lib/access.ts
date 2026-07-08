@@ -117,12 +117,18 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     permissions.add("captain_hub")
   }
 
-  // --- Teams: owner-email (auto) + captaincy (auto) + manual overrides ---
+  // --- Teams: owner-email (auto) + co-owner-email (auto) + captaincy (auto) + manual overrides ---
   const autoOwnerTeams = email
     ? await db
         .select({ id: teams.id, name: teams.name })
         .from(teams)
         .where(sql`lower(${teams.ownerEmail}) = ${email}`)
+    : []
+  const autoCoOwnerTeams = email
+    ? await db
+        .select({ id: teams.id, name: teams.name })
+        .from(teams)
+        .where(sql`lower(${teams.coOwnerEmail}) = ${email}`)
     : []
   const captainTeams = await db
     .select({ id: teams.id, name: teams.name })
@@ -131,6 +137,7 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
 
   const teamSourceMap = new Map<number, { name: string; source: TeamAssignment["source"] }>()
   for (const t of autoOwnerTeams) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
+  for (const t of autoCoOwnerTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
   for (const t of captainTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "captain" })
 
   // Any user who owns teams via ownerEmail (or captainUserId) must have

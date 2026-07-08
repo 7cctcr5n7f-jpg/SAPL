@@ -298,9 +298,12 @@ export const teams = pgTable(
     regionId: integer("regionId"),
     captainUserId: text("captainUserId"),
     managerUserId: text("managerUserId"),
-    // Team Owner Email — drives team + fixture access in the permission system.
-    // Defaults to the creator's email; reassignable by admins.
+    // Team Owner — drives team + fixture access in the permission system.
     ownerEmail: text("ownerEmail"),
+    ownerName: text("ownerName"),
+    ownerPhone: text("ownerPhone"),
+    // Co-owner email — same team-management access as the primary owner.
+    coOwnerEmail: text("ownerEmail2"),
     // Cached roster aggregates (kept fresh on roster mutations).
     avgLi: doublePrecision("avgLi").notNull().default(0),
     playerCount: integer("playerCount").notNull().default(0),

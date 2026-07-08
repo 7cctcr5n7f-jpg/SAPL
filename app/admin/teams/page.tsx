@@ -125,7 +125,12 @@ export default async function AdminTeamsPage() {
         .from(userTable)
         .where(eq(userTable.email, row.team.ownerEmail))
         .limit(1)
-      if (ownerUser) ownerName = `${ownerUser.firstName} ${ownerUser.lastName}`.trim()
+      if (ownerUser) {
+        ownerName = `${ownerUser.firstName ?? ""} ${ownerUser.lastName ?? ""}`.trim() || row.team.ownerEmail
+      } else {
+        // No registered user for this email yet — show the email address itself
+        ownerName = row.team.ownerEmail
+      }
     }
 
     teamData.push({
@@ -136,8 +141,11 @@ export default async function AdminTeamsPage() {
       homeClubName: club?.name ?? null,
       homeClubLogoUrl: club?.logoUrl ?? null,
       homeClubContactEmail: club?.contactEmail ?? null,
+      homeClubContactEmail2: club?.contactEmail2 ?? null,
       ownerEmail: row.team.ownerEmail ?? null,
       ownerName,
+      ownerPhone: row.team.ownerPhone ?? null,
+      coOwnerEmail: row.team.coOwnerEmail ?? null,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
       maxPlayers: row.team.maxPlayers,
@@ -175,13 +183,18 @@ export default async function AdminTeamsPage() {
 
   const locked = await isSeasonLocked()
 
+  // Fetch all registered user emails (lowercase) so the Edit Team dialog can
+  // warn when an ownerEmail has no matching account yet.
+  const registeredUserRows = await db.select({ email: userTable.email }).from(userTable)
+  const registeredEmails = registeredUserRows.map((r) => r.email.trim().toLowerCase())
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Team Admin"
         subtitle={isAdminWide ? "All teams across the league" : "Create and manage your teams, captains, squads and fees"}
       />
-      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} />
+      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} registeredEmails={registeredEmails} />
     </div>
   )
 }
