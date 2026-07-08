@@ -857,35 +857,35 @@ function EditTeamDialog({
                 onChange={(e) => setOwnerPhone(e.target.value)}
               />
             </div>
-          <div className="space-y-2">
-            <Label htmlFor="editOwnerEmail">Email</Label>
-            <Input
-              id="editOwnerEmail"
-              type="email"
-              value={ownerEmail}
-              placeholder="owner@example.com"
-              onChange={(e) => setOwnerEmail(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Whoever signs in with this email automatically gets team-owner access. Leave blank to remove.
-              {team.teamType === "Club Team" && team.homeClubContactEmail
-                ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
-                : ""}
-            </p>
-            {team.teamType === "Club Team" &&
-              team.homeClubContactEmail &&
-              ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
-                >
-                  Use venue contact ({team.homeClubContactEmail})
-                </Button>
-              )}
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="editOwnerEmail">Email</Label>
+              <Input
+                id="editOwnerEmail"
+                type="email"
+                value={ownerEmail}
+                placeholder="owner@example.com"
+                onChange={(e) => setOwnerEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Whoever signs in with this email automatically gets team-owner access. Leave blank to remove.
+                {team.teamType === "Club Team" && team.homeClubContactEmail
+                  ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
+                  : ""}
+              </p>
+              {team.teamType === "Club Team" &&
+                team.homeClubContactEmail &&
+                ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
+                  >
+                    Use venue contact ({team.homeClubContactEmail})
+                  </Button>
+                )}
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="editOwnerEmail2">Second manager email <span className="text-muted-foreground font-normal">(optional)</span></Label>
