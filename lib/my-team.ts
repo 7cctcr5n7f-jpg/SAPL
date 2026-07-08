@@ -59,6 +59,7 @@ export type MyTeamView = {
     divisionName: string
     captainName: string | null
     captainEmail: string | null
+    captainPhone: string | null
     ownerEmail: string | null
   }
   readiness: TeamReadiness
@@ -137,9 +138,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   }
   let captainName: string | null = null
   let captainEmail: string | null = null
+  let captainPhone: string | null = null
   if (team.captainUserId) {
     const [cap] = await db
-      .select({ firstName: user.firstName, lastName: user.lastName, email: user.email })
+      .select({ firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone })
       .from(user)
       .where(eq(user.id, team.captainUserId))
       .limit(1)
@@ -147,6 +149,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       const parts = [cap.firstName, cap.lastName].filter(Boolean)
       captainName = parts.length > 0 ? parts.join(" ") : null
       captainEmail = cap.email ?? null
+      captainPhone = cap.phone ?? null
     }
   }
 
@@ -322,6 +325,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       divisionName,
       captainName,
       captainEmail,
+      captainPhone,
       ownerEmail: team.ownerEmail ?? null,
     },
     readiness,

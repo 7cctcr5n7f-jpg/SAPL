@@ -31,6 +31,8 @@ import {
   ExternalLink,
   Mars,
   Venus,
+  Phone,
+  Mail,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { MyTeamView as MyTeamViewData, MyTeamSlot } from "@/lib/my-team"
@@ -73,26 +75,28 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
               {team.divisionName}
               {team.clubName ? ` · ${team.clubName}` : ""}
             </p>
-            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Crown className="h-3 w-3 text-amber-500 shrink-0" />
-              <span>
-                Team owner:{" "}
-                {team.captainName ? (
-                  <>
-                    <span className="font-semibold text-foreground">{team.captainName}</span>
-                    {team.captainEmail ? (
-                      <span className="ml-1 text-muted-foreground">· {team.captainEmail}</span>
-                    ) : team.ownerEmail ? (
-                      <span className="ml-1 text-muted-foreground">· {team.ownerEmail}</span>
-                    ) : null}
-                  </>
-                ) : team.ownerEmail ? (
-                  <span className="font-semibold text-foreground">{team.ownerEmail}</span>
-                ) : (
-                  <span className="italic text-muted-foreground">Not assigned</span>
+            <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Crown className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-semibold text-foreground">
+                  {team.captainName ?? (
+                    <span className="italic font-normal text-muted-foreground">Team owner not assigned</span>
+                  )}
+                </p>
+                {team.captainPhone && (
+                  <p className="flex items-center gap-1">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {team.captainPhone}
+                  </p>
                 )}
-              </span>
-            </p>
+                {(team.captainEmail ?? team.ownerEmail) && (
+                  <p className="flex items-center gap-1">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {team.captainEmail ?? team.ownerEmail}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         {otherTeams.length > 0 ? (
@@ -407,7 +411,7 @@ function RosterSlot({
   )
 }
 
-// ── Category-grouped squad section ────────────────────────────────────────────
+// ── Category-grouped squad section ────────────────���───────────────────────────
 
 const CATEGORY_META: Record<string, { gender: "male" | "female"; session: 1 | 2; featureCourt: boolean; order: number }> = {
   "Mens Open":         { gender: "male",   session: 2, featureCourt: true,  order: 0 },
