@@ -110,11 +110,17 @@ export async function listMembers(): Promise<MemberRow[]> {
   const userIds = rows.map((r) => r.id)
   if (userIds.length === 0) return []
 
-  // Last login: max session.updatedAt per user. Better Auth bumps updatedAt on
-  // every request — createdAt is only written once at session creation and never
-  // changes, so it would show the original login date not the most recent activity.
+  // Last login: take the maximum of GREATEST(createdAt, updatedAt) across all
+  // sessions for each user.
+  //  - createdAt is written once when a new session is created (i.e. a fresh login).
+  //  - updatedAt is bumped by Better Auth on activity (subject to updateAge).
+  // Using GREATEST ensures that a fresh sign-in today (new createdAt) is always
+  // preferred over a stale updatedAt from a session that hasn't been refreshed yet.
   const lastLogins = await db
-    .select({ userId: session.userId, lastLogin: max(session.updatedAt) })
+    .select({
+      userId: session.userId,
+      lastLogin: max(sql<Date>`GREATEST(${session.createdAt}, ${session.updatedAt})`),
+    })
     .from(session)
     .groupBy(session.userId)
   const loginMap = new Map(lastLogins.map((l) => [l.userId, l.lastLogin]))
