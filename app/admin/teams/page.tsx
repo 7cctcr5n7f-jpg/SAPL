@@ -183,13 +183,18 @@ export default async function AdminTeamsPage() {
 
   const locked = await isSeasonLocked()
 
+  // Fetch all registered user emails (lowercase) so the Edit Team dialog can
+  // warn when an ownerEmail has no matching account yet.
+  const registeredUserRows = await db.select({ email: userTable.email }).from(userTable)
+  const registeredEmails = registeredUserRows.map((r) => r.email.trim().toLowerCase())
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Team Admin"
         subtitle={isAdminWide ? "All teams across the league" : "Create and manage your teams, captains, squads and fees"}
       />
-      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} />
+      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} registeredEmails={registeredEmails} />
     </div>
   )
 }

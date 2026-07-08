@@ -148,14 +148,16 @@ export function OrgHub({
   venues,
   playerFee,
   locked = false,
+  registeredEmails = [],
 }: {
   orgId: number
   teams: Team[]
   freeAgents: FreeAgent[]
   venues: Venue[]
   playerFee: number
-  // When the season is active, team name and home venue editing is frozen.
   locked?: boolean
+  /** Lowercase emails of all registered members — used to warn when ownerEmail has no account. */
+  registeredEmails?: string[]
 }) {
   const [pending, start] = useTransition()
   const [squadForId, setSquadForId] = useState<number | null>(null)
@@ -505,6 +507,7 @@ export function OrgHub({
           pending={pending}
           start={start}
           locked={locked}
+          registeredEmails={registeredEmails}
           onClose={() => setEditFor(null)}
         />
       )}
@@ -690,6 +693,7 @@ function EditTeamDialog({
   pending,
   start,
   locked = false,
+  registeredEmails = [],
   onClose,
 }: {
   team: Team
@@ -697,6 +701,8 @@ function EditTeamDialog({
   pending: boolean
   start: (cb: () => Promise<void>) => void
   locked?: boolean
+  /** Lowercase emails of all registered (account-linked) members. Used to warn when ownerEmail has no account yet. */
+  registeredEmails?: string[]
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
@@ -710,9 +716,18 @@ function EditTeamDialog({
   const [ownerEmail, setOwnerEmail] = useState(
     team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
   )
-  const [ownerName, setOwnerName] = useState(team.ownerName ?? "")
+  // Guard: if ownerName was accidentally saved as the email address, treat it as blank.
+  const safeOwnerName = (team.ownerName ?? "").includes("@") ? "" : (team.ownerName ?? "")
+  const [ownerName, setOwnerName] = useState(safeOwnerName)
   const [ownerPhone, setOwnerPhone] = useState(team.ownerPhone ?? "")
   const [coOwnerEmail, setCoOwnerEmail] = useState(team.coOwnerEmail ?? "")
+
+  // Warn when the owner email is set but doesn't match any registered account.
+  const ownerEmailTrimmed = ownerEmail.trim().toLowerCase()
+  const ownerEmailUnregistered =
+    ownerEmailTrimmed.length > 0 &&
+    registeredEmails.length > 0 &&
+    !registeredEmails.includes(ownerEmailTrimmed)
 
   // When a home club is set, the region is inherited from it and can't be edited.
   const hasHomeClub = Boolean(homeClubId)
@@ -849,6 +864,14 @@ function EditTeamDialog({
               Whoever signs in with this email automatically gets team-owner access to manage this team. Leave blank to
               remove.
             </p>
+            {ownerEmailUnregistered && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  No account found for <strong>{ownerEmailTrimmed}</strong>. This person will not appear on the Members page until they sign up or log in with this exact email address.
+                </span>
+              </div>
+            )}
             {/* Quick-fill buttons — show venue contact emails for any team type */}
             {(team.homeClubContactEmail || team.homeClubContactEmail2) && (
               <div className="flex flex-wrap gap-1.5">
