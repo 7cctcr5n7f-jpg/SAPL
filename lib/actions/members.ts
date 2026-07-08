@@ -357,11 +357,7 @@ export async function createAccountForContact(input: {
   phone?: string | null
   role?: Role
 }): Promise<{ ok: boolean; error?: string; password?: string }> {
-  await requireSuperAdmin()
-
-  const nameParts = (input.name ?? "").trim().split(" ")
-  const firstName = nameParts[0] ?? ""
-  const lastName = nameParts.slice(1).join(" ") || ""
+  await requireMemberManager()
 
   const res = await provisionUser({
     name: input.name.trim(),
