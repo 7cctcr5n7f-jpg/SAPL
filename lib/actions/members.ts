@@ -291,7 +291,9 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
     }
   }
 
-  return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
+  const sorted = contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
+  console.log("[v0] listUnregisteredContacts: teamRows ownerEmails=", teamRows.map(t => t.ownerEmail), "knownEmails has ruanroux=", knownEmails.has("ruanrouxemail@gmail.com"), "final contacts=", sorted.map(c => c.email))
+  return sorted
 }
 
 export async function createAccountForContact(input: {
