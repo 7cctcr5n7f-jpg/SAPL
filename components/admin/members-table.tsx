@@ -455,19 +455,31 @@ function SummaryCards({
   activeFilter: { key: FilterKey; value: string } | null
   onFilter: (key: FilterKey, value: string) => void
 }) {
+  // "Outstanding" = explicitly marked outstanding OR on a team with no payment
+  // record yet (i.e. the row displays "Pending" because fees are due)
+  const outstandingCount = members.filter((m) => {
+    if (m.paymentStatus === "outstanding") return true
+    if (m.paymentStatus === "paid") return false
+    // On a team and no payment recorded = pending/outstanding
+    if (m.teamId != null) {
+      if (m.teamClubPaysFees) return m.ownedTeamId === m.teamId // owner owes
+      return true // individual player owes
+    }
+    return false
+  }).length
+
   const cards: StatCard[] = [
     { label: "Total Members", value: members.length },
     { label: "Assigned to Teams", value: members.filter((m) => m.teamId != null).length, filterKey: "team", filterValue: "__assigned__", dot: "bg-emerald-500" },
-    { label: "Unassigned", value: members.filter((m) => m.teamId == null).length, filterKey: "team", filterValue: "__unassigned__", dot: "bg-amber-400" },
     { label: "Paid", value: members.filter((m) => m.paymentStatus === "paid").length, filterKey: "paymentStatus", filterValue: "paid", dot: "bg-emerald-500" },
-    { label: "Outstanding", value: members.filter((m) => m.paymentStatus === "outstanding").length, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
+    { label: "Outstanding", value: outstandingCount, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
     { label: "Linked Accounts", value: members.filter((m) => m.accountLinked === "linked").length, filterKey: "status", filterValue: "__linked__", dot: "bg-emerald-500" },
     { label: "Pending Invites", value: members.filter((m) => m.accountLinked === "invited").length, filterKey: "status", filterValue: "__invited__", dot: "bg-amber-300" },
     { label: "Pending Accounts", value: unregisteredCount, dot: "bg-amber-400" },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {cards.map((c) => {
         const isActive = activeFilter != null && activeFilter.key === c.filterKey && activeFilter.value === c.filterValue
         const clickable = c.filterKey != null
@@ -478,16 +490,16 @@ function SummaryCards({
             disabled={!clickable}
             onClick={() => c.filterKey && onFilter(c.filterKey, c.filterValue!)}
             className={cn(
-              "rounded-lg border p-3 text-left transition-colors",
+              "rounded-lg border px-3 py-2 text-left transition-colors",
               clickable ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : "cursor-default",
               isActive ? "border-primary bg-primary/5" : "border-border bg-card",
             )}
           >
-            <div className="flex items-center gap-1.5">
-              {c.dot && <span className={cn("h-2 w-2 rounded-full shrink-0", c.dot)} />}
-              <span className="text-xs text-muted-foreground leading-tight">{c.label}</span>
+            <div className="flex items-center gap-1">
+              {c.dot && <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", c.dot)} />}
+              <span className="text-[11px] text-muted-foreground leading-tight whitespace-nowrap">{c.label}</span>
             </div>
-            <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">{c.value}</div>
+            <div className="mt-0.5 text-xl font-bold tabular-nums text-foreground">{c.value}</div>
           </button>
         )
       })}
@@ -1014,8 +1026,8 @@ export function MembersTable({
               <th className="px-3 py-2.5 w-20">Gender</th>
               <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
               <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
-              <th className="px-3 py-2.5 min-w-[100px]">Last log</th>
-              <th className="px-3 py-2.5 w-16 text-right">Edit</th>
+              <th className="px-3 py-2.5 min-w-[90px] whitespace-nowrap">Last Login</th>
+              <th className="px-3 py-2.5 w-14 text-right">Edit</th>
             </tr>
           </thead>
           <tbody>
