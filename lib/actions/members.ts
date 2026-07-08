@@ -556,10 +556,11 @@ export async function updateMemberStatus(userId: string, status: "active" | "ina
 /** Fetch all active teams for the team-assignment dropdown. */
 export async function listTeamsForAssignment(): Promise<{ id: number; name: string }[]> {
   await requireMemberManager()
+  // Include all teams regardless of status — pending/inactive teams still
+  // have real members and a real owner who needs to be assignable.
   return db
     .select({ id: teams.id, name: teams.name })
     .from(teams)
-    .where(eq(teams.status, "active"))
     .orderBy(asc(teams.name))
 }
 
