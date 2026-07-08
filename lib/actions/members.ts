@@ -8,7 +8,7 @@ import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
-import { grantTeamOwnerPermissions, revokeTeamOwnerPermissionsIfOrphaned } from "@/lib/actions/org"
+
 import {
   PERMISSIONS,
   ROLE_DEFAULTS,
@@ -699,13 +699,10 @@ export async function setMemberAsTeamOwner(userId: string, teamId: number | null
       .update(teams)
       .set({ ownerEmail: memberEmail, ownerName: memberName, updatedAt: new Date() })
       .where(eq(teams.id, teamId))
-
-    // Grant team-owner permissions to the member.
-    await grantTeamOwnerPermissions(userId)
-  } else {
-    // No new team — revoke owner permissions if this was their only team.
-    await revokeTeamOwnerPermissionsIfOrphaned(userId, memberEmail)
   }
+  // Access is derived live from teams.ownerEmail by getAccessContext on every
+  // request — no separate permission-grant call is needed. Clearing ownerEmail
+  // above is sufficient to revoke access for the previous assignment.
 
   revalidatePath("/admin/members")
   revalidatePath("/admin/teams")
