@@ -462,7 +462,7 @@ function SummaryCards({
     { label: "Paid", value: members.filter((m) => m.paymentStatus === "paid").length, filterKey: "paymentStatus", filterValue: "paid", dot: "bg-emerald-500" },
     { label: "Outstanding", value: members.filter((m) => m.paymentStatus === "outstanding").length, filterKey: "paymentStatus", filterValue: "outstanding", dot: "bg-red-500" },
     { label: "Linked Accounts", value: members.filter((m) => m.accountLinked === "linked").length, filterKey: "status", filterValue: "__linked__", dot: "bg-emerald-500" },
-    { label: "Not Registered", value: members.filter((m) => m.accountLinked === "not_registered").length, filterKey: "status", filterValue: "__not_registered__", dot: "bg-slate-300" },
+    { label: "Pending Invites", value: members.filter((m) => m.accountLinked === "invited").length, filterKey: "status", filterValue: "__invited__", dot: "bg-amber-300" },
     { label: "Pending Accounts", value: unregisteredCount, dot: "bg-amber-400" },
   ]
 
@@ -1021,15 +1021,41 @@ export function MembersTable({
           <tbody>
             {filtered.map((m) => {
               const isSelf = m.id === currentUserId
-              const payment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
+              const isAssigned = m.teamId != null
+              // Payment display logic:
+              // - If the member is on a team that pays fees (clubPaysFees=true), they are
+              //   the team owner/payer — show their payment status.
+              // - If on a team that doesn't pay (clubPaysFees=false), the individual pays —
+              //   show their own payment status, defaulting to "pending" when on a team.
+              // - If not on a team, show whatever payment status is recorded.
+              let displayPayment: typeof PAYMENT_BADGE[string] | null = null
+              if (m.teamId != null) {
+                if (m.teamClubPaysFees) {
+                  // Team pays — show "—" for regular players; only owner sees the fee
+                  if (m.ownedTeamId === m.teamId) {
+                    displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                  }
+                  // else: individual doesn't pay, show nothing
+                } else {
+                  // Player pays individually — show status or default to pending
+                  displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : PAYMENT_BADGE["pending"]
+                }
+              } else {
+                displayPayment = m.paymentStatus ? PAYMENT_BADGE[m.paymentStatus] : null
+              }
 
               return (
                 <tr
                   key={m.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                  className={cn(
+                    "border-b border-border last:border-0 transition-colors",
+                    isAssigned
+                      ? "bg-emerald-50/40 hover:bg-emerald-50/70 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20"
+                      : "hover:bg-muted/30",
+                  )}
                 >
                   {/* Avatar */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     {m.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={m.avatarUrl} alt={m.name} className="h-7 w-7 rounded-full object-cover" />
@@ -1041,23 +1067,30 @@ export function MembersTable({
                   </td>
 
                   {/* Name */}
-                  <td className="px-3 py-2.5">
-                    <div className="font-medium text-foreground leading-tight">
-                      {m.name}
-                      {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
+                  <td className="px-3 py-3.5">
+                    <div className="flex items-center gap-1.5">
+                      {isAssigned && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title={`Assigned to ${m.teamName}`} />
+                      )}
+                      <div>
+                        <div className="font-medium text-foreground leading-tight">
+                          {m.name}
+                          {isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}
+                        </div>
+                        {m.playerName && m.playerName !== m.name && (
+                          <div className="text-[11px] text-muted-foreground leading-tight">{m.playerName}</div>
+                        )}
+                      </div>
                     </div>
-                    {m.playerName && m.playerName !== m.name && (
-                      <div className="text-[11px] text-muted-foreground leading-tight">{m.playerName}</div>
-                    )}
                   </td>
 
                   {/* Role — inline select */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     <RoleCell member={m} isSelf={isSelf} onSaved={() => { patch(m.id, {}); refresh() }} />
                   </td>
 
                   {/* Team — inline searchable dropdown */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     <TeamCell
                       member={m}
                       allTeams={allTeams}
@@ -1066,7 +1099,7 @@ export function MembersTable({
                   </td>
 
                   {/* Team owner — inline dropdown */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     <TeamOwnerCell
                       member={m}
                       allTeams={allTeams}
@@ -1075,7 +1108,7 @@ export function MembersTable({
                   </td>
 
                   {/* Gender */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     {m.gender === "male" ? (
                       <span className="inline-flex items-center gap-1 text-xs text-blue-600">
                         <Mars className="h-3.5 w-3.5 shrink-0" /> M
@@ -1090,7 +1123,7 @@ export function MembersTable({
                   </td>
 
                   {/* PT Rating — inline editable */}
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-3.5 text-right">
                     <RatingCell
                       member={m}
                       onSaved={(val) => patch(m.id, { playtomicRating: val })}
@@ -1098,16 +1131,16 @@ export function MembersTable({
                   </td>
 
                   {/* Payment status */}
-                  <td className="px-3 py-2.5">
-                    {payment ? (
-                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", payment.cls)}>{payment.label}</span>
+                  <td className="px-3 py-3.5">
+                    {displayPayment ? (
+                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", displayPayment.cls)}>{displayPayment.label}</span>
                     ) : (
                       <span className="text-xs text-border">—</span>
                     )}
                   </td>
 
                   {/* Last log */}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-3.5">
                     <span
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground"
                       title={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("en-ZA") : "Never logged in"}
@@ -1118,7 +1151,7 @@ export function MembersTable({
                   </td>
 
                   {/* Edit button */}
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-3.5 text-right">
                     <button
                       type="button"
                       onClick={() => setEditMember(m)}

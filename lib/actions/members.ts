@@ -61,6 +61,8 @@ export type MemberRow = {
   // Team / club / region / division assignment
   teamId: number | null
   teamName: string | null
+  /** When true the team/owner pays fees — individual players show no payment row. */
+  teamClubPaysFees: boolean | null
   clubId: number | null
   clubName: string | null
   regionId: number | null
@@ -123,6 +125,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       playerId: teamMembers.playerId,
       teamId: teams.id,
       teamName: teams.name,
+      teamClubPaysFees: teams.clubPaysFees,
       clubId: clubs.id,
       clubName: clubs.name,
       regionId: regions.id,
@@ -208,6 +211,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       avatarUrl: r.avatarUrl ?? null,
       teamId: ms?.teamId ?? null,
       teamName: ms?.teamName ?? null,
+      teamClubPaysFees: ms?.teamClubPaysFees ?? null,
       clubId: ms?.clubId ?? null,
       clubName: ms?.clubName ?? null,
       regionId: ms?.regionId ?? null,
