@@ -71,6 +71,9 @@ export type MemberRow = {
   paymentStatus: "paid" | "pending" | "outstanding" | null
   accountLinked: "linked" | "invited" | "not_registered"
   registeredBy: string | null
+  // Team ownership — the team this user is set as owner of (via ownerEmail match)
+  ownedTeamId: number | null
+  ownedTeamName: string | null
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
@@ -143,6 +146,18 @@ export async function listMembers(): Promise<MemberRow[]> {
     if (p.userId && !paymentMap.has(p.userId)) paymentMap.set(p.userId, p.status)
   }
 
+  // Owned teams: teams where ownerEmail matches the user's email
+  const ownedTeamRows = await db
+    .select({ ownerEmail: teams.ownerEmail, teamId: teams.id, teamName: teams.name })
+    .from(teams)
+    .where(eq(teams.status, "active"))
+  // Build a map from normalised email → { teamId, teamName }
+  const ownedTeamMap = new Map<string, { teamId: number; teamName: string }>()
+  for (const t of ownedTeamRows) {
+    const email = (t.ownerEmail ?? "").trim().toLowerCase()
+    if (email) ownedTeamMap.set(email, { teamId: t.teamId, teamName: t.teamName })
+  }
+
   // Account-linked status: has at least one account row with a password
   const accountRows = await db
     .select({ userId: account.userId, hasPassword: sql<boolean>`(${account.password} is not null)` })
@@ -160,6 +175,7 @@ export async function listMembers(): Promise<MemberRow[]> {
     const ms = membershipMap.get(r.id)
     const rawLogin = loginMap.get(r.id)
     const hasAccount = accountMap.get(r.id)
+    const ownedTeam = ownedTeamMap.get((r.email ?? "").trim().toLowerCase()) ?? null
     const payStatus = toPaymentStatus(paymentMap.get(r.id))
 
     let accountLinked: MemberRow["accountLinked"] = "not_registered"
@@ -198,6 +214,8 @@ export async function listMembers(): Promise<MemberRow[]> {
       paymentStatus: payStatus,
       accountLinked,
       registeredBy: null, // not stored yet — placeholder for future
+      ownedTeamId: ownedTeam?.teamId ?? null,
+      ownedTeamName: ownedTeam?.teamName ?? null,
     }
   })
 }
@@ -356,13 +374,61 @@ export async function updateMemberStatus(userId: string, status: "active" | "ina
 }
 
 /** Fetch all active teams for the team-assignment dropdown. */
-export async function listTeamsForAssignment(): Promise<{ id: number; name: string }[]> {
+export async function listTeamsForAssignment(): Promise<{ id: number; name: string; hasOwner: boolean }[]> {
   await requireMemberManager()
-  return db
-    .select({ id: teams.id, name: teams.name })
+  const rows = await db
+    .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail })
     .from(teams)
     .where(eq(teams.status, "active"))
     .orderBy(asc(teams.name))
+  return rows.map((t) => ({ id: t.id, name: t.name, hasOwner: !!(t.ownerEmail?.trim()) }))
+}
+
+/**
+ * Assign a member as the owner of a team. Writes their email, name, and phone
+ * directly onto the team row so the Teams admin page shows them immediately.
+ * Pass teamId = null to clear the member's current owned team.
+ */
+export async function assignMemberAsTeamOwner(
+  userId: string,
+  teamId: number | null,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireMemberManager()
+
+  // Fetch the target member's details
+  const [member] = await db
+    .select({ email: user.email, name: user.name, phone: userMeta.phone })
+    .from(user)
+    .leftJoin(userMeta, eq(userMeta.userId, user.id))
+    .where(eq(user.id, userId))
+    .limit(1)
+  if (!member) return { ok: false, error: "Member not found" }
+
+  // Clear any previous owned team for this user first
+  const currentOwned = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(and(eq(teams.ownerEmail, member.email), eq(teams.status, "active")))
+  for (const t of currentOwned) {
+    await db.update(teams).set({ ownerEmail: null, ownerName: null, ownerPhone: null, updatedAt: new Date() }).where(eq(teams.id, t.id))
+  }
+
+  // Assign to the new team if provided
+  if (teamId !== null) {
+    const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
+    if (!team) return { ok: false, error: "Team not found" }
+    await db.update(teams).set({
+      ownerEmail: member.email.trim().toLowerCase(),
+      ownerName: member.name?.trim() || null,
+      ownerPhone: member.phone?.trim() || null,
+      updatedAt: new Date(),
+    }).where(eq(teams.id, teamId))
+  }
+
+  revalidatePath("/admin/members")
+  revalidatePath("/admin/teams")
+  revalidatePath("/dashboard/org")
+  return { ok: true }
 }
 
 // ---------------------------------------------------------------------------

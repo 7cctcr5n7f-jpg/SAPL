@@ -15,6 +15,7 @@ import {
   updateMemberPaid,
   resendInviteEmail,
   deleteMember,
+  assignMemberAsTeamOwner,
   type MemberRow,
 } from "@/lib/actions/members"
 import { cn } from "@/lib/utils"
@@ -34,6 +35,8 @@ import {
   SquarePen,
   Mars,
   Venus,
+  Crown,
+  Clock,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -82,6 +85,19 @@ const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: st
 function fmtDate(iso: string | null) {
   if (!iso) return "—"
   return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return "Never"
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 2) return "Just now"
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return fmtDate(iso)
 }
 
 function roleLabel(r: Role) {
@@ -308,6 +324,108 @@ function StatusCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: bo
     >
       {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
     </select>
+  )
+}
+
+function TeamOwnerCell({
+  member,
+  allTeams,
+  onSaved,
+}: {
+  member: MemberRow
+  allTeams: { id: number; name: string; hasOwner: boolean }[]
+  onSaved: (ownedTeamId: number | null, ownedTeamName: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [pending, start] = useTransition()
+  const [display, setDisplay] = useState<{ id: number | null; name: string | null }>({
+    id: member.ownedTeamId ?? null,
+    name: member.ownedTeamName ?? null,
+  })
+
+  // Sync when prop changes externally
+  if (!editing && (member.ownedTeamId ?? null) !== display.id) {
+    setDisplay({ id: member.ownedTeamId ?? null, name: member.ownedTeamName ?? null })
+  }
+
+  // Only show unowned teams plus the currently owned one
+  const options = allTeams.filter((t) => !t.hasOwner || t.id === display.id)
+
+  function select(teamId: number | null) {
+    start(async () => {
+      const res = await assignMemberAsTeamOwner(member.id, teamId)
+      if (res.ok) {
+        const name = teamId ? (allTeams.find((t) => t.id === teamId)?.name ?? null) : null
+        setDisplay({ id: teamId, name })
+        setEditing(false)
+        onSaved(teamId, name)
+        toast.success(teamId ? `Assigned as owner of ${name}` : "Team ownership cleared")
+      } else {
+        toast.error(res.error ?? "Could not assign team owner")
+      }
+    })
+  }
+
+  if (pending) {
+    return <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="group flex items-center gap-1.5 rounded px-1.5 py-0.5 text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-left"
+        title={display.name ? `Owner of ${display.name}` : "No owned team — click to assign"}
+      >
+        {display.name ? (
+          <>
+            <Crown className="h-3 w-3 shrink-0 text-amber-500" />
+            <span className="truncate max-w-[120px]">{display.name}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground text-xs">No</span>
+        )}
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
+      </button>
+    )
+  }
+
+  return (
+    <div className="relative z-20">
+      <div className="absolute left-0 top-0 w-52 max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+        <button
+          onClick={() => select(null)}
+          className={cn(
+            "flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted/60 text-left text-muted-foreground",
+            display.id === null && "bg-primary/10 font-medium text-foreground",
+          )}
+        >
+          No team owner
+        </button>
+        {options.length === 0 && (
+          <p className="px-3 py-2 text-xs text-muted-foreground italic">All teams already have owners</p>
+        )}
+        {options.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => select(t.id)}
+            className={cn(
+              "flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/60 text-left",
+              t.id === display.id && "bg-primary/10 font-medium",
+            )}
+          >
+            <Crown className="h-3 w-3 shrink-0 text-amber-500" />
+            {t.name}
+          </button>
+        ))}
+        <button
+          onClick={() => setEditing(false)}
+          className="flex w-full items-center gap-1 border-t border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/40"
+        >
+          <X className="h-3 w-3" /> Cancel
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -727,7 +845,7 @@ export function MembersTable({
   currentUserId,
 }: {
   members: MemberRow[]
-  allTeams: { id: number; name: string }[]
+  allTeams: { id: number; name: string; hasOwner: boolean }[]
   currentUserId: string
 }) {
   const router = useRouter()
@@ -880,9 +998,11 @@ export function MembersTable({
               <th className="px-3 py-2.5 min-w-[180px]">Name</th>
               <th className="px-3 py-2.5 min-w-[130px]">Role</th>
               <th className="px-3 py-2.5 min-w-[160px]">Team</th>
+              <th className="px-3 py-2.5 min-w-[140px]">Team owner</th>
               <th className="px-3 py-2.5 w-20">Gender</th>
               <th className="px-3 py-2.5 min-w-[90px] text-right">PT Rating</th>
               <th className="px-3 py-2.5 min-w-[100px]">Payment</th>
+              <th className="px-3 py-2.5 min-w-[100px]">Last log</th>
               <th className="px-3 py-2.5 w-16 text-right">Edit</th>
             </tr>
           </thead>
@@ -933,6 +1053,15 @@ export function MembersTable({
                     />
                   </td>
 
+                  {/* Team owner — inline dropdown */}
+                  <td className="px-3 py-2.5">
+                    <TeamOwnerCell
+                      member={m}
+                      allTeams={allTeams}
+                      onSaved={(ownedTeamId, ownedTeamName) => patch(m.id, { ownedTeamId: ownedTeamId ?? undefined, ownedTeamName: ownedTeamName ?? undefined })}
+                    />
+                  </td>
+
                   {/* Gender */}
                   <td className="px-3 py-2.5">
                     {m.gender === "male" ? (
@@ -965,6 +1094,17 @@ export function MembersTable({
                     )}
                   </td>
 
+                  {/* Last log */}
+                  <td className="px-3 py-2.5">
+                    <span
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                      title={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("en-ZA") : "Never logged in"}
+                    >
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {fmtRelative(m.lastLoginAt)}
+                    </span>
+                  </td>
+
                   {/* Edit button */}
                   <td className="px-3 py-2.5 text-right">
                     <button
@@ -981,7 +1121,7 @@ export function MembersTable({
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">
                   {hasFilters ? "No members match the current filters." : "No members yet."}
                 </td>
               </tr>
