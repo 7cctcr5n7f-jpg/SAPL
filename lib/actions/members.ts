@@ -285,15 +285,16 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
 
   for (const team of teamRows) {
     if (team.ownerEmail) {
-      // Use ownerName only if it doesn't look like an email address (guards bad data)
-      const displayName = team.ownerName && !team.ownerName.includes("@") ? team.ownerName : null
+      // Use ownerName only if it's a real name (not an email address — guards bad data).
+      // Fall back to "Owner of <team name>" so the entry is identifiable even when
+      // no real name has been recorded yet.
+      const realName = team.ownerName && !team.ownerName.includes("@") ? team.ownerName.trim() : null
+      const displayName = realName || `Owner of ${team.name}`
       push({ key: `team-${team.id}-1`, name: displayName, email: team.ownerEmail, phone: team.ownerPhone ?? null, source: "team_owner", clubId: null, clubName: null, ownedTeamId: team.id, ownedTeamName: team.name })
     }
   }
 
-  const sorted = contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
-  console.log("[v0] listUnregisteredContacts: teamRows ownerEmails=", teamRows.map(t => t.ownerEmail), "knownEmails has ruanroux=", knownEmails.has("ruanrouxemail@gmail.com"), "final contacts=", sorted.map(c => c.email))
-  return sorted
+  return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
 }
 
 export async function createAccountForContact(input: {
