@@ -1097,6 +1097,7 @@ export function MembersTable({
                   <td className="px-2 py-3 overflow-hidden">
                     <span
                       className="inline-flex items-center gap-0.5 text-xs text-muted-foreground whitespace-nowrap"
+                      suppressHydrationWarning
                       title={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("en-ZA") : "Never logged in"}
                     >
                       <Clock className="h-3 w-3 shrink-0" />

@@ -43,18 +43,25 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
 
-  const [meta] = await db.select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, session.user.id)).limit(1)
-  
+  const [meta] = await db
+    .select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone })
+    .from(userMeta)
+    .where(eq(userMeta.userId, session.user.id))
+    .limit(1)
+
   // Try to fetch player status, but gracefully handle missing columns during migration
   let isPlayer = false
   let onMarketplace = false
   try {
-    const [userData] = await db.select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace }).from(user).where(eq(user.id, session.user.id)).limit(1)
+    const [userData] = await db
+      .select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace })
+      .from(user)
+      .where(eq(user.id, session.user.id))
+      .limit(1)
     isPlayer = userData?.isPlayer ?? false
     onMarketplace = userData?.onMarketplace ?? false
-  } catch (err) {
-    // Columns may not exist yet if migration hasn't run
-    // Silently default to false if columns don't exist
+  } catch {
+    // Columns may not exist yet if migration hasn't run — silently default to false
   }
 
   const realRole = (meta?.role as Role) ?? "player"
