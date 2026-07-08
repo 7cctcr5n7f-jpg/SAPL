@@ -32,7 +32,6 @@ import {
   MapPin,
   Phone,
   Mail,
-  UserCircle2,
   Mars,
   Venus,
 } from "lucide-react"
@@ -110,6 +109,33 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
                 </>
               )}
             </p>
+            {/* Owner inline — plain text, no card */}
+            {hasOwnerInfo && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                {team.ownerName && (
+                  <span className="font-medium text-foreground">{team.ownerName}</span>
+                )}
+                {team.ownerPhone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {team.ownerPhone}
+                  </span>
+                )}
+                {team.ownerEmail && (
+                  <span className="flex items-center gap-1">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {team.ownerEmail}
+                  </span>
+                )}
+                {team.coOwnerEmail && (
+                  <span className="flex items-center gap-1">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {team.coOwnerEmail}
+                    <span className="text-muted-foreground/60">(co-owner)</span>
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
@@ -172,52 +198,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
         />
       </div>
 
-      {/* ── Team owner card ───────────────────────────────────────────────── */}
-      {hasOwnerInfo && (
-        <div>
-          <SectionHeading>Team Owner</SectionHeading>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-0 rounded-xl border border-border bg-card p-4 flex items-start gap-3">
-              <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-                <UserCircle2 className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5">
-                {team.ownerName && (
-                  <p className="text-sm font-bold text-foreground">{team.ownerName}</p>
-                )}
-                {team.ownerPhone && (
-                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <span>{team.ownerPhone}</span>
-                  </p>
-                )}
-                {team.ownerEmail && (
-                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{team.ownerEmail}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Co-owner */}
-            {team.coOwnerEmail && (
-              <div className="flex-1 min-w-0 rounded-xl border border-border bg-card p-4 flex items-start gap-3">
-                <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-                  <UserCircle2 className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Co-owner</p>
-                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{team.coOwnerEmail}</span>
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Team owner is now shown inline under the team name in the header above */}
 
       {/* ── Next fixture ─────────────────────────────────────────────────── */}
       {nextFixture && (
@@ -287,7 +268,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
             </div>
           )}
         </div>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {pairingCategories.map((cat) => (
             <CategorySection
               key={cat.name}
@@ -395,7 +376,7 @@ function CategorySection({
   const accentColor = cat.gender === "female" ? "bg-pink-500" : "bg-sky-500"
 
   return (
-    <div>
+    <div className="rounded-xl border border-border bg-card p-3">
       {/* Category header */}
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
