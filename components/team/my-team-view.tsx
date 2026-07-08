@@ -73,12 +73,26 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
               {team.divisionName}
               {team.clubName ? ` · ${team.clubName}` : ""}
             </p>
-            {team.captainName ? (
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Crown className="h-3 w-3 text-amber-500" />
-                <span>Captain: <span className="font-semibold text-foreground">{team.captainName}</span></span>
-              </p>
-            ) : null}
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+              <span>
+                Team owner:{" "}
+                {team.captainName ? (
+                  <>
+                    <span className="font-semibold text-foreground">{team.captainName}</span>
+                    {team.captainEmail ? (
+                      <span className="ml-1 text-muted-foreground">· {team.captainEmail}</span>
+                    ) : team.ownerEmail ? (
+                      <span className="ml-1 text-muted-foreground">· {team.ownerEmail}</span>
+                    ) : null}
+                  </>
+                ) : team.ownerEmail ? (
+                  <span className="font-semibold text-foreground">{team.ownerEmail}</span>
+                ) : (
+                  <span className="italic text-muted-foreground">Not assigned</span>
+                )}
+              </span>
+            </p>
           </div>
         </div>
         {otherTeams.length > 0 ? (
@@ -167,7 +181,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 
         {pairingCategories.length > 0 ? (
           <div className="space-y-6">
-            {pairingCategories.map((cat) => (
+            {[...pairingCategories].sort((a, b) => (CATEGORY_META[a.category]?.order ?? 99) - (CATEGORY_META[b.category]?.order ?? 99)).map((cat) => (
               <CategorySection
                 key={cat.category}
                 cat={cat}
@@ -395,11 +409,11 @@ function RosterSlot({
 
 // ── Category-grouped squad section ────────────────────────────────────────────
 
-const CATEGORY_META: Record<string, { gender: "male" | "female"; session: 1 | 2; featureCourt: boolean }> = {
-  "Mens Beginner": { gender: "male", session: 1, featureCourt: false },
-  "Mens Intermediate": { gender: "male", session: 1, featureCourt: false },
-  "Mens Open": { gender: "male", session: 2, featureCourt: true },
-  "Ladies Open": { gender: "female", session: 2, featureCourt: true },
+const CATEGORY_META: Record<string, { gender: "male" | "female"; session: 1 | 2; featureCourt: boolean; order: number }> = {
+  "Mens Open":         { gender: "male",   session: 2, featureCourt: true,  order: 0 },
+  "Ladies Open":       { gender: "female", session: 2, featureCourt: true,  order: 1 },
+  "Mens Intermediate": { gender: "male",   session: 1, featureCourt: false, order: 2 },
+  "Mens Beginner":     { gender: "male",   session: 1, featureCourt: false, order: 3 },
 }
 
 function CategorySection({

@@ -58,6 +58,8 @@ export type MyTeamView = {
     clubLogoUrl: string | null
     divisionName: string
     captainName: string | null
+    captainEmail: string | null
+    ownerEmail: string | null
   }
   readiness: TeamReadiness
   avgRating: number | null
@@ -111,6 +113,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       homeClubId: teams.homeClubId,
       captainUserId: teams.captainUserId,
       clubPaysFees: teams.clubPaysFees,
+      ownerEmail: teams.ownerEmail,
     })
     .from(teams)
     .where(eq(teams.id, teamId))
@@ -133,13 +136,18 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     }
   }
   let captainName: string | null = null
+  let captainEmail: string | null = null
   if (team.captainUserId) {
     const [cap] = await db
-      .select({ firstName: user.firstName, lastName: user.lastName })
+      .select({ firstName: user.firstName, lastName: user.lastName, email: user.email })
       .from(user)
       .where(eq(user.id, team.captainUserId))
       .limit(1)
-    if (cap) captainName = `${cap.firstName} ${cap.lastName}`
+    if (cap) {
+      const parts = [cap.firstName, cap.lastName].filter(Boolean)
+      captainName = parts.length > 0 ? parts.join(" ") : null
+      captainEmail = cap.email ?? null
+    }
   }
 
   // Active roster (with ratings + registration + payment status).
@@ -313,6 +321,8 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       clubLogoUrl,
       divisionName,
       captainName,
+      captainEmail,
+      ownerEmail: team.ownerEmail ?? null,
     },
     readiness,
     avgRating: readiness.avgRating,
