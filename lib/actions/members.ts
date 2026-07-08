@@ -107,9 +107,12 @@ export async function listMembers(): Promise<MemberRow[]> {
   const userIds = rows.map((r) => r.id)
   if (userIds.length === 0) return []
 
-  // Last login: max session.createdAt per user
+  // Last login: max session.updatedAt per user. Better Auth keeps sessions alive
+  // by bumping updatedAt/expiresAt on each request — createdAt is set once when
+  // the session row is first inserted and never changes, so it reflects the
+  // original login date, not the most recent activity.
   const lastLogins = await db
-    .select({ userId: session.userId, lastLogin: max(session.createdAt) })
+    .select({ userId: session.userId, lastLogin: max(session.updatedAt) })
     .from(session)
     .groupBy(session.userId)
   const loginMap = new Map(lastLogins.map((l) => [l.userId, l.lastLogin]))
