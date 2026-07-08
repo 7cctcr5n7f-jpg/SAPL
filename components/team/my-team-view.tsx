@@ -26,14 +26,18 @@ import {
   Calendar,
   CreditCard,
   Clock,
-  UserPlus,
   ExternalLink,
   ChevronDown,
   Users,
   MapPin,
+  Phone,
+  Mail,
+  UserCircle2,
+  Mars,
+  Venus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { MyTeamView as MyTeamViewData, MyTeamSlot } from "@/lib/my-team"
+import type { MyTeamView as MyTeamViewData, MyTeamCategory, MyTeamCategorySlot } from "@/lib/my-team"
 
 function initials(name: string) {
   return name
@@ -51,9 +55,10 @@ function fmtDate(iso: string | null) {
 }
 
 function fmtZAR(amount: number) {
-  return `R ${amount.toLocaleString("en-ZA")}`
+  return `R\u00a0${amount.toLocaleString("en-ZA")}`
 }
 
+// ── Section heading with full-width hairline rule ─────────────────────────────
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-4 mb-5">
@@ -65,44 +70,44 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
+// ── Main view ─────────────────────────────────────────────────────────────────
+
 export function MyTeamView({ data }: { data: MyTeamViewData }) {
-  const { team, readiness, avgRating, slots, payment, nextFixture, standing, otherTeams, canManage } = data
-  const filled = slots.filter((s) => s.kind !== "empty").length
-  const slotsRemaining = readiness.maxPlayers - filled
+  const { team, readiness, avgRating, pairingCategories, payment, nextFixture, standing, otherTeams, canManage } = data
+
+  // Count filled slots across all categories
+  const filledSlots = pairingCategories.flatMap((c) => c.slots).filter((s) => s.player !== null).length
+  const totalSlots = pairingCategories.flatMap((c) => c.slots).length // should be 8
+  const slotsRemaining = totalSlots - filledSlots
+
+  const hasOwnerInfo = team.ownerName || team.ownerPhone || team.ownerEmail
 
   return (
     <div className="space-y-8">
       {/* ── Team identity header ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Avatar className="h-14 w-14 rounded-xl border border-border shadow-sm">
+          <Avatar className="h-16 w-16 rounded-full border border-border shadow-sm">
             <AvatarImage src={team.logoUrl ?? team.clubLogoUrl ?? undefined} alt="" />
-            <AvatarFallback className="rounded-xl bg-secondary text-lg font-bold font-heading">
+            <AvatarFallback className="rounded-full bg-secondary text-xl font-bold font-heading">
               {initials(team.name)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="font-heading text-3xl font-black tracking-tight text-foreground leading-none">
+            <h1 className="font-heading text-4xl font-black tracking-tight text-foreground leading-none uppercase">
               {team.name}
             </h1>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
-              {team.divisionName !== "Unassigned" && (
-                <span className="inline-flex items-center gap-1">
-                  <Trophy className="h-3 w-3" />
-                  {team.divisionName}
-                </span>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+              {team.divisionName !== "Unassigned" ? (
+                <span>{team.divisionName}</span>
+              ) : (
+                <span>Unassigned</span>
               )}
               {team.clubName && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {team.clubName}
-                </span>
-              )}
-              {team.captainName && (
-                <span className="inline-flex items-center gap-1">
-                  <Crown className="h-3 w-3 text-amber-500" />
-                  {team.captainName}
-                </span>
+                <>
+                  <span className="text-border">·</span>
+                  <span>{team.clubName}</span>
+                </>
               )}
             </p>
           </div>
@@ -133,43 +138,86 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
       <ReadinessBanner readiness={readiness} />
 
       {/* ── Stat strip ───────────────────────────────────────────────────── */}
-      <div className="flex items-stretch divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-stretch divide-x divide-border overflow-hidden rounded-none border border-border bg-card">
         <StatPill
-          icon={<Star className="h-4 w-4" />}
-          label="Avg PR"
+          label="AVG PR"
           value={avgRating != null ? avgRating.toFixed(2) : "—"}
           highlight={avgRating != null}
         />
         <StatPill
-          icon={<Users className="h-4 w-4" />}
-          label="Squad"
-          value={`${filled}/${readiness.maxPlayers}`}
+          label="SQUAD"
+          value={`${filledSlots} / ${totalSlots}`}
           sub={slotsRemaining > 0 ? `${slotsRemaining} open` : "Full"}
         />
         <StatPill
-          icon={<Trophy className="h-4 w-4" />}
-          label="Position"
+          label="POSITION"
           value={standing?.rank ? `#${standing.rank}` : "—"}
           sub={standing ? `${standing.points} pts` : "Not started"}
         />
         <StatPill
-          icon={<CreditCard className="h-4 w-4" />}
-          label="Fees"
+          label="FEES"
           value={
             payment.clubPaysFees
               ? "Team"
-              : payment.outstandingAmount > 0
-                ? fmtZAR(payment.outstandingAmount)
-                : "Settled"
+              : `${payment.paidCount}/${filledSlots}`
           }
           sub={
             payment.clubPaysFees
               ? "Club pays"
-              : `${payment.paidCount}/${filled} paid`
+              : payment.outstandingAmount > 0
+                ? `${fmtZAR(payment.outstandingAmount)} due`
+                : "Settled"
           }
-          accent={!payment.clubPaysFees && payment.outstandingAmount > 0 ? "text-amber-500" : "text-emerald-500"}
+          accent={!payment.clubPaysFees && payment.outstandingAmount > 0 ? "text-amber-500" : undefined}
         />
       </div>
+
+      {/* ── Team owner card ───────────────────────────────────────────────── */}
+      {hasOwnerInfo && (
+        <div>
+          <SectionHeading>Team Owner</SectionHeading>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-0 rounded-xl border border-border bg-card p-4 flex items-start gap-3">
+              <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                <UserCircle2 className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {team.ownerName && (
+                  <p className="text-sm font-bold text-foreground">{team.ownerName}</p>
+                )}
+                {team.ownerPhone && (
+                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span>{team.ownerPhone}</span>
+                  </p>
+                )}
+                {team.ownerEmail && (
+                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{team.ownerEmail}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Co-owner */}
+            {team.coOwnerEmail && (
+              <div className="flex-1 min-w-0 rounded-xl border border-border bg-card p-4 flex items-start gap-3">
+                <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                  <UserCircle2 className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Co-owner</p>
+                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{team.coOwnerEmail}</span>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Next fixture ─────────────────────────────────────────────────── */}
       {nextFixture && (
@@ -192,7 +240,10 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
                 </p>
               </div>
             </div>
-            <Badge variant="secondary" className={nextFixture.isHome ? "text-emerald-600" : "text-muted-foreground"}>
+            <Badge
+              variant="secondary"
+              className={nextFixture.isHome ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : ""}
+            >
               {nextFixture.isHome ? "Home" : "Away"}
             </Badge>
           </div>
@@ -226,19 +277,21 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
         </div>
       )}
 
-      {/* ── Squad roster ─────────────────────────────────────────────────── */}
+      {/* ── Squad roster (category-grouped) ──────────────────────────────── */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between">
           <SectionHeading>Squad</SectionHeading>
           {canManage && slotsRemaining > 0 && (
-            <MyTeamAddPlayer teamId={team.id} slotsRemaining={slotsRemaining} />
+            <div className="mb-5">
+              <MyTeamAddPlayer teamId={team.id} slotsRemaining={slotsRemaining} />
+            </div>
           )}
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {slots.map((slot, i) => (
-            <RosterSlot
-              key={i}
-              slot={slot}
+        <div className="space-y-6">
+          {pairingCategories.map((cat) => (
+            <CategorySection
+              key={cat.name}
+              cat={cat}
               teamId={team.id}
               canManage={canManage}
               slotsRemaining={slotsRemaining}
@@ -256,8 +309,8 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 function ReadinessBanner({ readiness }: { readiness: MyTeamViewData["readiness"] }) {
   if (readiness.isLeagueReady) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+      <div className="flex items-center gap-3 border-l-4 border-emerald-500 bg-emerald-500/8 px-4 py-3">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
         <div>
           <p className="font-semibold text-foreground text-sm">League Ready</p>
           <p className="text-xs text-muted-foreground">
@@ -268,8 +321,8 @@ function ReadinessBanner({ readiness }: { readiness: MyTeamViewData["readiness"]
     )
   }
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-      <AlertCircle className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
+    <div className="flex items-start gap-3 border-l-4 border-amber-500 bg-amber-500/8 px-4 py-3">
+      <AlertCircle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
       <div>
         <p className="font-semibold text-foreground text-sm">Not League Ready yet</p>
         <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
@@ -282,17 +335,15 @@ function ReadinessBanner({ readiness }: { readiness: MyTeamViewData["readiness"]
   )
 }
 
-// ── Stat pill ─────────────────────────────────────────────────────────────────
+// ── Stat pill (no icon, matches screenshot) ───────────────────────────────────
 
 function StatPill({
-  icon,
   label,
   value,
   sub,
   highlight,
   accent,
 }: {
-  icon: React.ReactNode
   label: string
   value: string
   sub?: string
@@ -300,11 +351,10 @@ function StatPill({
   accent?: string
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-4 py-4 text-center">
-      <div className="flex items-center gap-1 text-muted-foreground mb-1">
-        {icon}
-        <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
-      </div>
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-5 text-center">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
+        {label}
+      </span>
       <span
         className={cn(
           "font-heading text-2xl font-black tabular-nums leading-none",
@@ -318,16 +368,92 @@ function StatPill({
   )
 }
 
-// ── Roster slot ───────────────────────────────────────────────────────────────
+// ── Category section ──────────────────────────────────────────────────────────
 
-function RosterSlot({
+function CategorySection({
+  cat,
+  teamId,
+  canManage,
+  slotsRemaining,
+  clubPaysFees,
+}: {
+  cat: MyTeamCategory
+  teamId: number
+  canManage: boolean
+  slotsRemaining: number
+  clubPaysFees: boolean
+}) {
+  const filledCount = cat.slots.filter((s) => s.player !== null).length
+  const totalCount = cat.slots.length
+  const dotColor =
+    filledCount === totalCount
+      ? "bg-emerald-500"
+      : filledCount > 0
+        ? "bg-amber-500"
+        : "bg-amber-400"
+
+  const accentColor = cat.gender === "female" ? "bg-pink-500" : "bg-sky-500"
+
+  return (
+    <div>
+      {/* Category header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className={cn("w-1 self-stretch rounded-full", accentColor)} />
+          <span className="text-muted-foreground">
+            {cat.gender === "female" ? (
+              <Venus className="h-4 w-4" />
+            ) : (
+              <Mars className="h-4 w-4" />
+            )}
+          </span>
+          <span className="font-heading text-sm font-bold uppercase tracking-wide text-foreground">
+            {cat.name}
+          </span>
+          {cat.isFeatureCourt && (
+            <Badge
+              variant="outline"
+              className="h-5 px-1.5 text-[10px] font-bold uppercase tracking-wide border-primary/40 text-primary bg-primary/5"
+            >
+              Feature
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className={cn("h-2 w-2 rounded-full", dotColor)} />
+          <span className="text-xs text-muted-foreground">
+            {filledCount}/{totalCount}
+          </span>
+        </div>
+      </div>
+
+      {/* Slots */}
+      <div className="space-y-1.5">
+        {cat.slots.map((slot, i) => (
+          <CategorySlotRow
+            key={i}
+            slot={slot}
+            teamId={teamId}
+            canManage={canManage}
+            slotsRemaining={slotsRemaining}
+            clubPaysFees={clubPaysFees}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Single category slot row ──────────────────────────────────────────────────
+
+function CategorySlotRow({
   slot,
   teamId,
   canManage,
   slotsRemaining,
   clubPaysFees,
 }: {
-  slot: MyTeamSlot
+  slot: MyTeamCategorySlot
   teamId: number
   canManage: boolean
   slotsRemaining: number
@@ -336,102 +462,90 @@ function RosterSlot({
   const router = useRouter()
   const [pending, start] = useTransition()
 
-  if (slot.kind === "empty") {
+  // Pending invite
+  if (!slot.player && slot.inviteEmail) {
+    return (
+      <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar className="h-9 w-9 border border-border shrink-0">
+            <AvatarFallback className="bg-secondary text-xs text-muted-foreground">
+              {slot.inviteName ? initials(slot.inviteName) : "?"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {slot.inviteName ?? slot.inviteEmail}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">{slot.inviteEmail}</p>
+          </div>
+        </div>
+        <Badge variant="secondary" className="gap-1 shrink-0 text-amber-600">
+          <Clock className="h-3 w-3" /> Invited
+        </Badge>
+      </div>
+    )
+  }
+
+  // Empty slot
+  if (!slot.player) {
     if (canManage) {
       return (
         <MyTeamAddPlayer
           teamId={teamId}
           slotsRemaining={slotsRemaining}
           trigger={
-            <button className="flex h-full min-h-[72px] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary">
-              <Plus className="h-4 w-4" /> Add player
+            <button className="flex w-full items-center gap-3 border-b border-border py-3 last:border-0 text-sm text-muted-foreground hover:text-primary transition-colors">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span>Open slot</span>
             </button>
           }
         />
       )
     }
     return (
-      <div className="flex min-h-[72px] items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-        Open slot
-      </div>
-    )
-  }
-
-  if (slot.kind === "pending") {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="h-9 w-9 border border-border">
-            <AvatarFallback className="bg-secondary text-xs text-muted-foreground">
-              {slot.name ? initials(slot.name) : "?"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{slot.name ?? slot.email}</p>
-            <p className="truncate text-xs text-muted-foreground">{slot.email}</p>
-          </div>
+      <div className="flex items-center gap-3 border-b border-border py-3 last:border-0 text-sm text-muted-foreground">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
+          <Plus className="h-4 w-4" />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary" className="gap-1 text-amber-600">
-            <Clock className="h-3 w-3" /> Invited
-          </Badge>
-          {canManage && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  const res = await cancelInvite(slot.inviteId)
-                  if (res.error) toast.error(res.error)
-                  else {
-                    toast.success("Invite cancelled.")
-                    router.refresh()
-                  }
-                })
-              }
-            >
-              Cancel
-            </Button>
-          )}
-        </div>
+        <span>Open slot</span>
       </div>
     )
   }
 
   // Active player
-  const payBadge = clubPaysFees ? null : slot.paid ? "paid" : "unpaid"
+  const { player } = slot
+  const payBadge = clubPaysFees ? null : player.paid ? "paid" : "unpaid"
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-muted/30">
-      <div className="flex min-w-0 items-center gap-3">
-        <Avatar className="h-9 w-9 border border-border">
-          <AvatarImage src={slot.avatarUrl ?? undefined} alt="" />
-          <AvatarFallback className="bg-secondary text-xs">{initials(slot.name)}</AvatarFallback>
+    <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <Avatar className="h-9 w-9 border border-border shrink-0">
+          <AvatarFallback className="bg-secondary text-sm font-semibold">
+            {initials(player.name)}
+          </AvatarFallback>
         </Avatar>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-foreground">{slot.name}</p>
-            {slot.isCaptain && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+            <p className="truncate text-sm font-semibold text-foreground">{player.name}</p>
+            {player.isCaptain && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {slot.playtomicRating != null ? (
-              <span className="flex items-center gap-0.5">
-                <Star className="h-3 w-3" /> {slot.playtomicRating.toFixed(1)}
-              </span>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Star className="h-3 w-3" />
+            {player.playtomicRating != null ? (
+              <span>{player.playtomicRating.toFixed(1)}</span>
             ) : (
               <span>Unrated</span>
             )}
-            {!slot.registered && <span className="text-amber-500">Not registered</span>}
           </div>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
         {payBadge === "paid" && (
-          <Badge variant="secondary" className="gap-1 text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="h-3 w-3" /> Paid
+          <Badge variant="secondary" className="text-emerald-600 dark:text-emerald-400">
+            Paid
           </Badge>
         )}
         {payBadge === "unpaid" && (
@@ -439,7 +553,7 @@ function RosterSlot({
             Unpaid
           </Badge>
         )}
-        {canManage && !slot.isCaptain && (
+        {canManage && !player.isCaptain && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -450,16 +564,11 @@ function RosterSlot({
               }
             />
             <DropdownMenuContent align="end">
-              {slot.playtomicUrl && (
-                <DropdownMenuItem render={<a href={slot.playtomicUrl} target="_blank" rel="noreferrer" />}>
-                  <ExternalLink className="mr-2 h-4 w-4" /> Playtomic profile
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() =>
                   start(async () => {
-                    const res = await removeFromTeam({ teamId, playerId: slot.playerId })
+                    const res = await removeFromTeam({ teamId, playerId: player.playerId })
                     if (res.error) toast.error(res.error)
                     else {
                       toast.success("Player removed.")

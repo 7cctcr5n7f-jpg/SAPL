@@ -144,6 +144,8 @@ export default async function AdminTeamsPage() {
       homeClubContactEmail2: club?.contactEmail2 ?? null,
       ownerEmail: row.team.ownerEmail ?? null,
       ownerName,
+      ownerPhone: row.team.ownerPhone ?? null,
+      coOwnerEmail: row.team.coOwnerEmail ?? null,
       avgLi: row.team.avgLi,
       playerCount: row.team.playerCount,
       maxPlayers: row.team.maxPlayers,

@@ -1,6 +1,6 @@
 import "server-only"
 import { db } from "@/lib/db"
-import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixtures, standings } from "@/lib/db/schema"
+import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixtures, standings, categories, teamPairings } from "@/lib/db/schema"
 import { and, eq, ne, or, desc } from "drizzle-orm"
 import { getTeamReadiness, suggestDivision, type TeamReadiness } from "@/lib/team-readiness"
 import { getPlayerFee } from "@/lib/queries"
@@ -27,6 +27,25 @@ export type MyTeamSlot =
       playtomicRating: number | null
     }
   | { kind: "empty" }
+
+export type MyTeamCategorySlot = {
+  player: {
+    playerId: string
+    name: string
+    playtomicRating: number | null
+    paid: boolean
+    isCaptain: boolean
+  } | null
+  inviteEmail: string | null
+  inviteName: string | null
+}
+
+export type MyTeamCategory = {
+  name: string
+  gender: string
+  isFeatureCourt: boolean
+  slots: MyTeamCategorySlot[]
+}
 
 export type MyTeamPaymentStatus = {
   clubPaysFees: boolean
@@ -56,6 +75,10 @@ export type MyTeamView = {
     clubLogoUrl: string | null
     divisionName: string
     captainName: string | null
+    ownerName: string | null
+    ownerPhone: string | null
+    ownerEmail: string | null
+    coOwnerEmail: string | null
   }
   readiness: TeamReadiness
   avgRating: number | null
@@ -64,6 +87,8 @@ export type MyTeamView = {
   payment: MyTeamPaymentStatus
   nextFixture: MyTeamNextFixture
   standing: { played: number; wins: number; points: number; rank: number | null } | null
+  /** Category-grouped squad view (matches the pairings board). */
+  pairingCategories: MyTeamCategory[]
   /** Other active teams the player belongs to, for the team switcher. */
   otherTeams: { id: number; name: string }[]
   /** Whether the viewer may add players (owner / captain / manager / admin). */
@@ -107,6 +132,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       homeClubId: teams.homeClubId,
       captainUserId: teams.captainUserId,
       clubPaysFees: teams.clubPaysFees,
+      ownerName: teams.ownerName,
+      ownerPhone: teams.ownerPhone,
+      ownerEmail: teams.ownerEmail,
+      coOwnerEmail: teams.coOwnerEmail,
     })
     .from(teams)
     .where(eq(teams.id, teamId))
@@ -177,6 +206,54 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")))
     .orderBy(desc(teamInvites.createdAt))
+
+  // Fetch category meta + pairing slots for the category-grouped squad view.
+  const catMeta = await db
+    .select({ name: categories.name, gender: categories.gender, isFeatureCourt: categories.isFeatureCourt })
+    .from(categories)
+    .orderBy(categories.sortOrder)
+
+  const pairingSlotRows = await db
+    .select({ category: teamPairings.category, pairIndex: teamPairings.pairIndex, slotIndex: teamPairings.slotIndex, playerId: teamPairings.playerId })
+    .from(teamPairings)
+    .where(eq(teamPairings.teamId, teamId))
+
+  // Build a quick lookup: { playerId → display info } from the already-fetched roster.
+  const playerMap = new Map<string, { playerId: string; name: string; playtomicRating: number | null; paid: boolean; isCaptain: boolean }>()
+  for (const r of rosterRows) {
+    playerMap.set(r.playerId, {
+      playerId: r.playerId,
+      name: `${r.firstName ?? ""} ${r.lastName ?? ""}`.trim(),
+      playtomicRating: r.playtomicRating ?? null,
+      paid: team.clubPaysFees || paidPlayerIds.has(r.playerId),
+      isCaptain: r.playerId === team.captainUserId,
+    })
+  }
+
+  // Group pending invites by category (undefined category → "__none__").
+  const invitesByCategory = new Map<string, { email: string; name: string | null }[]>()
+  for (const p of pendingRows) {
+    const cat = (p.category as string | null) ?? "__none__"
+    if (!invitesByCategory.has(cat)) invitesByCategory.set(cat, [])
+    invitesByCategory.get(cat)!.push({ email: p.email, name: (p.invitedName as string | null) ?? null })
+  }
+
+  // Build MyTeamCategory objects: one per league category, each with 2 slots.
+  const pairingCategories: MyTeamCategory[] = catMeta.map((cat) => {
+    const slot1 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 1)
+    const slot2 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 2)
+    const catInvites = invitesByCategory.get(cat.name) ?? []
+    return {
+      name: cat.name,
+      gender: cat.gender,
+      isFeatureCourt: cat.isFeatureCourt,
+      slots: [slot1, slot2].map((s, idx) => {
+        const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
+        const invite = !player ? (catInvites[idx] ?? null) : null
+        return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
+      }),
+    }
+  })
 
   // Build the ordered slot list: active players, pending invites, empties → 8.
   const slots: MyTeamSlot[] = []
@@ -305,6 +382,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       clubLogoUrl,
       divisionName,
       captainName,
+      ownerName: team.ownerName ?? null,
+      ownerPhone: team.ownerPhone ?? null,
+      ownerEmail: team.ownerEmail ?? null,
+      coOwnerEmail: team.coOwnerEmail ?? null,
     },
     readiness,
     avgRating: readiness.avgRating,
@@ -313,6 +394,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     payment,
     nextFixture,
     standing: standing ?? null,
+    pairingCategories,
     otherTeams,
     canManage: opts?.canManage ?? false,
   }

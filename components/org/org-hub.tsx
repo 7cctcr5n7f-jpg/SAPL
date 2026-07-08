@@ -51,6 +51,8 @@ type Team = {
   homeClubContactEmail2: string | null
   ownerEmail: string | null
   ownerName: string | null
+  ownerPhone: string | null
+  coOwnerEmail: string | null
   avgLi: number
   playerCount: number
   maxPlayers: number
@@ -708,6 +710,9 @@ function EditTeamDialog({
   const [ownerEmail, setOwnerEmail] = useState(
     team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
   )
+  const [ownerName, setOwnerName] = useState(team.ownerName ?? "")
+  const [ownerPhone, setOwnerPhone] = useState(team.ownerPhone ?? "")
+  const [coOwnerEmail, setCoOwnerEmail] = useState(team.coOwnerEmail ?? "")
 
   // When a home club is set, the region is inherited from it and can't be edited.
   const hasHomeClub = Boolean(homeClubId)
@@ -730,6 +735,9 @@ function EditTeamDialog({
         saplRegion: homeClubId ? undefined : saplRegion || null,
         clubPaysFees,
         ownerEmail: ownerEmail.trim() || null,
+        ownerName: ownerName.trim() || null,
+        ownerPhone: ownerPhone.trim() || null,
+        coOwnerEmail: coOwnerEmail.trim() || null,
       })
       if (res.ok) {
         toast.success("Team updated")
@@ -870,6 +878,44 @@ function EditTeamDialog({
                   )}
               </div>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editOwnerName">Team owner name</Label>
+            <Input
+              id="editOwnerName"
+              value={ownerName}
+              placeholder="e.g. John Smith"
+              onChange={(e) => setOwnerName(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Display name for the team owner shown to players on their My Team page.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editOwnerPhone">Team owner contact number</Label>
+            <Input
+              id="editOwnerPhone"
+              type="tel"
+              value={ownerPhone}
+              placeholder="e.g. 082 123 4567"
+              onChange={(e) => setOwnerPhone(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Contact number for the team owner. Shown to players on their My Team page.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editCoOwnerEmail">Co-owner email</Label>
+            <Input
+              id="editCoOwnerEmail"
+              type="email"
+              value={coOwnerEmail}
+              placeholder="co-owner@example.com"
+              onChange={(e) => setCoOwnerEmail(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              A second person who can manage this team. They get the same access as the primary owner. Leave blank if not needed.
+            </p>
           </div>
         </div>
         <DialogFooter>
