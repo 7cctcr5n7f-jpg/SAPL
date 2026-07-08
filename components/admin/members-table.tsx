@@ -1014,8 +1014,8 @@ export function MembersTable({
       </div>
 
       {/* Table: Name, Role, Team, PT Rating, Payment + Edit */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-lg border border-border overflow-x-auto">
+        <table className="min-w-max w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/60 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <th className="px-3 py-2.5 w-8" />
