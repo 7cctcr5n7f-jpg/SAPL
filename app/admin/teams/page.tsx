@@ -125,7 +125,12 @@ export default async function AdminTeamsPage() {
         .from(userTable)
         .where(eq(userTable.email, row.team.ownerEmail))
         .limit(1)
-      if (ownerUser) ownerName = `${ownerUser.firstName} ${ownerUser.lastName}`.trim()
+      if (ownerUser) {
+        ownerName = `${ownerUser.firstName ?? ""} ${ownerUser.lastName ?? ""}`.trim() || row.team.ownerEmail
+      } else {
+        // No registered user for this email yet — show the email address itself
+        ownerName = row.team.ownerEmail
+      }
     }
 
     teamData.push({

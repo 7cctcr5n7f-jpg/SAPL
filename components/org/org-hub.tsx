@@ -840,12 +840,9 @@ function EditTeamDialog({
             <p className="text-xs text-muted-foreground">
               Whoever signs in with this email automatically gets team-owner access to manage this team. Leave blank to
               remove.
-              {team.teamType === "Club Team" && team.homeClubContactEmail
-                ? " For a Club Team this defaults to the venue's contact, but you can set a different owner."
-                : ""}
             </p>
-            {/* Quick-fill buttons for the venue's registered contact emails */}
-            {team.teamType === "Club Team" && (
+            {/* Quick-fill buttons — show venue contact emails for any team type */}
+            {(team.homeClubContactEmail || team.homeClubContactEmail2) && (
               <div className="flex flex-wrap gap-1.5">
                 {team.homeClubContactEmail &&
                   ownerEmail.trim().toLowerCase() !== team.homeClubContactEmail.trim().toLowerCase() && (
@@ -856,7 +853,7 @@ function EditTeamDialog({
                       className="h-7 px-2 text-xs"
                       onClick={() => setOwnerEmail(team.homeClubContactEmail ?? "")}
                     >
-                      Use contact 1 ({team.homeClubContactEmail})
+                      Use venue contact 1 ({team.homeClubContactEmail})
                     </Button>
                   )}
                 {team.homeClubContactEmail2 &&
@@ -868,7 +865,7 @@ function EditTeamDialog({
                       className="h-7 px-2 text-xs"
                       onClick={() => setOwnerEmail(team.homeClubContactEmail2 ?? "")}
                     >
-                      Use contact 2 ({team.homeClubContactEmail2})
+                      Use venue contact 2 ({team.homeClubContactEmail2})
                     </Button>
                   )}
               </div>
