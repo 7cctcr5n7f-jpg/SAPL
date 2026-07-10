@@ -325,8 +325,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       return aOrder - bOrder
     })
 
-  // Second pass: fill any slot that has no player AND no category-specific invite
-  // with an invite from the unassigned pool, in order.
+  // Second pass A: fill any empty category slot with an unassigned pending invite.
   if (unassignedInvites.length > 0) {
     for (const cat of pairingCategories) {
       for (const slot of cat.slots) {
@@ -335,6 +334,30 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
           slot.inviteId = next.id
           slot.inviteEmail = next.email
           slot.inviteName = next.name
+        }
+      }
+    }
+  }
+
+  // Second pass B: active roster members who have no entry in ppl_team_pairings
+  // (i.e. they were added directly or via invite without a slot assignment) are
+  // invisible in the category grid. Distribute them into remaining empty slots so
+  // the captain can always see who is on the team.
+  const assignedPlayerIds = new Set(pairingSlotRows.map((s) => s.playerId).filter(Boolean) as string[])
+  const unassignedRosterMembers = rosterRows.filter((r) => !assignedPlayerIds.has(r.playerId))
+
+  if (unassignedRosterMembers.length > 0) {
+    for (const cat of pairingCategories) {
+      for (const slot of cat.slots) {
+        if (!slot.player && !slot.inviteEmail && unassignedRosterMembers.length > 0) {
+          const member = unassignedRosterMembers.shift()!
+          slot.player = {
+            playerId: member.playerId,
+            name: `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim(),
+            playtomicRating: member.playtomicRating ?? null,
+            paid: team.clubPaysFees || paidPlayerIds.has(member.playerId),
+            isCaptain: member.playerId === team.captainUserId,
+          }
         }
       }
     }
