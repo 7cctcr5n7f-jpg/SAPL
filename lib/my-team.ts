@@ -37,6 +37,7 @@ export type MyTeamCategorySlot = {
     playerId: string
     name: string
     playtomicRating: number | null
+    gender: string | null
     paid: boolean
     isCaptain: boolean
   } | null
@@ -48,6 +49,10 @@ export type MyTeamCategorySlot = {
 export type MyTeamCategory = {
   name: string
   gender: string
+  /** Minimum playtomic rating allowed in this category (inclusive). */
+  playerMinLi: number
+  /** Maximum playtomic rating allowed in this category (inclusive). */
+  playerMaxLi: number
   isFeatureCourt: boolean
   slots: MyTeamCategorySlot[]
 }
@@ -219,6 +224,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       playtomicRating: user.playtomicRating,
       playtomicUrl: user.playtomicUrl,
       isPlayer: user.isPlayer,
+      gender: user.gender,
     })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.playerId, user.id))
@@ -254,7 +260,13 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
 
   // Fetch category meta + pairing slots for the category-grouped squad view.
   const catMeta = await db
-    .select({ name: categories.name, gender: categories.gender, isFeatureCourt: categories.isFeatureCourt })
+    .select({
+      name: categories.name,
+      gender: categories.gender,
+      isFeatureCourt: categories.isFeatureCourt,
+      playerMinLi: categories.playerMinLi,
+      playerMaxLi: categories.playerMaxLi,
+    })
     .from(categories)
     .orderBy(categories.sortOrder)
 
@@ -270,6 +282,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       playerId: r.playerId,
       name: `${r.firstName ?? ""} ${r.lastName ?? ""}`.trim(),
       playtomicRating: r.playtomicRating ?? null,
+      gender: r.gender ?? null,
       paid: team.clubPaysFees || paidPlayerIds.has(r.playerId),
       isCaptain: r.playerId === team.captainUserId,
     })
@@ -330,7 +343,14 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         }
       })
 
-      return { name: cat.name, gender: derivedGender, isFeatureCourt: cat.isFeatureCourt, slots }
+      return {
+        name: cat.name,
+        gender: derivedGender,
+        playerMinLi: cat.playerMinLi,
+        playerMaxLi: cat.playerMaxLi,
+        isFeatureCourt: cat.isFeatureCourt,
+        slots,
+      }
     })
     .sort((a, b) => {
       const aOrder = CATEGORY_SORT[a.name] ?? 99

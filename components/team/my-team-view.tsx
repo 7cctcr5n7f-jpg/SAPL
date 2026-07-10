@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation"
 import {
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Crown,
   MoreVertical,
   Plus,
@@ -203,7 +204,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 
       {/* Team owner is now shown inline under the team name in the header above */}
 
-      {/* ── Next fixture ────────────────────────────────────────────���────── */}
+      {/* ── Next fixture ────────────────────────────────────────────�����────── */}
       {nextFixture && (
         <div>
           <SectionHeading>Next Match</SectionHeading>
@@ -417,6 +418,7 @@ function CategorySection({
           <CategorySlotRow
             key={i}
             slot={slot}
+            cat={cat}
             teamId={teamId}
             canManage={canManage}
             slotsRemaining={slotsRemaining}
@@ -430,14 +432,45 @@ function CategorySection({
 
 // ── Single category slot row ──────────────────────────────────────────────────
 
+/** Returns a human-readable reason if the player violates the category rules, otherwise null. */
+function checkSlotViolation(
+  player: MyTeamCategorySlot["player"],
+  cat: MyTeamCategory,
+): string | null {
+  if (!player) return null
+
+  // Gender check: ladies category requires female players; mens requires male.
+  // Mixed categories accept anyone.
+  if (cat.gender === "female" && player.gender && player.gender !== "female") {
+    return `Male player in ${cat.name} (ladies only).`
+  }
+  if (cat.gender === "male" && player.gender && player.gender === "female") {
+    return `Female player in ${cat.name} (mens only).`
+  }
+
+  // Rating check: only flag when the player has a known rating.
+  if (player.playtomicRating != null) {
+    if (player.playtomicRating < cat.playerMinLi) {
+      return `Rating ${player.playtomicRating.toFixed(1)} is below the minimum ${cat.playerMinLi.toFixed(1)} for ${cat.name}.`
+    }
+    if (player.playtomicRating > cat.playerMaxLi) {
+      return `Rating ${player.playtomicRating.toFixed(1)} exceeds the maximum ${cat.playerMaxLi.toFixed(1)} for ${cat.name}.`
+    }
+  }
+
+  return null
+}
+
 function CategorySlotRow({
   slot,
+  cat,
   teamId,
   canManage,
   slotsRemaining,
   clubPaysFees,
 }: {
   slot: MyTeamCategorySlot
+  cat: MyTeamCategory
   teamId: number
   canManage: boolean
   slotsRemaining: number
@@ -527,6 +560,7 @@ function CategorySlotRow({
   // Active player
   const { player } = slot
   const payBadge = clubPaysFees ? null : player.paid ? "paid" : "unpaid"
+  const violation = checkSlotViolation(player, cat)
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
@@ -540,6 +574,11 @@ function CategorySlotRow({
           <div className="flex items-center gap-1.5">
             <p className="truncate text-sm font-semibold text-foreground">{player.name}</p>
             {player.isCaptain && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+            {violation && (
+              <span title={violation} className="shrink-0 cursor-help">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Star className="h-3 w-3" />
@@ -549,6 +588,9 @@ function CategorySlotRow({
               <span>Unrated</span>
             )}
           </div>
+          {violation && (
+            <p className="text-[11px] text-destructive mt-0.5 leading-tight">{violation}</p>
+          )}
         </div>
       </div>
 
