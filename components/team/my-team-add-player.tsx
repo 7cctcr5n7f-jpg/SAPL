@@ -59,10 +59,17 @@ export function MyTeamAddPlayer({
   teamId,
   slotsRemaining,
   trigger,
+  targetCategory,
+  targetPairIndex,
+  targetSlotIndex,
 }: {
   teamId: number
   slotsRemaining: number
   trigger?: React.ReactNode
+  /** When set, the added player is placed into this specific slot. */
+  targetCategory?: string
+  targetPairIndex?: number
+  targetSlotIndex?: number
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -167,6 +174,9 @@ export function MyTeamAddPlayer({
         email: email.trim(),
         name: name.trim() || undefined,
         playtomicRating: ratingNum,
+        category: targetCategory,
+        pairIndex: targetPairIndex,
+        slotIndex: targetSlotIndex,
       })
       if (res.error) {
         toast.error(res.error)
@@ -182,7 +192,13 @@ export function MyTeamAddPlayer({
   function addFromRegistered(playerId: string) {
     setAdding(playerId)
     start(async () => {
-      const res = await addRegisteredPlayerDirectly({ teamId, playerId })
+      const res = await addRegisteredPlayerDirectly({
+        teamId,
+        playerId,
+        category: targetCategory,
+        pairIndex: targetPairIndex,
+        slotIndex: targetSlotIndex,
+      })
       setAdding(null)
       if (res.error) {
         toast.error(res.error)
@@ -198,7 +214,13 @@ export function MyTeamAddPlayer({
   function inviteFromMarketplace(playerId: string) {
     setInviting(playerId)
     start(async () => {
-      const res = await inviteMarketplacePlayer({ teamId, playerId })
+      const res = await inviteMarketplacePlayer({
+        teamId,
+        playerId,
+        category: targetCategory,
+        pairIndex: targetPairIndex,
+        slotIndex: targetSlotIndex,
+      })
       setInviting(null)
       if (res.error) {
         toast.error(res.error)
