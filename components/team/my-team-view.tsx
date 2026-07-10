@@ -448,8 +448,9 @@ function checkSlotViolation(
     return `Female player in ${cat.name} (mens only).`
   }
 
-  // Rating check: only flag when the player has a known rating.
-  if (player.playtomicRating != null) {
+  // Rating check: Ladies Open has no rating cap — skip rating checks for all
+  // female categories. Only apply to mens categories with a known rating.
+  if (cat.gender !== "female" && player.playtomicRating != null) {
     if (player.playtomicRating < cat.playerMinLi) {
       return `Rating ${player.playtomicRating.toFixed(1)} is below the minimum ${cat.playerMinLi.toFixed(1)} for ${cat.name}.`
     }
@@ -497,9 +498,12 @@ function CategorySlotRow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary" className="gap-1 text-amber-600">
-            <Clock className="h-3 w-3" /> Invited
-          </Badge>
+          <div className="flex flex-col items-end gap-0.5">
+            <Badge variant="secondary" className="gap-1 text-amber-600 bg-amber-500/10 border-amber-400/30">
+              <Clock className="h-3 w-3" /> Invite sent
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">Awaiting acceptance</span>
+          </div>
           {canManage && slot.inviteId != null && (
             <Button
               variant="ghost"

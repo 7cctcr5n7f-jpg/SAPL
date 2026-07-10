@@ -198,6 +198,11 @@ export function MyTeamAddPlayer({
       open={open}
       onOpenChange={(o) => {
         setOpen(o)
+        if (o) {
+          // Always reload the registered players list when the dialog opens so
+          // a player just added won't still appear in the list next time.
+          setRegisteredPlayers([])
+        }
         if (!o) reset()
       }}
     >
@@ -212,8 +217,13 @@ export function MyTeamAddPlayer({
       />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a player</DialogTitle>
+          <DialogTitle>
+            {targetCategory ? `Add player — ${targetCategory}` : "Add a player"}
+          </DialogTitle>
           <DialogDescription>
+            {targetCategory
+              ? `Adding to the ${targetCategory} slot. `
+              : ""}
             {slotsRemaining > 0
               ? `${slotsRemaining} open slot${slotsRemaining === 1 ? "" : "s"} remaining in your squad.`
               : "Your squad is full."}

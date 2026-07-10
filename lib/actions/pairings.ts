@@ -594,6 +594,7 @@ export async function cancelInvite(inviteId: number) {
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
   await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, inviteId))
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return { success: "Invite cancelled." }

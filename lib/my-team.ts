@@ -276,7 +276,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(eq(teamPairings.teamId, teamId))
 
   // Build a quick lookup: { playerId → display info } from the already-fetched roster.
-  const playerMap = new Map<string, { playerId: string; name: string; playtomicRating: number | null; paid: boolean; isCaptain: boolean }>()
+  const playerMap = new Map<string, { playerId: string; name: string; playtomicRating: number | null; gender: string | null; paid: boolean; isCaptain: boolean }>()
   for (const r of rosterRows) {
     playerMap.set(r.playerId, {
       playerId: r.playerId,
