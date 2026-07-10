@@ -204,7 +204,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 
       {/* Team owner is now shown inline under the team name in the header above */}
 
-      {/* ── Next fixture ────────────────────────────────────────────�����────── */}
+      {/* ── Next fixture ──────────────────────────────────────���─────�����────── */}
       {nextFixture && (
         <div>
           <SectionHeading>Next Match</SectionHeading>
@@ -448,14 +448,14 @@ function checkSlotViolation(
     return `Female player in ${cat.name} (mens only).`
   }
 
-  // Rating check: Ladies Open has no rating cap — skip rating checks for all
-  // female categories. Only apply to mens categories with a known rating.
+  // Rating check: Ladies Open has no cap (playerMaxLi = 7, skip entirely for
+  // female categories). Mens Open also has no cap (playerMaxLi = 7). For capped
+  // categories the rule is strictly less-than the cap value, e.g. Intermediate
+  // requires < 3.5 so a player rated exactly 3.5 is over the limit.
   if (cat.gender !== "female" && player.playtomicRating != null) {
-    if (player.playtomicRating < cat.playerMinLi) {
-      return `Rating ${player.playtomicRating.toFixed(1)} is below the minimum ${cat.playerMinLi.toFixed(1)} for ${cat.name}.`
-    }
-    if (player.playtomicRating > cat.playerMaxLi) {
-      return `Rating ${player.playtomicRating.toFixed(1)} exceeds the maximum ${cat.playerMaxLi.toFixed(1)} for ${cat.name}.`
+    // Caps: Intermediate < 3.5, Beginner < 2.5. Open has max 7 so never triggers.
+    if (cat.playerMaxLi < 7 && player.playtomicRating >= cat.playerMaxLi) {
+      return `Rating ${player.playtomicRating.toFixed(1)} is too high for ${cat.name} (must be below ${cat.playerMaxLi.toFixed(1)}).`
     }
   }
 
