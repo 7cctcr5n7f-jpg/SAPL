@@ -11,7 +11,7 @@ import {
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { and, eq, desc, not, inArray, sql } from "drizzle-orm"
+import { and, eq, desc, not, inArray, sql, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -400,7 +400,10 @@ export async function getFreeAgentsAction() {
     .from(user)
     .where(
       and(
-        eq(user.isPlayer, true),
+        // Include anyone who is flagged as a player OR has indicated they are
+        // looking for a team — catches users whose isPlayer flag was never set
+        // but who are actively seeking a team via the marketplace/profile toggle.
+        or(eq(user.isPlayer, true), eq(user.lookingForTeam, true)),
         activeMemberIds.length > 0
           ? not(inArray(user.id, activeMemberIds))
           : undefined,
