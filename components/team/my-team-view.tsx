@@ -34,6 +34,7 @@ import {
   Mail,
   Mars,
   Venus,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { MyTeamView as MyTeamViewData, MyTeamCategory, MyTeamCategorySlot } from "@/lib/my-team"
@@ -462,9 +463,32 @@ function CategorySlotRow({
             <p className="truncate text-xs text-muted-foreground">{slot.inviteEmail}</p>
           </div>
         </div>
-        <Badge variant="secondary" className="gap-1 shrink-0 text-amber-600">
-          <Clock className="h-3 w-3" /> Invited
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="secondary" className="gap-1 text-amber-600">
+            <Clock className="h-3 w-3" /> Invited
+          </Badge>
+          {canManage && slot.inviteId != null && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await cancelInvite(slot.inviteId!)
+                  if (res.error) toast.error(res.error)
+                  else {
+                    toast.success("Invite cancelled.")
+                    router.refresh()
+                  }
+                })
+              }
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className="sr-only">Cancel invite</span>
+            </Button>
+          )}
+        </div>
       </div>
     )
   }

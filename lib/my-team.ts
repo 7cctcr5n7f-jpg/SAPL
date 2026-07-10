@@ -36,6 +36,7 @@ export type MyTeamCategorySlot = {
     paid: boolean
     isCaptain: boolean
   } | null
+  inviteId: number | null
   inviteEmail: string | null
   inviteName: string | null
 }
@@ -266,11 +267,11 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   }
 
   // Group pending invites by category (undefined category → "__none__").
-  const invitesByCategory = new Map<string, { email: string; name: string | null }[]>()
+  const invitesByCategory = new Map<string, { id: number; email: string; name: string | null }[]>()
   for (const p of pendingRows) {
     const cat = (p.category as string | null) ?? "__none__"
     if (!invitesByCategory.has(cat)) invitesByCategory.set(cat, [])
-    invitesByCategory.get(cat)!.push({ email: p.email, name: (p.invitedName as string | null) ?? null })
+    invitesByCategory.get(cat)!.push({ id: p.inviteId, email: p.email, name: (p.invitedName as string | null) ?? null })
   }
 
   // Desired display order: Ladies Open → Mens Open → Mens Intermediate → Mens Beginner.
@@ -314,7 +315,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
           const invite = !player
             ? (catInvites[idx] ?? null)
             : null
-          return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
+          return { player, inviteId: invite?.id ?? null, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
         }),
       }
     })
@@ -331,6 +332,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       for (const slot of cat.slots) {
         if (!slot.player && !slot.inviteEmail && unassignedInvites.length > 0) {
           const next = unassignedInvites.shift()!
+          slot.inviteId = next.id
           slot.inviteEmail = next.email
           slot.inviteName = next.name
         }
