@@ -462,6 +462,8 @@ export async function getFreeAgentsAction() {
     }
 
     try {
+      // joinTeam handles the teamMembers row AND the teamPairings slot row in
+      // one transaction — do not write the pairing row again after this call.
       await joinTeam(input.teamId, playerUser.id, {
         category: input.category,
         pairIndex: input.pairIndex,
@@ -472,35 +474,8 @@ export async function getFreeAgentsAction() {
       throw err
     }
 
-    // If a specific slot was requested, write the pairing row now so the
-    // player appears in exactly that slot on the squad view.
-    if (input.category && input.pairIndex && input.slotIndex) {
-      // Clear any existing occupant of that slot first.
-      await db
-        .update(teamPairings)
-        .set({ playerId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(teamPairings.teamId, input.teamId),
-            eq(teamPairings.category, input.category),
-            eq(teamPairings.pairIndex, input.pairIndex),
-            eq(teamPairings.slotIndex, input.slotIndex),
-          ),
-        )
-      // Upsert the player into the requested slot.
-      await db
-        .insert(teamPairings)
-        .values({
-          teamId: input.teamId,
-          category: input.category,
-          pairIndex: input.pairIndex,
-          slotIndex: input.slotIndex,
-          playerId: playerUser.id,
-        })
-        .onConflictDoNothing()
-    }
-
     await recomputeTeamStats(input.teamId)
+    revalidatePath("/dashboard")
     revalidatePath("/dashboard/captain")
     revalidatePath("/dashboard/org")
 
