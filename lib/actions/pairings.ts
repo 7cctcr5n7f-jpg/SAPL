@@ -338,7 +338,7 @@ export async function invitePlayerByEmail(input: {
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return {
-    success: `Invite sent to ${email}. They will appear in the slot once they accept.`,
+    success: `Invite sent to ${email}. They are shown as pending in your squad until they accept.`,
   }
 }
 

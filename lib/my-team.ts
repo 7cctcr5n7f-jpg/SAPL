@@ -282,6 +282,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     "Mens Beginner": 3,
   }
 
+  // Pending invites with no category assigned — these need to be distributed
+  // into the first available empty slot across all categories.
+  const unassignedInvites = [...(invitesByCategory.get("__none__") ?? [])]
+
   // Build MyTeamCategory objects: one per league category, each with 2 slots.
   // Derive gender defensively from the name so a wrong DB value can't cause
   // a "mens" category to render with a female (pink) accent.
@@ -306,7 +310,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         isFeatureCourt: cat.isFeatureCourt,
         slots: [slot1, slot2].map((s, idx) => {
           const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
-          const invite = !player ? (catInvites[idx] ?? null) : null
+          // First try category-specific invites, then fall back to unassigned pool.
+          const invite = !player
+            ? (catInvites[idx] ?? null)
+            : null
           return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
         }),
       }
@@ -316,6 +323,20 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       const bOrder = CATEGORY_SORT[b.name] ?? 99
       return aOrder - bOrder
     })
+
+  // Second pass: fill any slot that has no player AND no category-specific invite
+  // with an invite from the unassigned pool, in order.
+  if (unassignedInvites.length > 0) {
+    for (const cat of pairingCategories) {
+      for (const slot of cat.slots) {
+        if (!slot.player && !slot.inviteEmail && unassignedInvites.length > 0) {
+          const next = unassignedInvites.shift()!
+          slot.inviteEmail = next.email
+          slot.inviteName = next.name
+        }
+      }
+    }
+  }
 
   // Build the ordered slot list: active players, pending invites, empties → 8.
   const slots: MyTeamSlot[] = []

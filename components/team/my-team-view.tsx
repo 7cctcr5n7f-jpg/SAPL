@@ -74,9 +74,11 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 export function MyTeamView({ data }: { data: MyTeamViewData }) {
   const { team, readiness, avgRating, pairingCategories, payment, nextFixture, standing, otherTeams, canManage } = data
 
-  // Count filled slots across all categories
-  const filledSlots = pairingCategories.flatMap((c) => c.slots).filter((s) => s.player !== null).length
-  const totalSlots = pairingCategories.flatMap((c) => c.slots).length // should be 8
+  // Count filled slots across all categories — active players + pending invites
+  // both reserve a slot visually.
+  const allSlots = pairingCategories.flatMap((c) => c.slots)
+  const filledSlots = allSlots.filter((s) => s.player !== null || s.inviteEmail !== null).length
+  const totalSlots = allSlots.length // should be 8
   const slotsRemaining = totalSlots - filledSlots
 
   const hasOwnerInfo = team.ownerName || team.ownerPhone || team.ownerEmail
@@ -364,7 +366,7 @@ function CategorySection({
   slotsRemaining: number
   clubPaysFees: boolean
 }) {
-  const filledCount = cat.slots.filter((s) => s.player !== null).length
+  const filledCount = cat.slots.filter((s) => s.player !== null || s.inviteEmail !== null).length
   const totalCount = cat.slots.length
   const dotColor =
     filledCount === totalCount
