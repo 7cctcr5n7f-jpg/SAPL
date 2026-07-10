@@ -203,7 +203,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 
       {/* Team owner is now shown inline under the team name in the header above */}
 
-      {/* ── Next fixture ─────────────────────────────────────────────────── */}
+      {/* ── Next fixture ────────────────────────────────────────────���────── */}
       {nextFixture && (
         <div>
           <SectionHeading>Next Match</SectionHeading>
@@ -500,6 +500,9 @@ function CategorySlotRow({
         <MyTeamAddPlayer
           teamId={teamId}
           slotsRemaining={slotsRemaining}
+          targetCategory={slot.category}
+          targetPairIndex={slot.pairIndex}
+          targetSlotIndex={slot.slotIndex}
           trigger={
             <button className="flex w-full items-center gap-3 border-b border-border py-2 last:border-0 text-sm text-muted-foreground hover:text-primary transition-colors">
               <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
@@ -560,7 +563,7 @@ function CategorySlotRow({
             Unpaid
           </Badge>
         )}
-        {canManage && !player.isCaptain && (
+        {canManage && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -578,13 +581,13 @@ function CategorySlotRow({
                     const res = await removeFromTeam({ teamId, playerId: player.playerId })
                     if (res.error) toast.error(res.error)
                     else {
-                      toast.success("Player removed.")
+                      toast.success("Player removed — you can now add them to a different slot.")
                       router.refresh()
                     }
                   })
                 }
               >
-                Remove from team
+                Remove from squad
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

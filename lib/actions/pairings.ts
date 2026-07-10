@@ -415,7 +415,13 @@ export async function getFreeAgentsAction() {
   * team's roster. Unlike inviteMarketplacePlayer this bypasses the email invite
   * flow — the player appears immediately on the roster.
   */
-  export async function addRegisteredPlayerDirectly(input: { teamId: number; playerId: string }) {
+  export async function addRegisteredPlayerDirectly(input: {
+    teamId: number
+    playerId: string
+    category?: string
+    pairIndex?: number
+    slotIndex?: number
+  }) {
     const me = await getCurrentUser()
     if (!me) return { error: "Not authorised" }
     const team = await canManageTeam(me, input.teamId)
@@ -456,10 +462,42 @@ export async function getFreeAgentsAction() {
     }
 
     try {
-      await joinTeam(input.teamId, playerUser.id)
+      await joinTeam(input.teamId, playerUser.id, {
+        category: input.category,
+        pairIndex: input.pairIndex,
+        slotIndex: input.slotIndex,
+      })
     } catch (err) {
       if (err instanceof TeamFullError) return { error: "Your squad is full (8 players maximum)." }
       throw err
+    }
+
+    // If a specific slot was requested, write the pairing row now so the
+    // player appears in exactly that slot on the squad view.
+    if (input.category && input.pairIndex && input.slotIndex) {
+      // Clear any existing occupant of that slot first.
+      await db
+        .update(teamPairings)
+        .set({ playerId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(teamPairings.teamId, input.teamId),
+            eq(teamPairings.category, input.category),
+            eq(teamPairings.pairIndex, input.pairIndex),
+            eq(teamPairings.slotIndex, input.slotIndex),
+          ),
+        )
+      // Upsert the player into the requested slot.
+      await db
+        .insert(teamPairings)
+        .values({
+          teamId: input.teamId,
+          category: input.category,
+          pairIndex: input.pairIndex,
+          slotIndex: input.slotIndex,
+          playerId: playerUser.id,
+        })
+        .onConflictDoNothing()
     }
 
     await recomputeTeamStats(input.teamId)
@@ -522,7 +560,13 @@ export async function lookupPlayerByEmail(email: string): Promise<{
  * (i.e. has lookingForTeam = true). Creates a pending teamInvite by email so
  * the existing invite-resolution machinery handles acceptance.
  */
-export async function inviteMarketplacePlayer(input: { teamId: number; playerId: string }) {
+  export async function inviteMarketplacePlayer(input: {
+    teamId: number
+    playerId: string
+    category?: string
+    pairIndex?: number
+    slotIndex?: number
+  }) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const team = await canManageTeam(me, input.teamId)
@@ -546,8 +590,15 @@ export async function inviteMarketplacePlayer(input: { teamId: number; playerId:
 
   // Always go through the invite flow — the player must accept before being placed.
   const displayName = player.firstName ? `${player.firstName} ${player.lastName ?? ""}`.trim() : player.name
-  return invitePlayerByEmail({ teamId: input.teamId, email: player.email, name: displayName })
-}
+  return invitePlayerByEmail({
+    teamId: input.teamId,
+    email: player.email,
+    name: displayName,
+    category: input.category,
+    pairIndex: input.pairIndex,
+    slotIndex: input.slotIndex,
+  })
+  }
 
 export async function cancelInvite(inviteId: number) {
   const me = await getCurrentUser()

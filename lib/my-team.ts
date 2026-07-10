@@ -29,6 +29,10 @@ export type MyTeamSlot =
   | { kind: "empty" }
 
 export type MyTeamCategorySlot = {
+  /** Slot coordinates — passed to the Add Player dialog so the player lands in exactly this slot. */
+  category: string
+  pairIndex: number
+  slotIndex: number
   player: {
     playerId: string
     name: string
@@ -310,12 +314,19 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         gender: derivedGender,
         isFeatureCourt: cat.isFeatureCourt,
         slots: [slot1, slot2].map((s, idx) => {
+          const slotIndex = idx + 1
           const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
           // First try category-specific invites, then fall back to unassigned pool.
-          const invite = !player
-            ? (catInvites[idx] ?? null)
-            : null
-          return { player, inviteId: invite?.id ?? null, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
+          const invite = !player ? (catInvites[idx] ?? null) : null
+          return {
+            category: cat.name,
+            pairIndex: 1,
+            slotIndex,
+            player,
+            inviteId: invite?.id ?? null,
+            inviteEmail: invite?.email ?? null,
+            inviteName: invite?.name ?? null,
+          }
         }),
       }
     })
@@ -326,6 +337,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     })
 
   // Second pass A: fill any empty category slot with an unassigned pending invite.
+  // The slot already has its category/pairIndex/slotIndex set from the first pass.
   if (unassignedInvites.length > 0) {
     for (const cat of pairingCategories) {
       for (const slot of cat.slots) {
