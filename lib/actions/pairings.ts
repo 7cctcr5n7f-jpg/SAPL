@@ -209,10 +209,12 @@ export async function removeFromTeam(input: { teamId: number; playerId: string }
     .set({ status: "removed", updatedAt: new Date() })
     .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, input.playerId)))
 
-  // 2) Clear the player out of any pairing slots for this team.
+  // 2) Delete the player's pairing slot row for this team entirely.
+  // Using DELETE (not UPDATE SET playerId = null) so no ghost rows remain
+  // that could be mistakenly overwritten when a new player is added to the
+  // same slot, causing unexpected category shifts.
   await db
-    .update(teamPairings)
-    .set({ playerId: null, updatedAt: new Date() })
+    .delete(teamPairings)
     .where(and(eq(teamPairings.teamId, input.teamId), eq(teamPairings.playerId, input.playerId)))
 
   // 3) If the player is no longer active on ANY team, mark them as a free agent
@@ -634,9 +636,12 @@ async function joinTeam(
   }
 
   if (slot?.category && slot.pairIndex != null && slot.slotIndex != null) {
-    const [existing] = await db
-      .select()
-      .from(teamPairings)
+    // Delete any existing row for this exact slot (including ghost rows where
+    // playerId was previously set to null by an old removeFromTeam call).
+    // Then insert clean so the player is always placed in exactly the right slot
+    // on exactly the right team — no cross-team or cross-category bleed.
+    await db
+      .delete(teamPairings)
       .where(
         and(
           eq(teamPairings.teamId, teamId),
@@ -645,18 +650,13 @@ async function joinTeam(
           eq(teamPairings.slotIndex, slot.slotIndex),
         ),
       )
-      .limit(1)
-    if (existing) {
-      await db.update(teamPairings).set({ playerId, updatedAt: new Date() }).where(eq(teamPairings.id, existing.id))
-    } else {
-      await db.insert(teamPairings).values({
-        teamId,
-        category: slot.category,
-        pairIndex: slot.pairIndex,
-        slotIndex: slot.slotIndex,
-        playerId,
-      })
-    }
+    await db.insert(teamPairings).values({
+      teamId,
+      category: slot.category,
+      pairIndex: slot.pairIndex,
+      slotIndex: slot.slotIndex,
+      playerId,
+    })
   }
 
   await recomputeTeamStats(teamId)
