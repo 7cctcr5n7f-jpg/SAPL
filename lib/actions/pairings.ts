@@ -400,10 +400,12 @@ export async function getFreeAgentsAction() {
     .from(user)
     .where(
       and(
-        // Include anyone who is flagged as a player OR has indicated they are
-        // looking for a team — catches users whose isPlayer flag was never set
-        // but who are actively seeking a team via the marketplace/profile toggle.
-        or(eq(user.isPlayer, true), eq(user.lookingForTeam, true)),
+        // Every user who has completed basic registration (has a firstName set)
+        // is eligible. isPlayer and lookingForTeam are unreliable — captains who
+        // register a team but don't play, and players invited before completing
+        // their profile, may never have those flags set. Using firstName as the
+        // minimum signal that the account is real and ready to be assigned.
+        sql`${user.firstName} IS NOT NULL AND trim(${user.firstName}) != ''`,
         activeMemberIds.length > 0
           ? not(inArray(user.id, activeMemberIds))
           : undefined,
@@ -446,7 +448,7 @@ export async function getFreeAgentsAction() {
       .limit(1)
 
     if (!playerUser) return { error: "Player not found." }
-    if (!playerUser.isPlayer) return { error: "This user has not registered as a player yet." }
+    // Do not gate on isPlayer — everyone who registers is treated as a player.
 
     // Check they are not already on another team this season.
     const conflict = await getPlayerSeasonTeamConflict(playerUser.id, team.seasonId, input.teamId)
