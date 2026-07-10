@@ -675,8 +675,6 @@ export async function getInvitePreview(
 
   if (invite.status === "cancelled") return { error: "This invitation has been cancelled." }
 
-  if (invite.status === "accepted") return { already: true, teamName: team.name }
-
   // Check the session user's profile status.
   const [sessionUser] = await db
     .select({ id: user.id, isPlayer: user.isPlayer })
@@ -685,6 +683,23 @@ export async function getInvitePreview(
     .limit(1)
 
   if (!sessionUser) return { error: "Could not verify your account. Please sign in again." }
+
+  // If the invite was accepted, verify the player is actually on the roster.
+  // If the teamMembers row is missing (a prior flow marked the invite accepted
+  // without inserting the row), show the Accept UI again so processTeamInviteByToken
+  // can repair it.
+  if (invite.status === "accepted") {
+    const [existingMember] = await db
+      .select({ id: teamMembers.id, status: teamMembers.status })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, sessionUser.id)))
+      .limit(1)
+
+    if (existingMember?.status === "active") {
+      return { already: true, teamName: team.name }
+    }
+    // Fall through to show Accept UI so they can re-trigger processTeamInviteByToken.
+  }
 
   const [meta] = await db
     .select({ id: userMeta.id })
@@ -747,10 +762,36 @@ export async function processTeamInviteByToken(token: string): Promise<
 
   if (!team) return { error: "The team for this invitation no longer exists." }
 
-  // If the invite was already accepted (e.g. resolved via onboarding email
-  // matching), treat it as a successful join so we show the success screen
-  // rather than "already been used".
+  // If the invite was already accepted, verify the player is actually on the
+  // team roster. It's possible the invite was marked accepted by a prior flow
+  // (e.g. onboarding email match) without the teamMembers row being created,
+  // so we check and repair that here rather than silently returning success.
   if (invite.status === "accepted") {
+    const sessionUser = await getCurrentUser()
+    if (sessionUser) {
+      const [existingMember] = await db
+        .select({ id: teamMembers.id, status: teamMembers.status })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, sessionUser.id)))
+        .limit(1)
+
+      if (!existingMember || existingMember.status !== "active") {
+        // Roster row is missing or stale — add them now.
+        try {
+          await joinTeam(team.id, sessionUser.id, {
+            category: invite.category ?? undefined,
+            pairIndex: invite.pairIndex ?? undefined,
+            slotIndex: invite.slotIndex ?? undefined,
+          })
+        } catch (err) {
+          if (err instanceof TeamFullError) return { error: "The team is full." }
+          throw err
+        }
+        revalidatePath("/dashboard")
+        revalidatePath("/dashboard/captain")
+        revalidatePath("/dashboard/org")
+      }
+    }
     return { joined: true, teamName: team.name }
   }
 
