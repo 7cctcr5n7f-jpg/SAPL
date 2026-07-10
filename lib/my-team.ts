@@ -1,7 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixtures, standings, categories, teamPairings } from "@/lib/db/schema"
-import { and, eq, ne, or, desc } from "drizzle-orm"
+import { and, eq, ne, or, desc, inArray } from "drizzle-orm"
 import { getTeamReadiness, suggestDivision, type TeamReadiness } from "@/lib/team-readiness"
 import { getPlayerFee } from "@/lib/queries"
 
@@ -36,6 +36,7 @@ export type MyTeamCategorySlot = {
     paid: boolean
     isCaptain: boolean
   } | null
+  inviteId: number | null
   inviteEmail: string | null
   inviteName: string | null
 }
@@ -101,12 +102,19 @@ const SQUAD_SIZE = 8
  * Assembles the read-only "My Team" view for a player: team identity, an
  * 8-slot roster (active players, pending invites, then empty Add-Player slots),
  * League Ready status, average Playtomic rating, payment status, next fixture
- * and league position. Returns null when the player belongs to no team.
+ * and league position. Returns null when the player belongs to no team and has
+ * no managed teams.
  *
- * When `preferredTeamId` is supplied and the player belongs to it, that team is
- * shown; otherwise the most recently updated active membership is used.
+ * When `preferredTeamId` is supplied and the player belongs to it (or manages
+ * it), that team is shown; otherwise the most recently updated active
+ * membership is used, with manager-only teams as a fallback when the user has
+ * no active memberships.
+ *
+ * `managedTeamIds` — IDs of teams the current user manages (owner/captain/club)
+ * even without an active roster membership. Used to surface the "My Team" view
+ * for owners who were added before they registered an account.
  */
-export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean }): Promise<MyTeamView | null> {
+export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean; managedTeamIds?: number[] }): Promise<MyTeamView | null> {
   // Active memberships, newest first.
   const memberships = await db
     .select({ teamId: teamMembers.teamId, name: teams.name })
@@ -115,12 +123,40 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
     .orderBy(desc(teamMembers.updatedAt))
 
-  if (memberships.length === 0) return null
+  // Determine the team to show. When the user has memberships, prefer the
+  // preferred team or the most-recently-updated active one.
+  // When the user has no memberships (e.g. owner added before registering),
+  // fall back to teams they manage via email ownership / captaincy.
+  let teamId: number
+  let otherTeams: { id: number; name: string }[]
 
-  const chosen =
-    (opts?.preferredTeamId && memberships.find((m) => m.teamId === opts.preferredTeamId)) || memberships[0]
-  const teamId = chosen.teamId
-  const otherTeams = memberships.filter((m) => m.teamId !== teamId).map((m) => ({ id: m.teamId, name: m.name }))
+  if (memberships.length > 0) {
+    const chosen =
+      (opts?.preferredTeamId && memberships.find((m) => m.teamId === opts.preferredTeamId)) || memberships[0]
+    teamId = chosen.teamId
+    otherTeams = memberships.filter((m) => m.teamId !== teamId).map((m) => ({ id: m.teamId, name: m.name }))
+  } else {
+    // No active memberships — check if this user manages any teams by email.
+    const managed = opts?.managedTeamIds ?? []
+    if (managed.length === 0) return null
+
+    // Fetch names for all managed teams so the team switcher works.
+    const managedRows = await db
+      .select({ id: teams.id, name: teams.name })
+      .from(teams)
+      .where(inArray(teams.id, managed))
+
+    if (managedRows.length === 0) return null
+
+    // Pick the preferred team if it's in scope, otherwise the first managed one.
+    const chosenId =
+      (opts?.preferredTeamId && managed.includes(opts.preferredTeamId))
+        ? opts.preferredTeamId
+        : managed[0]
+
+    teamId = chosenId
+    otherTeams = managedRows.filter((r) => r.id !== chosenId).map((r) => ({ id: r.id, name: r.name }))
+  }
 
   const [team] = await db
     .select({
@@ -231,11 +267,11 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   }
 
   // Group pending invites by category (undefined category → "__none__").
-  const invitesByCategory = new Map<string, { email: string; name: string | null }[]>()
+  const invitesByCategory = new Map<string, { id: number; email: string; name: string | null }[]>()
   for (const p of pendingRows) {
     const cat = (p.category as string | null) ?? "__none__"
     if (!invitesByCategory.has(cat)) invitesByCategory.set(cat, [])
-    invitesByCategory.get(cat)!.push({ email: p.email, name: (p.invitedName as string | null) ?? null })
+    invitesByCategory.get(cat)!.push({ id: p.inviteId, email: p.email, name: (p.invitedName as string | null) ?? null })
   }
 
   // Desired display order: Ladies Open → Mens Open → Mens Intermediate → Mens Beginner.
@@ -246,6 +282,10 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     "Mens Intermediate": 2,
     "Mens Beginner": 3,
   }
+
+  // Pending invites with no category assigned — these need to be distributed
+  // into the first available empty slot across all categories.
+  const unassignedInvites = [...(invitesByCategory.get("__none__") ?? [])]
 
   // Build MyTeamCategory objects: one per league category, each with 2 slots.
   // Derive gender defensively from the name so a wrong DB value can't cause
@@ -271,8 +311,11 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         isFeatureCourt: cat.isFeatureCourt,
         slots: [slot1, slot2].map((s, idx) => {
           const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
-          const invite = !player ? (catInvites[idx] ?? null) : null
-          return { player, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
+          // First try category-specific invites, then fall back to unassigned pool.
+          const invite = !player
+            ? (catInvites[idx] ?? null)
+            : null
+          return { player, inviteId: invite?.id ?? null, inviteEmail: invite?.email ?? null, inviteName: invite?.name ?? null }
         }),
       }
     })
@@ -281,6 +324,44 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       const bOrder = CATEGORY_SORT[b.name] ?? 99
       return aOrder - bOrder
     })
+
+  // Second pass A: fill any empty category slot with an unassigned pending invite.
+  if (unassignedInvites.length > 0) {
+    for (const cat of pairingCategories) {
+      for (const slot of cat.slots) {
+        if (!slot.player && !slot.inviteEmail && unassignedInvites.length > 0) {
+          const next = unassignedInvites.shift()!
+          slot.inviteId = next.id
+          slot.inviteEmail = next.email
+          slot.inviteName = next.name
+        }
+      }
+    }
+  }
+
+  // Second pass B: active roster members who have no entry in ppl_team_pairings
+  // (i.e. they were added directly or via invite without a slot assignment) are
+  // invisible in the category grid. Distribute them into remaining empty slots so
+  // the captain can always see who is on the team.
+  const assignedPlayerIds = new Set(pairingSlotRows.map((s) => s.playerId).filter(Boolean) as string[])
+  const unassignedRosterMembers = rosterRows.filter((r) => !assignedPlayerIds.has(r.playerId))
+
+  if (unassignedRosterMembers.length > 0) {
+    for (const cat of pairingCategories) {
+      for (const slot of cat.slots) {
+        if (!slot.player && !slot.inviteEmail && unassignedRosterMembers.length > 0) {
+          const member = unassignedRosterMembers.shift()!
+          slot.player = {
+            playerId: member.playerId,
+            name: `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim(),
+            playtomicRating: member.playtomicRating ?? null,
+            paid: team.clubPaysFees || paidPlayerIds.has(member.playerId),
+            isCaptain: member.playerId === team.captainUserId,
+          }
+        }
+      }
+    }
+  }
 
   // Build the ordered slot list: active players, pending invites, empties → 8.
   const slots: MyTeamSlot[] = []

@@ -110,8 +110,44 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     }
   }
 
-  // Roster = all players that have at least one pairing slot (for the board's
-  // "available to assign" list and fee summary).
+  // Also include active teamMembers who have no pairing slot yet — they accepted
+  // their invite but haven't been placed in a category. They appear in the
+  // "Assign" dropdown so admins can drag them into a slot without re-inviting.
+  const activeMembers = await db
+    .select({ playerId: teamMembers.playerId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, "active")))
+
+  const unplacedIds = activeMembers
+    .map((m) => m.playerId)
+    .filter((id): id is string => id != null && !rosterById.has(id))
+
+  if (unplacedIds.length > 0) {
+    const unplacedProfiles = await db
+      .select({
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        currentLi: user.currentLi,
+        playtomicRating: user.playtomicRating,
+        gender: user.gender,
+      })
+      .from(user)
+      .where(inArray(user.id, unplacedIds))
+
+    for (const p of unplacedProfiles) {
+      rosterById.set(p.id, {
+        playerId: p.id,
+        name: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+        li: p.currentLi,
+        playtomicRating: p.playtomicRating,
+        gender: p.gender,
+        paid: team.clubPaysFees || paidSet.has(p.id),
+      })
+    }
+  }
+
+  // Roster = all players in a pairing slot OR active without a slot yet.
   const roster: PairingPlayer[] = [...rosterById.values()]
 
   const slotMap = new Map<string, string | null>()

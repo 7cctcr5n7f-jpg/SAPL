@@ -30,6 +30,9 @@ export default async function MyTeamPage({
 
   const data = await getMyTeamView(access.user.id, {
     preferredTeamId: Number.isFinite(preferredTeamId) ? preferredTeamId : undefined,
+    // Pass managed team IDs so owners who were added before registering can
+    // see and edit their team even without an active roster membership.
+    managedTeamIds: access.teamIds,
   })
 
   if (!data) {

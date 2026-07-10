@@ -11,7 +11,7 @@ import {
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { and, eq, desc } from "drizzle-orm"
+import { and, eq, desc, not, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -338,7 +338,7 @@ export async function invitePlayerByEmail(input: {
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return {
-    success: `Invite sent to ${email}. They will appear in the slot once they accept.`,
+    success: `Invite sent to ${email}. They are shown as pending in your squad until they accept.`,
   }
 }
 
@@ -366,11 +366,118 @@ export async function getFreeAgentsAction() {
     .limit(200)
 }
 
-/**
- * Look up a registered player by email.
- * Returns their display name, Playtomic rating and player ID so the captain's
- * "Add Player" dialog can auto-fill the name and avoid duplicates.
- */
+  /**
+  * Fetch all registered players (isPlayer = true) who are NOT currently an
+  * active member of any team. These are shown in the "Add registered player"
+  * tab so a team owner can add them directly without going through the invite
+  * flow.
+  */
+  export async function getRegisteredFreeAgentsAction(teamId: number) {
+    const me = await getCurrentUser()
+    if (!me) return []
+
+    // Subquery: player IDs that are already active on any team.
+    const activeMemberIds = (
+      await db
+        .select({ playerId: teamMembers.playerId })
+        .from(teamMembers)
+        .where(eq(teamMembers.status, "active"))
+    ).map((r) => r.playerId)
+
+    const query = db
+      .select({
+        id: user.id,
+        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        playtomicRating: user.playtomicRating,
+        city: user.city,
+        province: user.province,
+        avatarUrl: user.avatarUrl,
+      })
+      .from(user)
+      .where(
+        and(
+          sql`${user.isPlayer} = true`,
+          activeMemberIds.length > 0
+            ? not(inArray(user.id, activeMemberIds))
+            : sql`true`,
+        ),
+      )
+      .orderBy(user.firstName)
+      .limit(500)
+
+    return query
+  }
+
+  /**
+  * Directly add a registered player (who has no current active team) to a
+  * team's roster. Unlike inviteMarketplacePlayer this bypasses the email invite
+  * flow — the player appears immediately on the roster.
+  */
+  export async function addRegisteredPlayerDirectly(input: { teamId: number; playerId: string }) {
+    const me = await getCurrentUser()
+    if (!me) return { error: "Not authorised" }
+    const team = await canManageTeam(me, input.teamId)
+    if (!team) return { error: "You cannot manage this team." }
+
+    const [playerUser] = await db
+      .select({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: user.name,
+        isPlayer: user.isPlayer,
+      })
+      .from(user)
+      .where(eq(user.id, input.playerId))
+      .limit(1)
+
+    if (!playerUser) return { error: "Player not found." }
+    if (!playerUser.isPlayer) return { error: "This user has not registered as a player yet." }
+
+    // Check they are not already on another team this season.
+    const conflict = await getPlayerSeasonTeamConflict(playerUser.id, team.seasonId, input.teamId)
+    if (conflict) {
+      const name = playerUser.firstName ?? playerUser.name
+      return { error: `${name} already plays for ${conflict.teamName} this season.` }
+    }
+
+    // Check they are not already an active member of this specific team.
+    const [existing] = await db
+      .select({ id: teamMembers.id, status: teamMembers.status })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, playerUser.id)))
+      .limit(1)
+
+    if (existing?.status === "active") {
+      return { error: "This player is already on your team." }
+    }
+
+    try {
+      await joinTeam(input.teamId, playerUser.id)
+    } catch (err) {
+      if (err instanceof TeamFullError) return { error: "Your squad is full (8 players maximum)." }
+      throw err
+    }
+
+    await recomputeTeamStats(input.teamId)
+    revalidatePath("/dashboard/captain")
+    revalidatePath("/dashboard/org")
+
+    const displayName = playerUser.firstName
+      ? `${playerUser.firstName} ${playerUser.lastName ?? ""}`.trim()
+      : playerUser.name
+
+    return { success: `${displayName} has been added to your team.` }
+  }
+
+  /**
+  * Look up a registered player by email.
+  * Returns their display name, Playtomic rating and player ID so the captain's
+  * "Add Player" dialog can auto-fill the name and avoid duplicates.
+  */
 export async function lookupPlayerByEmail(email: string): Promise<{
   found: boolean
   userId?: string
@@ -568,8 +675,6 @@ export async function getInvitePreview(
 
   if (invite.status === "cancelled") return { error: "This invitation has been cancelled." }
 
-  if (invite.status === "accepted") return { already: true, teamName: team.name }
-
   // Check the session user's profile status.
   const [sessionUser] = await db
     .select({ id: user.id, isPlayer: user.isPlayer })
@@ -578,6 +683,23 @@ export async function getInvitePreview(
     .limit(1)
 
   if (!sessionUser) return { error: "Could not verify your account. Please sign in again." }
+
+  // If the invite was accepted, verify the player is actually on the roster.
+  // If the teamMembers row is missing (a prior flow marked the invite accepted
+  // without inserting the row), show the Accept UI again so processTeamInviteByToken
+  // can repair it.
+  if (invite.status === "accepted") {
+    const [existingMember] = await db
+      .select({ id: teamMembers.id, status: teamMembers.status })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, sessionUser.id)))
+      .limit(1)
+
+    if (existingMember?.status === "active") {
+      return { already: true, teamName: team.name }
+    }
+    // Fall through to show Accept UI so they can re-trigger processTeamInviteByToken.
+  }
 
   const [meta] = await db
     .select({ id: userMeta.id })
@@ -640,10 +762,36 @@ export async function processTeamInviteByToken(token: string): Promise<
 
   if (!team) return { error: "The team for this invitation no longer exists." }
 
-  // If the invite was already accepted (e.g. resolved via onboarding email
-  // matching), treat it as a successful join so we show the success screen
-  // rather than "already been used".
+  // If the invite was already accepted, verify the player is actually on the
+  // team roster. It's possible the invite was marked accepted by a prior flow
+  // (e.g. onboarding email match) without the teamMembers row being created,
+  // so we check and repair that here rather than silently returning success.
   if (invite.status === "accepted") {
+    const sessionUser = await getCurrentUser()
+    if (sessionUser) {
+      const [existingMember] = await db
+        .select({ id: teamMembers.id, status: teamMembers.status })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, sessionUser.id)))
+        .limit(1)
+
+      if (!existingMember || existingMember.status !== "active") {
+        // Roster row is missing or stale — add them now.
+        try {
+          await joinTeam(team.id, sessionUser.id, {
+            category: invite.category ?? undefined,
+            pairIndex: invite.pairIndex ?? undefined,
+            slotIndex: invite.slotIndex ?? undefined,
+          })
+        } catch (err) {
+          if (err instanceof TeamFullError) return { error: "The team is full." }
+          throw err
+        }
+        revalidatePath("/dashboard")
+        revalidatePath("/dashboard/captain")
+        revalidatePath("/dashboard/org")
+      }
+    }
     return { joined: true, teamName: team.name }
   }
 
