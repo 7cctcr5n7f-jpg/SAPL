@@ -1,7 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixtures, standings, categories, teamPairings } from "@/lib/db/schema"
-import { and, eq, ne, or, desc } from "drizzle-orm"
+import { and, eq, ne, or, desc, inArray } from "drizzle-orm"
 import { getTeamReadiness, suggestDivision, type TeamReadiness } from "@/lib/team-readiness"
 import { getPlayerFee } from "@/lib/queries"
 
@@ -101,12 +101,19 @@ const SQUAD_SIZE = 8
  * Assembles the read-only "My Team" view for a player: team identity, an
  * 8-slot roster (active players, pending invites, then empty Add-Player slots),
  * League Ready status, average Playtomic rating, payment status, next fixture
- * and league position. Returns null when the player belongs to no team.
+ * and league position. Returns null when the player belongs to no team and has
+ * no managed teams.
  *
- * When `preferredTeamId` is supplied and the player belongs to it, that team is
- * shown; otherwise the most recently updated active membership is used.
+ * When `preferredTeamId` is supplied and the player belongs to it (or manages
+ * it), that team is shown; otherwise the most recently updated active
+ * membership is used, with manager-only teams as a fallback when the user has
+ * no active memberships.
+ *
+ * `managedTeamIds` — IDs of teams the current user manages (owner/captain/club)
+ * even without an active roster membership. Used to surface the "My Team" view
+ * for owners who were added before they registered an account.
  */
-export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean }): Promise<MyTeamView | null> {
+export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean; managedTeamIds?: number[] }): Promise<MyTeamView | null> {
   // Active memberships, newest first.
   const memberships = await db
     .select({ teamId: teamMembers.teamId, name: teams.name })
@@ -115,12 +122,40 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
     .orderBy(desc(teamMembers.updatedAt))
 
-  if (memberships.length === 0) return null
+  // Determine the team to show. When the user has memberships, prefer the
+  // preferred team or the most-recently-updated active one.
+  // When the user has no memberships (e.g. owner added before registering),
+  // fall back to teams they manage via email ownership / captaincy.
+  let teamId: number
+  let otherTeams: { id: number; name: string }[]
 
-  const chosen =
-    (opts?.preferredTeamId && memberships.find((m) => m.teamId === opts.preferredTeamId)) || memberships[0]
-  const teamId = chosen.teamId
-  const otherTeams = memberships.filter((m) => m.teamId !== teamId).map((m) => ({ id: m.teamId, name: m.name }))
+  if (memberships.length > 0) {
+    const chosen =
+      (opts?.preferredTeamId && memberships.find((m) => m.teamId === opts.preferredTeamId)) || memberships[0]
+    teamId = chosen.teamId
+    otherTeams = memberships.filter((m) => m.teamId !== teamId).map((m) => ({ id: m.teamId, name: m.name }))
+  } else {
+    // No active memberships — check if this user manages any teams by email.
+    const managed = opts?.managedTeamIds ?? []
+    if (managed.length === 0) return null
+
+    // Fetch names for all managed teams so the team switcher works.
+    const managedRows = await db
+      .select({ id: teams.id, name: teams.name })
+      .from(teams)
+      .where(inArray(teams.id, managed))
+
+    if (managedRows.length === 0) return null
+
+    // Pick the preferred team if it's in scope, otherwise the first managed one.
+    const chosenId =
+      (opts?.preferredTeamId && managed.includes(opts.preferredTeamId))
+        ? opts.preferredTeamId
+        : managed[0]
+
+    teamId = chosenId
+    otherTeams = managedRows.filter((r) => r.id !== chosenId).map((r) => ({ id: r.id, name: r.name }))
+  }
 
   const [team] = await db
     .select({
