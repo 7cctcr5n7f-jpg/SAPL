@@ -384,28 +384,28 @@ export async function getFreeAgentsAction() {
         .where(eq(teamMembers.status, "active"))
     ).map((r) => r.playerId)
 
-    const query = db
-      .select({
-        id: user.id,
-        name: user.name,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        playtomicRating: user.playtomicRating,
-        city: user.city,
-        province: user.province,
-        avatarUrl: user.avatarUrl,
-      })
-      .from(user)
-      .where(
-        and(
-          sql`${user.isPlayer} = true`,
-          activeMemberIds.length > 0
-            ? not(inArray(user.id, activeMemberIds))
-            : sql`true`,
-        ),
-      )
-      .orderBy(user.firstName)
-      .limit(500)
+  const query = db
+    .select({
+      id: user.id,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      playtomicRating: user.playtomicRating,
+      city: user.city,
+      province: user.province,
+      avatarUrl: user.avatarUrl,
+    })
+    .from(user)
+    .where(
+      and(
+        eq(user.isPlayer, true),
+        activeMemberIds.length > 0
+          ? not(inArray(user.id, activeMemberIds))
+          : undefined,
+      ),
+    )
+    .orderBy(user.firstName)
+    .limit(500)
 
     return query
   }
