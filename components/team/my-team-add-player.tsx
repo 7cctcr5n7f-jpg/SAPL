@@ -15,24 +15,13 @@ import {
 } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { invitePlayerByEmail, lookupPlayerByEmail, inviteMarketplacePlayer, getFreeAgentsAction, getRegisteredFreeAgentsAction, addRegisteredPlayerDirectly } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, lookupPlayerByEmail, getRegisteredFreeAgentsAction, addRegisteredPlayerDirectly } from "@/lib/actions/pairings"
 import { toast } from "sonner"
-import { UserPlus, Mail, Users, Loader2, CheckCircle2, Search, Star, UserCheck } from "lucide-react"
+import { UserPlus, Mail, Loader2, CheckCircle2, Search, Star, UserCheck } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 
-type Tab = "email" | "marketplace" | "registered"
-
-type FreeAgent = {
-  id: string
-  name: string
-  firstName: string | null
-  lastName: string | null
-  playtomicRating: number | null
-  city: string | null
-  province: string | null
-  avatarUrl: string | null
-}
+type Tab = "email" | "registered"
 
 type RegisteredPlayer = {
   id: string
@@ -84,12 +73,6 @@ export function MyTeamAddPlayer({
   const [nameReadonly, setNameReadonly] = useState(false)
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Marketplace tab state
-  const [freeAgents, setFreeAgents] = useState<FreeAgent[]>([])
-  const [agentsLoading, setAgentsLoading] = useState(false)
-  const [search, setSearch] = useState("")
-  const [inviting, setInviting] = useState<string | null>(null)
-
   // Registered players tab state
   const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([])
   const [registeredLoading, setRegisteredLoading] = useState(false)
@@ -102,7 +85,6 @@ export function MyTeamAddPlayer({
     setRating("")
     setLookupState("idle")
     setNameReadonly(false)
-    setSearch("")
     setRegisteredSearch("")
     setTab("email")
     if (lookupTimer.current) clearTimeout(lookupTimer.current)
@@ -137,16 +119,6 @@ export function MyTeamAddPlayer({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email])
-
-  // Load free agents when marketplace tab is opened
-  useEffect(() => {
-    if (tab !== "marketplace" || freeAgents.length > 0) return
-    setAgentsLoading(true)
-    getFreeAgentsAction().then((agents) => {
-      setFreeAgents(agents as FreeAgent[])
-      setAgentsLoading(false)
-    })
-  }, [tab, freeAgents.length])
 
   // Load registered players (no active team) when that tab is opened
   useEffect(() => {
@@ -211,37 +183,6 @@ export function MyTeamAddPlayer({
     })
   }
 
-  function inviteFromMarketplace(playerId: string) {
-    setInviting(playerId)
-    start(async () => {
-      const res = await inviteMarketplacePlayer({
-        teamId,
-        playerId,
-        category: targetCategory,
-        pairIndex: targetPairIndex,
-        slotIndex: targetSlotIndex,
-      })
-      setInviting(null)
-      if (res.error) {
-        toast.error(res.error)
-        return
-      }
-      toast.success(res.success ?? "Player invited.")
-      setOpen(false)
-      reset()
-      router.refresh()
-    })
-  }
-
-  const filteredAgents = freeAgents.filter((a) => {
-    const q = search.toLowerCase()
-    return (
-      a.name.toLowerCase().includes(q) ||
-      (a.city ?? "").toLowerCase().includes(q) ||
-      (a.province ?? "").toLowerCase().includes(q)
-    )
-  })
-
   const filteredRegistered = registeredPlayers.filter((p) => {
     const q = registeredSearch.toLowerCase()
     const fullName = p.firstName ? `${p.firstName} ${p.lastName ?? ""}`.trim() : p.name
@@ -257,6 +198,11 @@ export function MyTeamAddPlayer({
       open={open}
       onOpenChange={(o) => {
         setOpen(o)
+        if (o) {
+          // Always reload the registered players list when the dialog opens so
+          // a player just added won't still appear in the list next time.
+          setRegisteredPlayers([])
+        }
         if (!o) reset()
       }}
     >
@@ -271,8 +217,13 @@ export function MyTeamAddPlayer({
       />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a player</DialogTitle>
+          <DialogTitle>
+            {targetCategory ? `Add player — ${targetCategory}` : "Add a player"}
+          </DialogTitle>
           <DialogDescription>
+            {targetCategory
+              ? `Adding to the ${targetCategory} slot. `
+              : ""}
             {slotsRemaining > 0
               ? `${slotsRemaining} open slot${slotsRemaining === 1 ? "" : "s"} remaining in your squad.`
               : "Your squad is full."}
@@ -305,21 +256,7 @@ export function MyTeamAddPlayer({
             )}
           >
             <UserCheck className="h-4 w-4" />
-            <span className="hidden sm:inline">Add</span> Registered
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("marketplace")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-l border-border",
-              tab === "marketplace"
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40",
-            )}
-          >
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Marketplace</span>
-            <span className="sm:hidden">Market</span>
+            Add Registered
           </button>
         </div>
 
@@ -487,86 +424,7 @@ export function MyTeamAddPlayer({
           </div>
         )}
 
-        {/* Marketplace tab */}
-        {tab === "marketplace" && (
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, city or province..."
-                className="pl-9 h-11"
-              />
-            </div>
 
-            {agentsLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredAgents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                <Users className="h-8 w-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
-                  {search ? "No players match your search." : "No players are currently on the marketplace."}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-                {filteredAgents.map((a) => {
-                  const displayName = a.firstName
-                    ? `${a.firstName} ${a.lastName ?? ""}`.trim()
-                    : a.name
-                  const location = [a.city, a.province].filter(Boolean).join(", ")
-                  const isInviting = inviting === a.id
-
-                  return (
-                    <div
-                      key={a.id}
-                      className="flex items-center gap-3 rounded-lg border border-border p-3 bg-card"
-                    >
-                      <Avatar className="h-10 w-10 shrink-0 border border-border">
-                        <AvatarFallback className="bg-secondary text-xs font-semibold">
-                          {initials(displayName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {a.playtomicRating != null && a.playtomicRating > 0 ? (
-                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                              <Star className="h-3 w-3" />
-                              {a.playtomicRating.toFixed(1)}
-                            </span>
-                          ) : null}
-                          {location ? (
-                            <span className="text-xs text-muted-foreground truncate">{location}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="shrink-0 text-xs hidden sm:flex">
-                        Free agent
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending || slotsRemaining <= 0 || isInviting}
-                        onClick={() => inviteFromMarketplace(a.id)}
-                        className="shrink-0"
-                      >
-                        {isInviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Invite"}
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {slotsRemaining <= 0 && (
-              <p className="text-center text-xs text-destructive">Squad is full — remove a player first.</p>
-            )}
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   )

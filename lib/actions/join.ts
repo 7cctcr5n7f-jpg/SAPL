@@ -299,7 +299,9 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       firstName,
       lastName,
       gender: captainPlays ? (captainGender ?? "male") : null,
-      isPlayer: captainPlays,
+      // Everyone who registers is a player — even non-playing captains should
+      // be visible in the squad picker so they can be added to a team later.
+      isPlayer: true,
       playtomicUrl: captainPlays ? playtomicUrl.trim() || null : null,
       availability: captainPlays ? "on_team" : "unavailable",
       updatedAt: new Date(),

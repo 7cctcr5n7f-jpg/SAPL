@@ -11,7 +11,7 @@ import {
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { and, eq, desc, not, inArray, sql } from "drizzle-orm"
+import { and, eq, desc, not, inArray, sql, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -209,10 +209,12 @@ export async function removeFromTeam(input: { teamId: number; playerId: string }
     .set({ status: "removed", updatedAt: new Date() })
     .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, input.playerId)))
 
-  // 2) Clear the player out of any pairing slots for this team.
+  // 2) Delete the player's pairing slot row for this team entirely.
+  // Using DELETE (not UPDATE SET playerId = null) so no ghost rows remain
+  // that could be mistakenly overwritten when a new player is added to the
+  // same slot, causing unexpected category shifts.
   await db
-    .update(teamPairings)
-    .set({ playerId: null, updatedAt: new Date() })
+    .delete(teamPairings)
     .where(and(eq(teamPairings.teamId, input.teamId), eq(teamPairings.playerId, input.playerId)))
 
   // 3) If the player is no longer active on ANY team, mark them as a free agent
@@ -384,28 +386,33 @@ export async function getFreeAgentsAction() {
         .where(eq(teamMembers.status, "active"))
     ).map((r) => r.playerId)
 
-    const query = db
-      .select({
-        id: user.id,
-        name: user.name,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        playtomicRating: user.playtomicRating,
-        city: user.city,
-        province: user.province,
-        avatarUrl: user.avatarUrl,
-      })
-      .from(user)
-      .where(
-        and(
-          sql`${user.isPlayer} = true`,
-          activeMemberIds.length > 0
-            ? not(inArray(user.id, activeMemberIds))
-            : sql`true`,
-        ),
-      )
-      .orderBy(user.firstName)
-      .limit(500)
+  const query = db
+    .select({
+      id: user.id,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      playtomicRating: user.playtomicRating,
+      city: user.city,
+      province: user.province,
+      avatarUrl: user.avatarUrl,
+    })
+    .from(user)
+    .where(
+      and(
+        // Every user who has completed basic registration (has a firstName set)
+        // is eligible. isPlayer and lookingForTeam are unreliable — captains who
+        // register a team but don't play, and players invited before completing
+        // their profile, may never have those flags set. Using firstName as the
+        // minimum signal that the account is real and ready to be assigned.
+        sql`${user.firstName} IS NOT NULL AND trim(${user.firstName}) != ''`,
+        activeMemberIds.length > 0
+          ? not(inArray(user.id, activeMemberIds))
+          : undefined,
+      ),
+    )
+    .orderBy(user.firstName)
+    .limit(500)
 
     return query
   }
@@ -441,7 +448,7 @@ export async function getFreeAgentsAction() {
       .limit(1)
 
     if (!playerUser) return { error: "Player not found." }
-    if (!playerUser.isPlayer) return { error: "This user has not registered as a player yet." }
+    // Do not gate on isPlayer — everyone who registers is treated as a player.
 
     // Check they are not already on another team this season.
     const conflict = await getPlayerSeasonTeamConflict(playerUser.id, team.seasonId, input.teamId)
@@ -462,6 +469,8 @@ export async function getFreeAgentsAction() {
     }
 
     try {
+      // joinTeam handles the teamMembers row AND the teamPairings slot row in
+      // one transaction — do not write the pairing row again after this call.
       await joinTeam(input.teamId, playerUser.id, {
         category: input.category,
         pairIndex: input.pairIndex,
@@ -472,35 +481,8 @@ export async function getFreeAgentsAction() {
       throw err
     }
 
-    // If a specific slot was requested, write the pairing row now so the
-    // player appears in exactly that slot on the squad view.
-    if (input.category && input.pairIndex && input.slotIndex) {
-      // Clear any existing occupant of that slot first.
-      await db
-        .update(teamPairings)
-        .set({ playerId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(teamPairings.teamId, input.teamId),
-            eq(teamPairings.category, input.category),
-            eq(teamPairings.pairIndex, input.pairIndex),
-            eq(teamPairings.slotIndex, input.slotIndex),
-          ),
-        )
-      // Upsert the player into the requested slot.
-      await db
-        .insert(teamPairings)
-        .values({
-          teamId: input.teamId,
-          category: input.category,
-          pairIndex: input.pairIndex,
-          slotIndex: input.slotIndex,
-          playerId: playerUser.id,
-        })
-        .onConflictDoNothing()
-    }
-
     await recomputeTeamStats(input.teamId)
+    revalidatePath("/dashboard")
     revalidatePath("/dashboard/captain")
     revalidatePath("/dashboard/org")
 
@@ -612,6 +594,7 @@ export async function cancelInvite(inviteId: number) {
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
   await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, inviteId))
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/org")
   return { success: "Invite cancelled." }
@@ -659,9 +642,12 @@ async function joinTeam(
   }
 
   if (slot?.category && slot.pairIndex != null && slot.slotIndex != null) {
-    const [existing] = await db
-      .select()
-      .from(teamPairings)
+    // Delete any existing row for this exact slot (including ghost rows where
+    // playerId was previously set to null by an old removeFromTeam call).
+    // Then insert clean so the player is always placed in exactly the right slot
+    // on exactly the right team — no cross-team or cross-category bleed.
+    await db
+      .delete(teamPairings)
       .where(
         and(
           eq(teamPairings.teamId, teamId),
@@ -670,18 +656,13 @@ async function joinTeam(
           eq(teamPairings.slotIndex, slot.slotIndex),
         ),
       )
-      .limit(1)
-    if (existing) {
-      await db.update(teamPairings).set({ playerId, updatedAt: new Date() }).where(eq(teamPairings.id, existing.id))
-    } else {
-      await db.insert(teamPairings).values({
-        teamId,
-        category: slot.category,
-        pairIndex: slot.pairIndex,
-        slotIndex: slot.slotIndex,
-        playerId,
-      })
-    }
+    await db.insert(teamPairings).values({
+      teamId,
+      category: slot.category,
+      pairIndex: slot.pairIndex,
+      slotIndex: slot.slotIndex,
+      playerId,
+    })
   }
 
   await recomputeTeamStats(teamId)

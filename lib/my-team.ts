@@ -37,6 +37,7 @@ export type MyTeamCategorySlot = {
     playerId: string
     name: string
     playtomicRating: number | null
+    gender: string | null
     paid: boolean
     isCaptain: boolean
   } | null
@@ -48,6 +49,10 @@ export type MyTeamCategorySlot = {
 export type MyTeamCategory = {
   name: string
   gender: string
+  /** Minimum playtomic rating allowed in this category (inclusive). */
+  playerMinLi: number
+  /** Maximum playtomic rating allowed in this category (inclusive). */
+  playerMaxLi: number
   isFeatureCourt: boolean
   slots: MyTeamCategorySlot[]
 }
@@ -219,6 +224,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       playtomicRating: user.playtomicRating,
       playtomicUrl: user.playtomicUrl,
       isPlayer: user.isPlayer,
+      gender: user.gender,
     })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.playerId, user.id))
@@ -236,12 +242,17 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   }
 
   // Pending email invites (players added but not yet registered).
+  // Fetch category/pairIndex/slotIndex so each invite can be pinned to
+  // the exact slot it was sent from.
   const pendingRows = await db
     .select({
       inviteId: teamInvites.id,
       email: teamInvites.email,
       invitedName: teamInvites.invitedName,
       invitedRating: teamInvites.invitedRating,
+      category: teamInvites.category,
+      pairIndex: teamInvites.pairIndex,
+      slotIndex: teamInvites.slotIndex,
     })
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")))
@@ -249,7 +260,13 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
 
   // Fetch category meta + pairing slots for the category-grouped squad view.
   const catMeta = await db
-    .select({ name: categories.name, gender: categories.gender, isFeatureCourt: categories.isFeatureCourt })
+    .select({
+      name: categories.name,
+      gender: categories.gender,
+      isFeatureCourt: categories.isFeatureCourt,
+      playerMinLi: categories.playerMinLi,
+      playerMaxLi: categories.playerMaxLi,
+    })
     .from(categories)
     .orderBy(categories.sortOrder)
 
@@ -259,27 +276,36 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(eq(teamPairings.teamId, teamId))
 
   // Build a quick lookup: { playerId → display info } from the already-fetched roster.
-  const playerMap = new Map<string, { playerId: string; name: string; playtomicRating: number | null; paid: boolean; isCaptain: boolean }>()
+  const playerMap = new Map<string, { playerId: string; name: string; playtomicRating: number | null; gender: string | null; paid: boolean; isCaptain: boolean }>()
   for (const r of rosterRows) {
     playerMap.set(r.playerId, {
       playerId: r.playerId,
       name: `${r.firstName ?? ""} ${r.lastName ?? ""}`.trim(),
       playtomicRating: r.playtomicRating ?? null,
+      gender: r.gender ?? null,
       paid: team.clubPaysFees || paidPlayerIds.has(r.playerId),
       isCaptain: r.playerId === team.captainUserId,
     })
   }
 
-  // Group pending invites by category (undefined category → "__none__").
-  const invitesByCategory = new Map<string, { id: number; email: string; name: string | null }[]>()
+  // Index pending invites by exact slot key "category|pairIndex|slotIndex"
+  // so each invite is pinned to the slot it was sent from and never bleeds
+  // into another category.
+  const inviteBySlot = new Map<string, { id: number; email: string; name: string | null }>()
   for (const p of pendingRows) {
-    const cat = (p.category as string | null) ?? "__none__"
-    if (!invitesByCategory.has(cat)) invitesByCategory.set(cat, [])
-    invitesByCategory.get(cat)!.push({ id: p.inviteId, email: p.email, name: (p.invitedName as string | null) ?? null })
+    const cat = (p.category as string | null)
+    const pi = (p.pairIndex as number | null)
+    const si = (p.slotIndex as number | null)
+    if (cat && pi != null && si != null) {
+      const key = `${cat}|${pi}|${si}`
+      // Keep the most-recent invite per slot (pendingRows is already ordered desc).
+      if (!inviteBySlot.has(key)) {
+        inviteBySlot.set(key, { id: p.inviteId, email: p.email, name: (p.invitedName as string | null) ?? null })
+      }
+    }
   }
 
   // Desired display order: Ladies Open → Mens Open → Mens Intermediate → Mens Beginner.
-  // Any other categories fall after these four in their original sortOrder.
   const CATEGORY_SORT: Record<string, number> = {
     "Ladies Open": 0,
     "Mens Open": 1,
@@ -287,21 +313,12 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     "Mens Beginner": 3,
   }
 
-  // Pending invites with no category assigned — these need to be distributed
-  // into the first available empty slot across all categories.
-  const unassignedInvites = [...(invitesByCategory.get("__none__") ?? [])]
-
-  // Build MyTeamCategory objects: one per league category, each with 2 slots.
-  // Derive gender defensively from the name so a wrong DB value can't cause
-  // a "mens" category to render with a female (pink) accent.
+  // Build MyTeamCategory objects. Each slot is populated only from its explicit
+  // ppl_team_pairings row (for active players) or its exact-match invite row.
+  // No redistribution across categories — a slot that has no pairing row and no
+  // matching invite stays as an empty open slot.
   const pairingCategories: MyTeamCategory[] = catMeta
     .map((cat) => {
-      const slot1 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 1)
-      const slot2 = pairingSlotRows.find((s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === 2)
-      const catInvites = invitesByCategory.get(cat.name) ?? []
-
-      // Derive gender from the category name so a stale DB value can't
-      // cause a men's category to display with the ladies (pink) accent.
       const nameLower = cat.name.toLowerCase()
       const derivedGender: string = nameLower.startsWith("ladies") || nameLower.startsWith("women")
         ? "female"
@@ -309,25 +326,30 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         ? "mixed"
         : "male"
 
+      const slots: MyTeamCategorySlot[] = [1, 2].map((slotIndex) => {
+        const pairingRow = pairingSlotRows.find(
+          (s) => s.category === cat.name && s.pairIndex === 1 && s.slotIndex === slotIndex,
+        )
+        const player = pairingRow?.playerId ? (playerMap.get(pairingRow.playerId) ?? null) : null
+        const invite = !player ? (inviteBySlot.get(`${cat.name}|1|${slotIndex}`) ?? null) : null
+        return {
+          category: cat.name,
+          pairIndex: 1,
+          slotIndex,
+          player,
+          inviteId: invite?.id ?? null,
+          inviteEmail: invite?.email ?? null,
+          inviteName: invite?.name ?? null,
+        }
+      })
+
       return {
         name: cat.name,
         gender: derivedGender,
+        playerMinLi: cat.playerMinLi,
+        playerMaxLi: cat.playerMaxLi,
         isFeatureCourt: cat.isFeatureCourt,
-        slots: [slot1, slot2].map((s, idx) => {
-          const slotIndex = idx + 1
-          const player = s?.playerId ? (playerMap.get(s.playerId) ?? null) : null
-          // First try category-specific invites, then fall back to unassigned pool.
-          const invite = !player ? (catInvites[idx] ?? null) : null
-          return {
-            category: cat.name,
-            pairIndex: 1,
-            slotIndex,
-            player,
-            inviteId: invite?.id ?? null,
-            inviteEmail: invite?.email ?? null,
-            inviteName: invite?.name ?? null,
-          }
-        }),
+        slots,
       }
     })
     .sort((a, b) => {
@@ -335,45 +357,6 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       const bOrder = CATEGORY_SORT[b.name] ?? 99
       return aOrder - bOrder
     })
-
-  // Second pass A: fill any empty category slot with an unassigned pending invite.
-  // The slot already has its category/pairIndex/slotIndex set from the first pass.
-  if (unassignedInvites.length > 0) {
-    for (const cat of pairingCategories) {
-      for (const slot of cat.slots) {
-        if (!slot.player && !slot.inviteEmail && unassignedInvites.length > 0) {
-          const next = unassignedInvites.shift()!
-          slot.inviteId = next.id
-          slot.inviteEmail = next.email
-          slot.inviteName = next.name
-        }
-      }
-    }
-  }
-
-  // Second pass B: active roster members who have no entry in ppl_team_pairings
-  // (i.e. they were added directly or via invite without a slot assignment) are
-  // invisible in the category grid. Distribute them into remaining empty slots so
-  // the captain can always see who is on the team.
-  const assignedPlayerIds = new Set(pairingSlotRows.map((s) => s.playerId).filter(Boolean) as string[])
-  const unassignedRosterMembers = rosterRows.filter((r) => !assignedPlayerIds.has(r.playerId))
-
-  if (unassignedRosterMembers.length > 0) {
-    for (const cat of pairingCategories) {
-      for (const slot of cat.slots) {
-        if (!slot.player && !slot.inviteEmail && unassignedRosterMembers.length > 0) {
-          const member = unassignedRosterMembers.shift()!
-          slot.player = {
-            playerId: member.playerId,
-            name: `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim(),
-            playtomicRating: member.playtomicRating ?? null,
-            paid: team.clubPaysFees || paidPlayerIds.has(member.playerId),
-            isCaptain: member.playerId === team.captainUserId,
-          }
-        }
-      }
-    }
-  }
 
   // Build the ordered slot list: active players, pending invites, empties → 8.
   const slots: MyTeamSlot[] = []
