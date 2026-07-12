@@ -58,14 +58,14 @@ type OrgSeed = (typeof ORGS)[number]
 
 /**
  * Map an organisation type to the team type its teams enter the league as.
- * Padel clubs / schools enter as Club Teams; corporate companies as Company
+ * Padel clubs / schools enter as Club Teams; corporate companies as Business
  * Teams; social & community groups as Private Teams. This keeps seeded and demo
  * data from being uniformly "Club Team".
  */
-function teamTypeForOrg(orgType: string): "Club Team" | "Company Team" | "Private Team" {
+function teamTypeForOrg(orgType: string): "Club Team" | "Business Team" | "Private Team" {
   switch (orgType) {
     case "Corporate Company":
-      return "Company Team"
+      return "Business Team"
     case "Social Group":
     case "Community Organisation":
       return "Private Team"
@@ -156,7 +156,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
       startDate: new Date("2026-02-03"),
       endDate: new Date("2026-03-10"),
       weeks: 5,
-      status: "active",
+      status: "league_locked",
       isCurrent: true,
     })
     .returning()
@@ -208,7 +208,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
 
     // Derive a realistic team type from the organisation type so seeded/demo
     // data isn't uniformly "Club Team". Padel clubs & schools field Club Teams,
-    // companies field Company Teams, social/community groups field Private Teams.
+    // companies field Business Teams, social/community groups field Private Teams.
     const teamType = teamTypeForOrg(org.type)
 
     // one team per division
@@ -226,7 +226,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
           regionId,
           tpr: TPR_BASE,
           highestTpr: TPR_BASE,
-          status: "active",
+          status: "league_active",
         })
         .returning()
 
@@ -529,7 +529,6 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
   ])
 
   // --- Payments (samples) ---
-  const sampleAmounts = [450, 1800, 5400]
   await db.insert(payments).values([
     { type: "individual", payerUserId: "seed-player-1", playerId: null, amount: 450, vatAmount: Math.round(450 * VAT_RATE * 100) / 100, currency: "ZAR", status: "paid", provider: "payfast", invoiceNumber: "PPL-INV-1001", reference: "REG-PLAYER-1", description: "Individual player registration fee", paidAt: new Date() },
     { type: "team", teamId: seedTeams[0].id, amount: 1800, vatAmount: Math.round(1800 * VAT_RATE * 100) / 100, currency: "ZAR", status: "paid", provider: "stripe", invoiceNumber: "PPL-INV-1002", reference: "REG-TEAM-1", description: "Team season entry fee", paidAt: new Date() },

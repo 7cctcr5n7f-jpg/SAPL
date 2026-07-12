@@ -2,15 +2,15 @@ import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/session"
 import { db } from "@/lib/db"
-import { user as user } from "@/lib/db/schema"
+import { user as userTable } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 
 const MAX_BYTES = 6 * 1024 * 1024 // 6MB
 const ALLOWED = ["image/png", "image/jpeg", "image/webp"]
 
 export async function POST(request: NextRequest) {
-  const user = await getCurrentUser()
-  if (!user) {
+  const me = await getCurrentUser()
+  if (!me) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
 
@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     })
 
     // Update user's avatarUrl in database
-    if (user.isPlayer) {
-      await db.update(user).set({ avatarUrl: blob.url }).where(eq(user.id, user.id))
+    if (me.isPlayer) {
+      await db.update(userTable).set({ avatarUrl: blob.url }).where(eq(userTable.id, me.id))
     }
 
     return NextResponse.json({ url: blob.url })

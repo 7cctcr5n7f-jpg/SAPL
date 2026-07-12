@@ -10,6 +10,7 @@ import {
 import { eq, and } from "drizzle-orm"
 import { scoreFixture, tallySets, formatScoreDetail, type MatchResult, type SetScore } from "@/lib/engine/scoring"
 import { calculateTpr } from "@/lib/engine/tpr"
+import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
 
 export type CategoryScoreInput = {
   category: string
@@ -32,7 +33,17 @@ export type CategoryScoreInput = {
  * Idempotency: deletes any pre-existing matches for the fixture first.
  */
 export async function applyFixtureResult(fixtureId: number, categoryScores: CategoryScoreInput[]) {
-  const [fixtureRow] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fixtureRow] = await db
+    .select({
+      id: fixtures.id,
+      seasonId: fixtures.seasonId,
+      divisionId: fixtures.divisionId,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+    })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
   if (!fixtureRow) throw new Error("Fixture not found")
   if (fixtureRow.homeTeamId == null || fixtureRow.awayTeamId == null) {
     throw new Error("Cannot record a result before both teams are assigned")
@@ -162,6 +173,9 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
       },
     ])
   }
+
+  await syncTeamLifecycleStatus(fixture.homeTeamId)
+  await syncTeamLifecycleStatus(fixture.awayTeamId)
 
   return { score, winnerTeamId }
 }

@@ -90,7 +90,7 @@ export function DashboardNav({
     // --- Player / team owner (unified simple menu) ---
     items = [
       { href: "/dashboard", label: "Home", icon: ICONS.dashboard },
-      { href: "/dashboard/org", label: "My Team", icon: ICONS.org },
+      { href: "/dashboard/my-team", label: "My Team", icon: ICONS.org },
       { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings },
     ]
   }

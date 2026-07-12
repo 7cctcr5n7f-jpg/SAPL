@@ -1,5 +1,4 @@
 import React from "react"
-import Link from "next/link"
 import { CheckCircle2, CreditCard } from "lucide-react"
 import { getCurrentUser } from "@/lib/session"
 import {
@@ -13,8 +12,6 @@ import {
   getPairingPartner,
   getTeamOwnerFee,
   type FixtureDetail,
-  type PendingTeamInvite,
-  type PairingPartner,
   type TeamOwnerFee,
 } from "@/lib/queries-dashboard"
 import { getDashboardFixtures } from "@/lib/queries-fixtures"
@@ -179,11 +176,9 @@ export default async function DashboardOverview() {
       {/* ── Profile hero ─────────────────────────────────────────────────── */}
       <PlayerSummary
         firstName={me.name.split(" ")[0]}
-        leagueIndex={player.currentLi}
         team={overviewTeam}
         feesPaid={feesPaid}
         playtomicRating={player.playtomicRating ? String(player.playtomicRating) : null}
-        eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.playtomicRating ?? 0)}
         avatarUrl={player.avatarUrl as string | null}
         pendingInvites={pendingInvites}
         partner={pairingPartner}
@@ -208,7 +203,7 @@ export default async function DashboardOverview() {
       {/* ── Matches ──────────────────────────────────────────────────────── */}
       <section>
         <SectionHeading>Upcoming Matches</SectionHeading>
-        <MatchCentre matches={myMatches} details={fixtureDetails} isCaptain={isCaptain} />
+        <MatchCentre matches={myMatches} details={fixtureDetails} />
       </section>
 
       {/* ── My Team ──────────────────────────────────────────────────────── */}

@@ -11,15 +11,17 @@ export default async function DashboardFixturesPage() {
   const user = access.user
 
   // Admin-only operations console. Captains/players use League Centre instead.
-  const isClubManager = access.can("club_management") && access.clubIds.length > 0
-  if (!access.isLeagueAdmin && !isClubManager) redirect("/league-centre")
+  const hasScopedManagerAccess = access.clubIds.length > 0 || access.manageableTeamIds.length > 0
+  if (!access.isLeagueAdmin && !hasScopedManagerAccess) redirect("/league-centre")
 
   const data = await getDashboardFixtures(user)
 
   const subtitle =
     data.scope === "all"
       ? "Schedule, book and publish every match night"
-      : "Manage booking details for fixtures at your club"
+      : data.scope === "club"
+        ? "Manage booking details for fixtures at your club and your teams"
+        : "Manage booking details for fixtures involving your teams"
 
   return (
     <div>

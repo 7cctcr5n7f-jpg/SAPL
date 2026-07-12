@@ -4,7 +4,6 @@ import { useRef, useState } from "react"
 import Image from "next/image"
 import { Upload, Loader2, Crown } from "lucide-react"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
 
 export function PlayerPhotoUploader({
   value,

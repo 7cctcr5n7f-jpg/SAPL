@@ -78,15 +78,22 @@ async function canManageFixtureLink(fixtureId: number) {
   const user = await requireUser()
   const access = await getAccessContext(user)
   if (access.isLeagueAdmin) return true
-  if (!access.can("fixture_management")) return false
 
   const [fx] = await db
-    .select({ venueClubId: fixtures.venueClubId })
+    .select({ venueClubId: fixtures.venueClubId, homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
     .from(fixtures)
     .where(eq(fixtures.id, fixtureId))
     .limit(1)
-  if (!fx || fx.venueClubId == null) return false
-  return access.canManageClub(fx.venueClubId)
+  if (!fx) return false
+
+  // Club owners can edit fixtures hosted at their own club.
+  if (fx.venueClubId != null && access.canManageClub(fx.venueClubId)) return true
+
+  // Team owners/captains can edit fixtures involving their own teams.
+  return (
+    (fx.homeTeamId != null && access.ownedTeamIds.includes(fx.homeTeamId)) ||
+    (fx.awayTeamId != null && access.ownedTeamIds.includes(fx.awayTeamId))
+  )
 }
 
 /** Set (or clear) a fixture's Playtomic booking link. */
@@ -228,16 +235,19 @@ async function authorizeFixtureEdit(fixtureId: number) {
   const user = await requireUser()
   const access = await getAccessContext(user)
   if (access.isLeagueAdmin) return { user, ok: true as const }
-  if (!access.can("fixture_management")) return { user, ok: false as const }
+
   const [fx] = await db
-    .select({ venueClubId: fixtures.venueClubId })
+    .select({ venueClubId: fixtures.venueClubId, homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
     .from(fixtures)
     .where(eq(fixtures.id, fixtureId))
     .limit(1)
-  if (!fx || fx.venueClubId == null || !access.canManageClub(fx.venueClubId)) {
-    return { user, ok: false as const }
+  if (!fx) return { user, ok: false as const }
+
+  if (fx.venueClubId != null && access.canManageClub(fx.venueClubId)) return { user, ok: true as const }
+  if ((fx.homeTeamId != null && access.ownedTeamIds.includes(fx.homeTeamId)) || (fx.awayTeamId != null && access.ownedTeamIds.includes(fx.awayTeamId))) {
+    return { user, ok: true as const }
   }
-  return { user, ok: true as const }
+  return { user, ok: false as const }
 }
 
 /**

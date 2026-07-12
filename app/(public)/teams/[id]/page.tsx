@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Stat, DivisionTag } from "@/components/brand/bits"
 import { TprLine } from "@/components/charts/tpr-line"
 import { getTeamDetail } from "@/lib/queries"
+import { formatTeamStatusLabel } from "@/lib/team-lifecycle"
 import { ArrowLeft, Crown, User } from "lucide-react"
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -43,7 +44,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
         <Stat label="Current TPR" value={Math.round(team.tpr)} />
         <Stat label="Peak TPR" value={Math.round(team.highestTpr ?? team.tpr)} />
         <Stat label="Roster" value={roster.length} />
-        <Stat label="Status" value={team.status === "active" ? "Active" : team.status} />
+        <Stat label="Status" value={formatTeamStatusLabel(team.status)} />
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">

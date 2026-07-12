@@ -4,7 +4,7 @@ import { getOutstandingFees } from "@/lib/queries-dashboard"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { db } from "@/lib/db"
 import { seasons } from "@/lib/db/schema"
-import { desc, eq } from "drizzle-orm"
+import { desc } from "drizzle-orm"
 import { BillingManagement } from "@/components/admin/billing-management"
 import { TeamReadinessBoard } from "@/components/admin/team-readiness-board"
 

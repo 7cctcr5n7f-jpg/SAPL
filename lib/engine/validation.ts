@@ -34,7 +34,10 @@ export type SeasonValidation = {
 export async function validateSeason(seasonId: number): Promise<SeasonValidation> {
   const issues: ValidationIssue[] = []
 
-  const divs = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
+  const divs = await db
+    .select({ id: divisions.id, name: divisions.name })
+    .from(divisions)
+    .where(eq(divisions.seasonId, seasonId))
   const seasonFixtures = await db
     .select()
     .from(fixtures)
@@ -73,6 +76,12 @@ export async function validateSeason(seasonId: number): Promise<SeasonValidation
         ),
       )
     const assigned = entries.length
+    const divFixtures = seasonFixtures.filter((f) => f.divisionId === d.id)
+
+    // The season matrix pre-creates region x division cells; untouched cells with
+    // no entries and no fixtures are intentionally inert and should not fail validation.
+    if (assigned === 0 && divFixtures.length === 0) continue
+
     if (assigned < 2) {
       issues.push({
         level: "error",
@@ -85,7 +94,6 @@ export async function validateSeason(seasonId: number): Promise<SeasonValidation
     // a partially-filled division (e.g. 6/8) is fine. Only warn if the scheduled
     // fixtures still reference slots beyond the teams placed — that means the
     // template predates the current placement and needs re-fitting.
-    const divFixtures = seasonFixtures.filter((f) => f.divisionId === d.id)
     const highestSlot = divFixtures.reduce(
       (mx, f) => Math.max(mx, f.homeSlot ?? 0, f.awaySlot ?? 0),
       0,

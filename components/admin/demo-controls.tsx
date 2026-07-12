@@ -30,7 +30,7 @@ const CONFIG: Record<
   },
   regenerate: {
     title: "Regenerate league",
-    desc: "Wipes the current demo league and generates a brand-new set of organisations, teams, players, fixtures and standings. Demo logins are recreated.",
+    desc: "Wipes the current demo league and generates a brand-new set of clubs, teams, players, fixtures and standings. Demo logins are recreated.",
     confirm: "Regenerate league",
     danger: true,
     icon: Sparkles,
@@ -59,7 +59,7 @@ export function DemoControls() {
         if (res.ok) {
           const s = res.summary
           toast.success(
-            `Demo rebuilt: ${s.organisations ?? "?"} orgs, ${s.teams ?? "?"} teams, ${s.demoUsers} logins.`,
+            `Demo rebuilt: ${s.organisations ?? "?"} clubs, ${s.teams ?? "?"} teams, ${s.demoUsers} logins.`,
           )
         } else {
           toast.error(res.error)

@@ -22,7 +22,10 @@ export function Reveal({
     const el = ref.current
     if (!el) return
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      setShown(true)
+      const frame = window.requestAnimationFrame(() => setShown(true))
+      return () => window.cancelAnimationFrame(frame)
+    }
+    if (shown) {
       return
     }
     const obs = new IntersectionObserver(
@@ -38,7 +41,7 @@ export function Reveal({
     )
     obs.observe(el)
     return () => obs.disconnect()
-  }, [])
+  }, [shown])
 
   return (
     <Tag

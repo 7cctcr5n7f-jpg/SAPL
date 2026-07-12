@@ -31,7 +31,7 @@ export default async function RankingsPage() {
                 <TableRow className="bg-card">
                   <TableHead className="w-10">#</TableHead>
                   <TableHead>Team</TableHead>
-                  <TableHead className="hidden md:table-cell">Organisation</TableHead>
+                  <TableHead className="hidden md:table-cell">Club / Group</TableHead>
                   <TableHead className="hidden sm:table-cell">Division</TableHead>
                   <TableHead className="hidden text-right sm:table-cell">Peak</TableHead>
                   <TableHead className="text-right">TPR</TableHead>
@@ -68,7 +68,7 @@ export default async function RankingsPage() {
               <TableHeader>
                 <TableRow className="bg-card">
                   <TableHead className="w-10">#</TableHead>
-                  <TableHead>Organisation</TableHead>
+                  <TableHead>Club / Group</TableHead>
                   <TableHead className="hidden sm:table-cell">Type</TableHead>
                   <TableHead className="hidden sm:table-cell">City</TableHead>
                   <TableHead className="hidden text-right sm:table-cell">Teams</TableHead>

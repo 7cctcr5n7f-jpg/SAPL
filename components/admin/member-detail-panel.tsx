@@ -37,8 +37,16 @@ export function MemberDetailPanel({ userId, isSelf }: { userId: string; isSelf: 
   }
 
   useEffect(() => {
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true
+    void Promise.all([getMemberDetail(userId), getAssignmentOptions()]).then(([d, o]) => {
+      if (!active) return
+      setDetail(d)
+      setOptions(o)
+      setLoading(false)
+    })
+    return () => {
+      active = false
+    }
   }, [userId])
 
   if (loading || !detail || !options) {

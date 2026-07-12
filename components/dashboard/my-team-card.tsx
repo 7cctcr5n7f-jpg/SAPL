@@ -1,7 +1,7 @@
 import Link from "next/link"
 import type { PlayerOverviewTeam } from "@/lib/queries-dashboard"
 import { LeaveTeamButton } from "@/components/dashboard/leave-team-button"
-import { MapPin, Settings2, Trophy, ChevronRight } from "lucide-react"
+import { MapPin, Settings2 } from "lucide-react"
 
 export function MyTeamCard({ team }: { team: PlayerOverviewTeam }) {
   const winRate = team.played > 0 ? Math.round((team.wins / team.played) * 100) : null
@@ -54,7 +54,7 @@ export function MyTeamCard({ team }: { team: PlayerOverviewTeam }) {
       {/* Actions */}
       <div className="flex items-center justify-between gap-3">
         <Link
-          href="/dashboard/org"
+          href="/dashboard/my-team"
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Settings2 className="h-4 w-4" />

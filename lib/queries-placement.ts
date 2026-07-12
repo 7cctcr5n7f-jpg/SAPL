@@ -10,8 +10,9 @@ import {
   user,
   players,
 } from "@/lib/db/schema"
-import { and, eq, asc, count, avg, sql } from "drizzle-orm"
-import type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
+import { and, eq, asc, count, avg, inArray } from "drizzle-orm"
+import type { BoardTeam, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
+import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
 
 export { PLACEMENT_SLOTS } from "@/lib/placement-types"
 export type { BoardTeam, BoardDivision, PlacementBoardData, RosterEntry } from "@/lib/placement-types"
@@ -62,7 +63,7 @@ export async function getPlacementBoard(seasonId: number): Promise<PlacementBoar
     .leftJoin(teamEntries, and(eq(teamEntries.teamId, teams.id), eq(teamEntries.seasonId, seasonId)))
     .leftJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.status, "active")))
     .leftJoin(players, eq(players.userId, teamMembers.playerId))
-    .where(eq(teams.status, "active"))
+    .where(inArray(teams.status, [...TEAM_VISIBLE_STATUSES]))
     .groupBy(teams.id, clubs.id, teamEntries.id)
     .orderBy(asc(teams.name))
 

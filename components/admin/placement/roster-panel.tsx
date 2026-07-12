@@ -30,7 +30,7 @@ import type { BoardTeam, RosterEntry } from "@/lib/placement-types"
 export function RosterPanel({ team, onClose }: { team: BoardTeam | null; onClose: () => void }) {
   const router = useRouter()
   const [roster, setRoster] = useState<RosterEntry[]>([])
-  const [loading, setLoading] = useState(false)
+  const [rosterTeamId, setRosterTeamId] = useState<number | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
@@ -63,21 +63,19 @@ export function RosterPanel({ team, onClose }: { team: BoardTeam | null; onClose
   }
 
   useEffect(() => {
+    if (!team) return
     let active = true
-    if (team) {
-      setLoading(true)
-      fetchTeamRoster(team.id)
-        .then((r) => {
-          if (active) setRoster(r)
-        })
-        .finally(() => active && setLoading(false))
-    } else {
-      setRoster([])
-    }
+    void fetchTeamRoster(team.id).then((r) => {
+      if (!active) return
+      setRoster(r)
+      setRosterTeamId(team.id)
+    })
     return () => {
       active = false
     }
   }, [team])
+
+  const loading = !!team && rosterTeamId !== team.id
 
   return (
     <Sheet open={!!team} onOpenChange={(o) => !o && onClose()}>

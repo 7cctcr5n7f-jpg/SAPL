@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   CalendarDays,
   MapPin,
@@ -96,10 +96,20 @@ function MatchCard({
   isCaptain: boolean
 }) {
   const [scoreOpen, setScoreOpen] = useState(false)
+  const [nowTs, setNowTs] = useState(0)
+
+  useEffect(() => {
+    const initTimer = window.setTimeout(() => setNowTs(Date.now()), 0)
+    const minuteTicker = window.setInterval(() => setNowTs(Date.now()), 60_000)
+    return () => {
+      window.clearTimeout(initTimer)
+      window.clearInterval(minuteTicker)
+    }
+  }, [])
 
   const isCompleted = fixture.status === "completed"
   const hasScore = isCompleted && cat.homeSetsWon != null && cat.awaySetsWon != null
-  const awaiting = !isCompleted && fixture.matchDate && Date.parse(String(fixture.matchDate)) < Date.now()
+  const awaiting = !isCompleted && nowTs > 0 && fixture.matchDate && Date.parse(String(fixture.matchDate)) < nowTs
 
   const venueName = fixture.venueClubName ?? fixture.venue
   const opponentTeam = fixture.awayName ?? fixture.homeName ?? "TBD"

@@ -160,7 +160,7 @@ export function MatchCard({ fixture }: { fixture: LCFixture }) {
             <span className="text-[11px] uppercase tracking-wider">Week {fixture.week}</span>
           )}
 
-          {fixture.joinUrl ? (
+          {fixture.assignedToFixture && fixture.joinUrl ? (
             <a
               href={fixture.joinUrl}
               target="_blank"
@@ -170,7 +170,7 @@ export function MatchCard({ fixture }: { fixture: LCFixture }) {
               Join On Playtomic
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
-          ) : fixture.mine && !isCompleted ? (
+          ) : fixture.assignedToFixture && fixture.mine && !isCompleted ? (
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Booking link pending</span>
           ) : null}
         </div>

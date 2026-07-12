@@ -96,7 +96,7 @@ export default function RulesPage() {
         <p>
           Every team carries an ELO-style Team Power Rating starting at 1000. Results adjust TPR based on opponent
           strength, margin of victory, division strength and play-off weighting. Club Performance Index (CPI) averages
-          an organisation&apos;s best two teams to crown the SAPL Club of the Year.
+          a club/group&apos;s best two teams to crown the SAPL Club of the Year.
         </p>
       </Block>
 

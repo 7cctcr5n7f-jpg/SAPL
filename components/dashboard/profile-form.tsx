@@ -1,7 +1,6 @@
 "use client"
 
 import { useActionState, useState } from "react"
-import Image from "next/image"
 import { updateProfile } from "@/lib/actions/player"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,14 +30,12 @@ export function ProfileForm({
   email,
   phone,
   isOnTeam = false,
-  isPlayer = false,
 }: {
   player: PlayerLike
   clubs: Club[]
   email: string
   phone: string | null
   isOnTeam?: boolean
-  isPlayer?: boolean
 }) {
   const [state, action, pending] = useActionState(updateProfile, null)
   const [anyClub, setAnyClub] = useState(player.anyClub)

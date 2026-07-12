@@ -21,7 +21,7 @@ import {
 import { eq, and, ne, sql } from "drizzle-orm"
 import { isSeasonLocked } from "@/lib/season-lock"
 import { TEAM_OWNER_PERMISSIONS, isTeamOwnerGrant } from "@/lib/permissions"
-import { SAPL_REGIONS } from "@/lib/constants"
+import { SAPL_REGIONS, TEAM_TYPES, normalizeTeamType } from "@/lib/constants"
 
 /**
  * Guard a home-venue assignment against the club's hosting capacity. Returns an
@@ -30,7 +30,16 @@ import { SAPL_REGIONS } from "@/lib/constants"
  * against it when it stays put.
  */
 async function checkVenueCapacity(clubId: number, excludeTeamId?: number): Promise<string | null> {
-  const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, clubId)).limit(1)
+  const [club] = await db
+    .select({
+      id: clubs.id,
+      name: clubs.name,
+      teamsEntering: clubs.teamsEntering,
+      hostingCapacity: clubs.hostingCapacity,
+    })
+    .from(clubs)
+    .where(eq(clubs.id, clubId))
+    .limit(1)
   if (!club) return "Venue not found"
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -41,7 +50,7 @@ async function checkVenueCapacity(clubId: number, excludeTeamId?: number): Promi
         : eq(teams.homeClubId, clubId),
     )
   const used = Math.max(count ?? 0, club.teamsEntering ?? 0)
-  if (used >= club.hostingCapacity) {
+  if (used >= (club.hostingCapacity ?? 0)) {
     return `${club.name} is at hosting capacity (${club.hostingCapacity}). Choose another venue.`
   }
   return null
@@ -52,27 +61,25 @@ import { revalidatePath } from "next/cache"
 import { notify } from "@/lib/notify"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 
-async function requireOrgOwner(orgId: number) {
-  const user = await getCurrentUser()
-  if (!user) throw new Error("Not authenticated")
-  const [org] = await db
-    .select({ id: organisations.id, ownerUserId: organisations.ownerUserId })
-    .from(organisations)
-    .where(eq(organisations.id, orgId))
-    .limit(1)
-  if (!org) throw new Error("Organisation not found")
-  if (org.ownerUserId !== user.id) {
-    // allow league admins and super admins
-    const [meta] = await db
-      .select({ role: userMeta.role })
-      .from(userMeta)
-      .where(eq(userMeta.userId, user.id))
+async function resolveCreateTeamOrganisationId(input: { userId: string; homeClubId: number | null; explicitOrgId: number | null }) {
+  if (input.explicitOrgId != null) return input.explicitOrgId
+  if (input.homeClubId != null) {
+    const [club] = await db
+      .select({ organisationId: clubs.organisationId })
+      .from(clubs)
+      .where(eq(clubs.id, input.homeClubId))
       .limit(1)
-    if (meta?.role !== "league_admin" && meta?.role !== "super_admin") {
-      throw new Error("Not authorised for this organisation")
-    }
+    if (club?.organisationId != null) return club.organisationId
   }
-  return { user, org }
+  const [owned] = await db
+    .select({ id: organisations.id })
+    .from(organisations)
+    .where(eq(organisations.ownerUserId, input.userId))
+    .limit(1)
+  if (owned) return owned.id
+  const [fallback] = await db.select({ id: organisations.id }).from(organisations).limit(1)
+  if (!fallback) throw new Error("No team group exists for team creation")
+  return fallback.id
 }
 
 /** Allow team captains, org owners, and league/super admins to manage a team. */
@@ -87,30 +94,50 @@ async function requireCanManageTeam(teamId: number) {
 }
 
 export async function createTeam(formData: FormData) {
-  const orgId = Number(formData.get("orgId"))
-  await requireOrgOwner(orgId)
+  const me = await getCurrentUser()
+  if (!me) return { ok: false, error: "Not authenticated" }
+  const access = await getAccessContext(me)
+  if (!access.can("team_management")) return { ok: false, error: "Not authorised for team management" }
+  const explicitOrgIdRaw = String(formData.get("orgId") ?? "").trim()
+  const parsedOrgId = explicitOrgIdRaw ? Number(explicitOrgIdRaw) : null
+  const explicitOrgId = parsedOrgId != null && Number.isFinite(parsedOrgId) ? parsedOrgId : null
+  if (await isSeasonLocked()) {
+    return {
+      ok: false,
+      error: "The league is locked — new teams cannot be created after fixtures are live.",
+    }
+  }
   const name = String(formData.get("name") ?? "").trim()
   const divisionId = formData.get("divisionId") ? Number(formData.get("divisionId")) : null
-  const teamType = String(formData.get("teamType") ?? "Club Team").trim() || "Club Team"
+  const teamType = normalizeTeamType(String(formData.get("teamType") ?? "Club Team").trim() || "Club Team")
   const homeClubId = formData.get("homeClubId") ? Number(formData.get("homeClubId")) : null
+  if (!access.isLeagueAdmin && homeClubId && !access.clubIds.includes(homeClubId)) {
+    return { ok: false, error: "You can only create teams for clubs in your scope." }
+  }
+  const organisationId = await resolveCreateTeamOrganisationId({ userId: me.id, homeClubId, explicitOrgId })
   // Team Owner Email: the address that auto-grants team-management access to its
   // holder (see lib/access.ts). Optional, normalised to lowercase.
   const ownerEmailRaw = String(formData.get("ownerEmail") ?? "").trim().toLowerCase()
   if (!name) return { ok: false, error: "Team name is required" }
+  if (!TEAM_TYPES.includes(teamType)) return { ok: false, error: "Invalid team type" }
   if (ownerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmailRaw)) {
     return { ok: false, error: "Enter a valid team owner email" }
   }
   const ownerEmail = ownerEmailRaw || null
 
   // Region: derive from the chosen home club when one is set, otherwise fall
-  // back to an explicitly chosen region so venue-less teams (Company/Private)
+  // back to an explicitly chosen region so venue-less teams (Business/Private)
   // are still board-ready and filterable.
   let regionId: number | null = null
   let saplRegion: string | null = null
   if (homeClubId) {
     const capacityError = await checkVenueCapacity(homeClubId)
     if (capacityError) return { ok: false, error: capacityError }
-    const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, homeClubId)).limit(1)
+    const [club] = await db
+      .select({ id: clubs.id, regionId: clubs.regionId, saplRegion: clubs.saplRegion })
+      .from(clubs)
+      .where(eq(clubs.id, homeClubId))
+      .limit(1)
     if (club) {
       regionId = club.regionId ?? null
       saplRegion = club.saplRegion ?? null
@@ -128,9 +155,9 @@ export async function createTeam(formData: FormData) {
     return { ok: false, error: "Choose a home venue or select a region for this team" }
   }
 
-  await db.insert(teams).values({
+  const [createdTeam] = await db.insert(teams).values({
     name,
-    organisationId: orgId,
+    organisationId,
     divisionId,
     teamType,
     homeClubId,
@@ -138,12 +165,13 @@ export async function createTeam(formData: FormData) {
     saplRegion,
     ownerEmail,
     tpr: 1000,
-    status: "active",
-  })
+    status: "draft",
+  }).returning({ id: teams.id })
+  await recomputeTeamStats(createdTeam.id)
   // Fire-and-forget admin alert — never blocks the action.
   const { subject, html, text } = adminNewTeamEmail({ teamName: name, ownerEmail, adminUrl: `${appBaseUrl()}/admin/teams` })
   sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
@@ -175,7 +203,11 @@ export async function updateTeamRegistration(input: {
     if (!name) return { ok: false, error: "Team name is required" }
     patch.name = name
   }
-  if (input.teamType) patch.teamType = input.teamType
+  if (input.teamType) {
+    const teamType = normalizeTeamType(input.teamType)
+    if (!TEAM_TYPES.includes(teamType)) return { ok: false, error: "Invalid team type" }
+    patch.teamType = teamType
+  }
   if (input.clubPaysFees !== undefined) patch.clubPaysFees = input.clubPaysFees
   if (input.ownerEmail !== undefined) {
     const e = (input.ownerEmail ?? "").trim().toLowerCase()
@@ -204,14 +236,18 @@ export async function updateTeamRegistration(input: {
       if (capacityError) return { ok: false, error: capacityError }
     }
     if (input.homeClubId) {
-      const [club] = await db.select({ id: clubs.id }).from(clubs).where(eq(clubs.id, input.homeClubId)).limit(1)
+      const [club] = await db
+        .select({ id: clubs.id, regionId: clubs.regionId, saplRegion: clubs.saplRegion })
+        .from(clubs)
+        .where(eq(clubs.id, input.homeClubId))
+        .limit(1)
       if (club) {
         patch.regionId = club.regionId ?? null
         patch.saplRegion = club.saplRegion ?? null
       }
     }
   }
-  // Allow setting the region directly (e.g. venue-less Company/Private teams, or
+  // Allow setting the region directly (e.g. venue-less Business/Private teams, or
   // fixing teams that were created before regions were captured). A chosen home
   // club above takes precedence and will have already set the region.
   if (input.saplRegion !== undefined && patch.saplRegion === undefined) {
@@ -239,7 +275,7 @@ export async function updateTeamRegistration(input: {
 
   await db.update(teams).set(patch).where(eq(teams.id, input.teamId))
   await recomputeTeamStats(input.teamId)
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
   revalidatePath("/admin/placement")
   return { ok: true }
@@ -297,7 +333,7 @@ export async function assignCaptain(formData: FormData) {
   })
 
   await recomputeTeamStats(teamId)
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
@@ -335,7 +371,7 @@ export async function updateCaptainContact(input: {
     await db.insert(userMeta).values({ userId: player.id, phone: input.phone })
   }
 
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
@@ -345,7 +381,7 @@ export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean)
   if (!team) return { error: "Team not found" }
   await requireCanManageTeam(teamId)
   await db.update(teams).set({ clubPaysFees, updatedAt: new Date() }).where(eq(teams.id, teamId))
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
   return { success: true }
 }
@@ -388,7 +424,7 @@ export async function deleteTeam(teamId: number) {
   }
 
   revalidatePath("/dashboard")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   revalidatePath("/dashboard/fixtures")
   return { ok: true }
@@ -449,7 +485,8 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
   if (!user) return { ok: false, error: "Not authenticated" }
   const name = input.name.trim()
   if (!name) return { ok: false, error: "Team name is required" }
-  const teamType = (input.teamType ?? "Private Team").trim() || "Private Team"
+  const teamType = normalizeTeamType((input.teamType ?? "Private Team").trim() || "Private Team")
+  if (!TEAM_TYPES.includes(teamType)) return { ok: false, error: "Invalid team type" }
 
   // Region the team will compete in. Required so the league office can filter
   // and place the team into the correct regional division.
@@ -479,7 +516,7 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
       .returning()
   }
 
-  await db.insert(teams).values({
+  const [createdTeam] = await db.insert(teams).values({
     name,
     organisationId: org.id,
     teamType,
@@ -488,8 +525,9 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
     ownerEmail: user.email.trim().toLowerCase(),
     ownerName: (user.name ?? "").trim() || null,
     tpr: 1000,
-    status: "active",
-  })
+    status: "draft",
+  }).returning({ id: teams.id })
+  await recomputeTeamStats(createdTeam.id)
 
   await grantTeamOwnerPermissions(user.id)
 
@@ -499,7 +537,7 @@ export async function createOwnTeam(input: { name: string; teamType?: string; sa
   sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
 
   revalidatePath("/dashboard")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
@@ -523,4 +561,3 @@ export async function setMarketplaceListing(listed: boolean) {
   revalidatePath("/dashboard/profile")
   return { ok: true }
 }
-

@@ -34,7 +34,7 @@ export function MarketplaceSettings({ isPlayer, onMarketplace, isOnTeam }: Marke
       } else {
         toast.success("Settings updated successfully")
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred")
     } finally {
       setLoading(false)

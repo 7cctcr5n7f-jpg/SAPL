@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useTransition, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,6 +23,7 @@ import {
   registerPlayer,
   registerTeam,
 } from "@/lib/actions/join"
+import { TEAM_TYPES } from "@/lib/constants"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -167,13 +167,6 @@ function PathChooser({ onChoose }: { onChoose: (p: "team" | "player") => void })
 // ---------------------------------------------------------------------------
 
 const TEAM_STEPS: TeamStep[] = ["details", "payment", "venue", "account", "review"]
-const TEAM_STEP_LABELS: Record<TeamStep, string> = {
-  details: "Team Details",
-  payment: "Payment Model",
-  venue: "Home Venue",
-  account: "Your Account",
-  review: "Review & Submit",
-}
 
 function TeamFlow({
   hostingClubs,
@@ -186,13 +179,14 @@ function TeamFlow({
   teamFee: number
   onBack: () => void
 }) {
-  const router = useRouter()
   const [step, setStep] = useState<TeamStep>("details")
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
   // Form state
   const [teamName, setTeamName] = useState("")
+  const TEAM_REGISTRATION_TYPES = TEAM_TYPES.filter((t) => t !== "Club Team")
+  const [teamType, setTeamType] = useState<string>(TEAM_REGISTRATION_TYPES[0] ?? "Private Team")
   const [paymentModel, setPaymentModel] = useState<"club" | "individual">("club")
   const [homeClubId, setHomeClubId] = useState<string>("")
   const [fullName, setFullName] = useState("")
@@ -239,6 +233,7 @@ function TeamFlow({
         email,
         password,
         teamName,
+        teamType,
         paymentModel,
         homeClubId: Number(homeClubId),
         captainPlays: captainPlays === "yes",
@@ -288,6 +283,24 @@ function TeamFlow({
               className="h-12 text-base"
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) nextStep() }}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="teamType">Team type</Label>
+            <select
+              id="teamType"
+              value={teamType}
+              onChange={(e) => setTeamType(e.target.value)}
+              className="h-12 rounded-md border border-input bg-background px-3 text-base"
+            >
+              {TEAM_REGISTRATION_TYPES.map((tt) => (
+                <option key={tt} value={tt}>
+                  {tt}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Club Teams are entered by venues. Public team registration supports Business Team and Private Team.
+            </p>
           </div>
           <p className="text-xs text-muted-foreground">
             As team captain you will manage your roster, confirm fixtures, and submit match results.
@@ -432,6 +445,7 @@ function TeamFlow({
         <div className="flex flex-col gap-3">
           {[
             { label: "Team name", value: teamName },
+            { label: "Team type", value: teamType },
             { label: "Payment", value: paymentModel === "club" ? `Club pays R${teamFee.toLocaleString()} — coming next week` : `R${playerFee.toLocaleString()} / player — coming next week` },
             { label: "Home venue", value: selectedClub?.name ?? "—" },
             { label: "Captain", value: fullName },
@@ -487,7 +501,6 @@ function PlayerFlow({
   initialInviteToken?: string
   initialEmail?: string
 }) {
-  const router = useRouter()
   // If we have a token, skip straight to invite-check (bypass the email step)
   const [step, setStep] = useState<PlayerStep>(initialInviteToken ? "invite-check" : "email")
   const [pending, startTransition] = useTransition()

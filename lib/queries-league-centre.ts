@@ -11,7 +11,7 @@ import {
   teamMembers,
   matches,
   teamPairings,
-  user,
+  user as userTable,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
@@ -112,6 +112,7 @@ export type LCFixture = {
   /** Whether an admin has published this fixture to players. */
   published: boolean
   mine: boolean
+  assignedToFixture: boolean
   homePlayers: Record<string, string[]>
   awayPlayers: Record<string, string[]>
   rubbers: LCRubber[]
@@ -170,7 +171,7 @@ function normaliseStatus(status: string | null): LCStatus {
   return "scheduled"
 }
 
-const LIVE_STATUSES = new Set(["active", "published"])
+const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
 
 /** Team ids the user is eligible to play for (captain or active roster member). */
 async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
@@ -367,26 +368,37 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       fixtureRows.flatMap((f) => [f.homeTeamId, f.awayTeamId].filter((id): id is number => id != null)),
     ),
   )
-  type PairingRow = { teamId: number; category: string; firstName: string; lastName: string; currentLi: number }
+  type PairingRow = {
+    teamId: number
+    category: string
+    playerId: string | null
+    firstName: string
+    lastName: string
+    currentLi: number
+  }
   const pairingRows: PairingRow[] = allTeamIds.length
     ? await db
         .select({
           teamId: teamPairings.teamId,
           category: teamPairings.category,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          currentLi: user.currentLi,
+          playerId: teamPairings.playerId,
+          firstName: userTable.firstName,
+          lastName: userTable.lastName,
+          currentLi: userTable.currentLi,
         })
         .from(teamPairings)
-        .innerJoin(user, eq(teamPairings.playerId, user.id))
+        .innerJoin(userTable, eq(teamPairings.playerId, userTable.id))
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
+
+  const currentUserId = user?.id ?? null
 
   // Build maps:
   //   teamPlayerMap: teamId → category → ["First Last", ...]
   //   pairLiMap:     "teamId:category" → average LI of the pair
   const teamPlayerMap = new Map<number, Record<string, string[]>>()
   const pairLiMap = new Map<string, { sum: number; count: number }>()
+  const currentPlayerCategoriesByTeam = new Map<number, Set<string>>()
   for (const row of pairingRows) {
     let catMap = teamPlayerMap.get(row.teamId)
     if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
@@ -400,6 +412,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     entry.sum += row.currentLi ?? 0
     entry.count += 1
     pairLiMap.set(key, entry)
+
+    if (currentUserId && row.playerId === currentUserId) {
+      const cats = currentPlayerCategoriesByTeam.get(row.teamId) ?? new Set<string>()
+      cats.add(row.category)
+      currentPlayerCategoriesByTeam.set(row.teamId, cats)
+    }
   }
 
   // Fetch rubbers (individual category matches) for all fixtures this season
@@ -495,6 +513,26 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         !!user &&
         ((f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) ||
           (f.awayTeamId != null && myTeamIds.has(f.awayTeamId)))
+
+      const allowedCategories = new Set<string>()
+      if (f.homeTeamId != null) {
+        for (const cat of currentPlayerCategoriesByTeam.get(f.homeTeamId) ?? []) allowedCategories.add(cat)
+      }
+      if (f.awayTeamId != null) {
+        for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
+      }
+      const assignedToFixture = allowedCategories.size > 0
+      const visibleCategoryLinks = (() => {
+        const allLinks = (f.courtLinks ?? {}) as Record<string, string>
+        if (!(mine && f.published && f.status !== "completed")) return {}
+        const next: Record<string, string> = {}
+        for (const cat of allowedCategories) {
+          const url = allLinks[cat]
+          if (url) next[cat] = url
+        }
+        return next
+      })()
+
       return {
         id: f.id,
         week: f.week,
@@ -546,18 +584,19 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         })(),
         homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
         awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
-        // Never expose booking links publicly — only to eligible logged-in players,
-        // and only once an admin has published the fixture.
-        joinUrl: mine && f.published && f.status !== "completed" ? (f.playtomicUrl ?? null) : null,
-        joinUrlByCategory:
+        // Only expose booking links for categories where the current player is
+        // explicitly assigned.
+        joinUrl:
           mine && f.published && f.status !== "completed"
-            ? ((f.courtLinks ?? {}) as Record<string, string>)
-            : {},
+            ? Object.values(visibleCategoryLinks)[0] ?? null
+            : null,
+        joinUrlByCategory: visibleCategoryLinks,
         courtInfoByCategory: f.published
           ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
           : {},
         published: !!f.published,
         mine,
+        assignedToFixture,
         homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
         awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
         rubbers: rubbersByFixture.get(f.id) ?? [],

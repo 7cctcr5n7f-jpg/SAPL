@@ -151,7 +151,7 @@ interface FixtureCardProps {
 }
 
 function FixtureCard({ fixture, user }: FixtureCardProps) {
-  const isPlaying = fixture.mine && user
+  const isPlaying = fixture.assignedToFixture && fixture.mine && user
   const hasJoinLink = !!fixture.joinUrl
 
   return (
@@ -236,4 +236,3 @@ function FixtureCard({ fixture, user }: FixtureCardProps) {
     </div>
   )
 }
-

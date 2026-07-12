@@ -3,8 +3,8 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { user, userMeta, teams, teamMembers, organisations, clubs, regions, divisions, payments, session, account, teamInvites, players, categories, teamPairings } from "@/lib/db/schema"
-import { eq, and, asc, desc, max, sql, gte, lte } from "drizzle-orm"
-import { getCurrentUser, type CurrentUser, type Role } from "@/lib/session"
+import { eq, and, asc, desc, max, sql } from "drizzle-orm"
+import { getCurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
@@ -368,10 +368,10 @@ export async function updateMemberDetails(
     isPlayer?: boolean
   },
 ) {
-  const { me } = await requireMemberManager()
+  await requireMemberManager()
   
   // Build user update object with player profile fields
-  const userUpdate: Record<string, any> = {}
+  const userUpdate: Partial<typeof user.$inferInsert> = {}
   
   if (input.name) {
     const name = input.name.trim()
@@ -394,7 +394,7 @@ export async function updateMemberDetails(
   }
   
   // Update meta (phone and related)
-  const metaUpdate: Record<string, any> = {}
+  const metaUpdate: Partial<typeof userMeta.$inferInsert> = {}
   if (input.phone !== undefined) metaUpdate.phone = input.phone?.trim() || null
   
   if (Object.keys(metaUpdate).length > 0) {
@@ -481,7 +481,7 @@ export async function updateMemberTeam(userId: string, newTeamId: number | null)
  *     but we also fall back to name-based matching for bad DB data.
  *   - Rating eligibility: player's playtomicRating must be >= category.playerMinLi.
  *   - "Highest" = highest playerMinLi threshold the player clears (most competitive).
- *   - Within that category, fills the first empty slot (pairIndex 1 slot 1 → 1/2 → 2/1 → 2/2).
+ *   - Within that category, fills the first empty slot (pairIndex 1 slot 1 → 1/2).
  *   - If already assigned to a slot in this team, no-op.
  */
 async function autoAssignPairingSlot(userId: string, teamId: number) {
@@ -535,8 +535,8 @@ async function autoAssignPairingSlot(userId: string, teamId: number) {
 
   // Try each category (most competitive first, fallback to most accessible) until we find a free slot
   for (const cat of catsToTry) {
-    // All possible slots: pair 1 slot 1, pair 1 slot 2, pair 2 slot 1, pair 2 slot 2
-    const slotCombos = [{ pairIndex: 1, slotIndex: 1 }, { pairIndex: 1, slotIndex: 2 }, { pairIndex: 2, slotIndex: 1 }, { pairIndex: 2, slotIndex: 2 }]
+    // Each category has exactly two independent slots.
+    const slotCombos = [{ pairIndex: 1, slotIndex: 1 }, { pairIndex: 1, slotIndex: 2 }]
     for (const { pairIndex, slotIndex } of slotCombos) {
       const existing = existingSlots.find(
         (s) => s.category === cat.name && s.pairIndex === pairIndex && s.slotIndex === slotIndex
@@ -553,7 +553,7 @@ async function autoAssignPairingSlot(userId: string, teamId: number) {
         return
       }
     }
-    // All 4 slots in this category are occupied — try the next eligible one
+    // Both slots in this category are occupied — try the next eligible one
   }
   // No slot found in any eligible category — player is still on the team but unslotted
 }
@@ -943,7 +943,7 @@ export async function deleteMember(userId: string) {
 
   // Delete auth account — Better Auth cascades sessions/accounts
   try {
-    await auth.api.deleteUser({ body: { userId } } as any)
+    await auth.api.deleteUser({ body: { userId } })
   } catch {
     // Fallback: manually delete from tables if the API call fails
     await db.delete(user).where(eq(user.id, userId))
@@ -1191,7 +1191,7 @@ export async function createPlayerAccount(input: {
     await recomputeTeamStats(targetTeam.id)
   }
 
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
   revalidatePath("/marketplace")
   return { ok: true, password: res.password, playerId, userId: res.userId, assignedTeamName: targetTeam?.name ?? null }

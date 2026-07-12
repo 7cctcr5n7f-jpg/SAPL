@@ -14,8 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { invitePlayerByEmail, lookupPlayerByEmail, getRegisteredFreeAgentsAction, addRegisteredPlayerDirectly } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, lookupPlayerByEmail, getRegisteredFreeAgentsAction, inviteMarketplacePlayer } from "@/lib/actions/pairings"
 import { toast } from "sonner"
 import { UserPlus, Mail, Loader2, CheckCircle2, Search, Star, UserCheck } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -26,6 +25,7 @@ type Tab = "email" | "registered"
 type RegisteredPlayer = {
   id: string
   name: string
+  email?: string | null
   firstName: string | null
   lastName: string | null
   playtomicRating: number | null
@@ -51,6 +51,7 @@ export function MyTeamAddPlayer({
   targetCategory,
   targetPairIndex,
   targetSlotIndex,
+  onInviteCreated,
 }: {
   teamId: number
   slotsRemaining: number
@@ -59,6 +60,13 @@ export function MyTeamAddPlayer({
   targetCategory?: string
   targetPairIndex?: number
   targetSlotIndex?: number
+  onInviteCreated?: (invite: {
+    id: number
+    email: string
+    category: string | null
+    pairIndex: number | null
+    slotIndex: number | null
+  }) => void
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -94,12 +102,7 @@ export function MyTeamAddPlayer({
   useEffect(() => {
     if (lookupTimer.current) clearTimeout(lookupTimer.current)
     const trimmed = email.trim()
-    if (!trimmed.includes("@") || trimmed.length < 5) {
-      setLookupState("idle")
-      setNameReadonly(false)
-      return
-    }
-    setLookupState("loading")
+    if (!trimmed.includes("@") || trimmed.length < 5) return
     lookupTimer.current = setTimeout(() => {
       start(async () => {
         const res = await lookupPlayerByEmail(trimmed)
@@ -117,18 +120,17 @@ export function MyTeamAddPlayer({
     return () => {
       if (lookupTimer.current) clearTimeout(lookupTimer.current)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email])
+  }, [email, start])
 
-  // Load registered players (no active team) when that tab is opened
-  useEffect(() => {
-    if (tab !== "registered" || registeredPlayers.length > 0) return
+  function openRegisteredTab() {
+    setTab("registered")
+    if (registeredPlayers.length > 0) return
     setRegisteredLoading(true)
-    getRegisteredFreeAgentsAction(teamId).then((players) => {
+    void getRegisteredFreeAgentsAction().then((players) => {
       setRegisteredPlayers(players as RegisteredPlayer[])
       setRegisteredLoading(false)
     })
-  }, [tab, registeredPlayers.length, teamId])
+  }
 
   function submitEmail() {
     if (!email.trim() || !email.includes("@")) {
@@ -154,17 +156,18 @@ export function MyTeamAddPlayer({
         toast.error(res.error)
         return
       }
-      toast.success(res.success ?? "Player added.")
+      if (res.invite) onInviteCreated?.(res.invite)
+      toast.success(res.success ?? "Invite sent.")
       setOpen(false)
       reset()
       router.refresh()
     })
   }
 
-  function addFromRegistered(playerId: string) {
+  function inviteRegistered(playerId: string) {
     setAdding(playerId)
     start(async () => {
-      const res = await addRegisteredPlayerDirectly({
+      const res = await inviteMarketplacePlayer({
         teamId,
         playerId,
         category: targetCategory,
@@ -176,7 +179,8 @@ export function MyTeamAddPlayer({
         toast.error(res.error)
         return
       }
-      toast.success(res.success ?? "Player added to your team.")
+      if (res.invite) onInviteCreated?.(res.invite)
+      toast.success(res.success ?? "Invite sent.")
       setOpen(false)
       reset()
       router.refresh()
@@ -218,7 +222,7 @@ export function MyTeamAddPlayer({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {targetCategory ? `Add player — ${targetCategory}` : "Add a player"}
+            {targetCategory ? `Invite player — ${targetCategory}` : "Invite a player"}
           </DialogTitle>
           <DialogDescription>
             {targetCategory
@@ -247,7 +251,7 @@ export function MyTeamAddPlayer({
           </button>
           <button
             type="button"
-            onClick={() => setTab("registered")}
+            onClick={openRegisteredTab}
             className={cn(
               "flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-l border-border",
               tab === "registered"
@@ -256,7 +260,7 @@ export function MyTeamAddPlayer({
             )}
           >
             <UserCheck className="h-4 w-4" />
-            Add Registered
+            Invite Registered
           </button>
         </div>
 
@@ -270,7 +274,17 @@ export function MyTeamAddPlayer({
                   id="apEmail"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    const nextEmail = e.target.value
+                    setEmail(nextEmail)
+                    const trimmed = nextEmail.trim()
+                    if (!trimmed.includes("@") || trimmed.length < 5) {
+                      setLookupState("idle")
+                      setNameReadonly(false)
+                    } else {
+                      setLookupState("loading")
+                    }
+                  }}
                   placeholder="player@example.com"
                   autoComplete="off"
                   className="h-11 pr-9"
@@ -336,7 +350,7 @@ export function MyTeamAddPlayer({
               </Button>
               <Button onClick={submitEmail} disabled={pending || slotsRemaining <= 0}>
                 {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                {lookupState === "found" ? "Add player" : "Send invite"}
+                Send invite
               </Button>
             </DialogFooter>
           </div>
@@ -346,7 +360,7 @@ export function MyTeamAddPlayer({
         {tab === "registered" && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              All registered players who are not currently on a team. Click <strong>Add</strong> to place them directly on your roster — no invite email required.
+              All registered players who are not currently on a team. Click <strong>Invite</strong> to send an invitation — they join this exact slot only after acceptance.
             </p>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -407,10 +421,10 @@ export function MyTeamAddPlayer({
                       <Button
                         size="sm"
                         disabled={pending || slotsRemaining <= 0 || isAdding}
-                        onClick={() => addFromRegistered(p.id)}
+                        onClick={() => inviteRegistered(p.id)}
                         className="shrink-0"
                       >
-                        {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Add"}
+                        {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Invite"}
                       </Button>
                     </div>
                   )

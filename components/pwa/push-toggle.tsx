@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { Bell, BellOff, BellRing } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -22,34 +22,38 @@ export function PushToggle() {
   const [busy, setBusy] = useState(false)
   const [publicKey, setPublicKey] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
-    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setStatus("unsupported")
-      return
-    }
-    try {
-      const res = await fetch("/api/push/subscribe")
-      const data = await res.json()
-      if (!data.enabled || !data.publicKey) {
-        setStatus("disabled")
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        if (active) setStatus("unsupported")
         return
       }
-      setPublicKey(data.publicKey)
-      const reg = await navigator.serviceWorker.ready
-      const existing = await reg.pushManager.getSubscription()
-      if (existing) {
-        setStatus("subscribed")
-      } else {
-        setStatus(Notification.permission === "denied" ? "denied" : "default")
+      try {
+        const res = await fetch("/api/push/subscribe")
+        const data = await res.json()
+        if (!active) return
+        if (!data.enabled || !data.publicKey) {
+          setStatus("disabled")
+          return
+        }
+        setPublicKey(data.publicKey)
+        const reg = await navigator.serviceWorker.ready
+        const existing = await reg.pushManager.getSubscription()
+        if (!active) return
+        if (existing) {
+          setStatus("subscribed")
+        } else {
+          setStatus(Notification.permission === "denied" ? "denied" : "default")
+        }
+      } catch {
+        if (active) setStatus("disabled")
       }
-    } catch {
-      setStatus("disabled")
+    })()
+    return () => {
+      active = false
     }
   }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
 
   const subscribe = async () => {
     if (!publicKey) return

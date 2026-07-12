@@ -55,7 +55,7 @@ export type NavModel = {
 // Player-facing
 const HOME: NavItem = { label: "Home", icon: "home", href: "/dashboard" }
 const LEAGUE_CENTRE: NavItem = { label: "League Centre", icon: "league", href: "/league-centre" }
-const MY_TEAM: NavItem = { label: "My Team", icon: "team", href: "/dashboard/org" }
+const MY_TEAM: NavItem = { label: "My Team", icon: "team", href: "/dashboard/my-team" }
 const SETTINGS: NavItem = { label: "Settings", icon: "settings", href: "/dashboard/profile" }
 
 // Public marketing

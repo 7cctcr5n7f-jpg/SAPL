@@ -9,7 +9,6 @@ import {
   Trophy,
   BarChart3,
   Crown,
-  Globe2,
   Shield,
   Medal,
   Building2,
@@ -155,9 +154,9 @@ const TEAM_TYPES = [
   {
     img: "/landing/team-company.png",
     icon: Briefcase,
-    title: "Company Team",
+    title: "Business Team",
     desc: "Bring colleagues together and settle the rivalry against other companies.",
-    cta: "Register A Company Team",
+    cta: "Register A Business Team",
     href: "/sign-up",
   },
   {

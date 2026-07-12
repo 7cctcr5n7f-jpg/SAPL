@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { user as user } from "@/lib/db/schema"
+import { user as userTable } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -10,17 +10,17 @@ export async function updatePlayerSettings(input: {
   isPlayer: boolean
   onMarketplace: boolean
 }) {
-  const user = await getCurrentUser()
-  if (!user) throw new Error("Not authenticated")
+  const me = await getCurrentUser()
+  if (!me) throw new Error("Not authenticated")
 
   // If user is on a team, they cannot be on the marketplace
-  if (input.onMarketplace && user.role === "player") {
+  if (input.onMarketplace && me.role === "player") {
     // Check if user has an active team membership
     const { teamMembers } = await import("@/lib/db/schema")
     const [teamMembership] = await db
       .select({ id: teamMembers.id })
       .from(teamMembers)
-      .where(eq(teamMembers.playerId, user.id))
+      .where(eq(teamMembers.playerId, me.id))
       .limit(1)
 
     if (teamMembership) {
@@ -32,13 +32,13 @@ export async function updatePlayerSettings(input: {
   }
 
   await db
-    .update(user)
+    .update(userTable)
     .set({
       isPlayer: input.isPlayer,
       onMarketplace: input.isPlayer && input.onMarketplace, // Can only be on marketplace if a player
       updatedAt: new Date(),
     })
-    .where(eq(user.id, user.id))
+    .where(eq(userTable.id, me.id))
 
   revalidatePath("/dashboard/profile")
   revalidatePath("/marketplace")

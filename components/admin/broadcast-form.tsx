@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 const AUDIENCES = [
   { value: "all", label: "All players" },
   { value: "captains", label: "Captains only" },
-  { value: "org_admins", label: "Club admins" },
+  { value: "org_admins", label: "Team managers" },
 ]
 
 export function BroadcastForm() {

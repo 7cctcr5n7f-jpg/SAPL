@@ -20,7 +20,9 @@ import { requireRole } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { getTeamRoster, type RosterEntry } from "@/lib/queries-placement"
 import { syncDivisionFixtures } from "@/lib/fixtures-sync"
-import { TEAM_TYPES } from "@/lib/constants"
+import { TEAM_TYPES, normalizeTeamType } from "@/lib/constants"
+import { isSeasonLocked } from "@/lib/season-lock"
+import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
 
 export async function fetchTeamRoster(teamId: number): Promise<RosterEntry[]> {
   await requireRole(["super_admin"])
@@ -28,17 +30,18 @@ export async function fetchTeamRoster(teamId: number): Promise<RosterEntry[]> {
 }
 
 /**
- * Admin-only: set a team's type (Club / Company / Private) from the Placement
+ * Admin-only: set a team's type (Club / Business / Private) from the Placement
  * Board roster panel.
  */
 export async function adminSetTeamType(teamId: number, teamType: string) {
   await requireRole(["super_admin"])
-  if (!TEAM_TYPES.includes(teamType as (typeof TEAM_TYPES)[number])) {
+  const normalized = normalizeTeamType(teamType)
+  if (!TEAM_TYPES.includes(normalized as (typeof TEAM_TYPES)[number])) {
     return { ok: false, error: "Invalid team type" }
   }
-  await db.update(teams).set({ teamType, updatedAt: new Date() }).where(eq(teams.id, teamId))
+  await db.update(teams).set({ teamType: normalized, updatedAt: new Date() }).where(eq(teams.id, teamId))
   revalidatePath("/admin")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   return { ok: true }
 }
 
@@ -49,6 +52,9 @@ export async function adminSetTeamType(teamId: number, teamType: string) {
  */
 export async function adminDeleteTeam(teamId: number) {
   await requireRole(["super_admin"])
+  if (await isSeasonLocked()) {
+    return { ok: false, error: "The league is locked — teams cannot be deleted." }
+  }
 
   // Child rows that require a team (notNull FK) — remove them.
   await db.delete(teamMembers).where(eq(teamMembers.teamId, teamId))
@@ -78,7 +84,7 @@ export async function adminDeleteTeam(teamId: number) {
   await db.delete(teams).where(eq(teams.id, teamId))
 
   revalidatePath("/admin")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   return { ok: true }
 }
 
@@ -102,6 +108,9 @@ export async function saveTeamPlacement(input: {
   sortOrder: number
 }) {
   await requireRole(["super_admin"])
+  if (await isSeasonLocked()) {
+    return { ok: false, error: "The league is locked — teams cannot be moved between divisions." }
+  }
   const { seasonId, teamId, divisionId, slot, sortOrder } = input
 
   let regionId: number | null = null
@@ -141,6 +150,7 @@ export async function saveTeamPlacement(input: {
     .update(teams)
     .set({ divisionId, seasonId, regionId: regionId ?? undefined })
     .where(eq(teams.id, teamId))
+  await syncTeamLifecycleStatus(teamId)
 
   // Re-link template fixtures (and venues) for the affected division(s).
   if (divisionId) await syncDivisionFixtures(divisionId)
@@ -163,6 +173,9 @@ export async function reindexDivisionColumn(input: {
   orderedTeamIds: number[]
 }) {
   await requireRole(["super_admin"])
+  if (await isSeasonLocked()) {
+    return { ok: false, error: "The league is locked — teams cannot be moved between divisions." }
+  }
   const { seasonId, divisionId, orderedTeamIds } = input
 
   let regionId: number | null = null
@@ -194,6 +207,7 @@ export async function reindexDivisionColumn(input: {
       .update(teams)
       .set({ divisionId, seasonId, regionId: regionId ?? undefined })
       .where(eq(teams.id, teamId))
+    await syncTeamLifecycleStatus(teamId)
   }
 
   // Re-link this division's template fixtures to the new slot order + venues.

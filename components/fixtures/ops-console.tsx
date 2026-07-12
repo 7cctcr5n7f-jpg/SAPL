@@ -26,7 +26,6 @@ import {
   Copy,
   CheckCircle2,
   AlertTriangle,
-  Clock,
   MapPin,
   Search,
   Send,

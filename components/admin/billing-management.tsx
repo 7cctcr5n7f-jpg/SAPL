@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Mail, Loader2, StickyNote, Send } from "lucide-react"
+import { Loader2, StickyNote, Send } from "lucide-react"
 
 type PaidFilter = "all" | "unpaid"
 type KindFilter = "all" | "player" | "team"

@@ -47,15 +47,12 @@ function wasRecentlyDismissed(): boolean {
 }
 
 export function usePwaInstall() {
-  const [platform, setPlatform] = useState<Platform>("unknown")
+  const [platform] = useState<Platform>(() => detectPlatform())
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [installed, setInstalled] = useState(false)
-  const [canPrompt, setCanPrompt] = useState(false)
+  const [installed, setInstalled] = useState(() => isStandalone())
+  const [canPrompt, setCanPrompt] = useState(() => !isStandalone() && !wasRecentlyDismissed())
 
   useEffect(() => {
-    setPlatform(detectPlatform())
-    setInstalled(isStandalone())
-
     const onBeforeInstall = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
@@ -74,9 +71,6 @@ export function usePwaInstall() {
     const mql = window.matchMedia?.("(display-mode: standalone)")
     const onDisplayChange = () => setInstalled(isStandalone())
     mql?.addEventListener?.("change", onDisplayChange)
-
-    // Decide whether we're allowed to surface the prompt.
-    setCanPrompt(!isStandalone() && !wasRecentlyDismissed())
 
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall)

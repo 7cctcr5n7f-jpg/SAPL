@@ -30,12 +30,10 @@ import {
   Trash2,
   Building2,
   Lock,
-  Mail,
   CircleCheck,
   CircleAlert,
 } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { TEAM_TYPES, TEAM_SQUAD_SIZE, SAPL_REGIONS } from "@/lib/constants"
+import { TEAM_TYPES, TEAM_SQUAD_SIZE, SAPL_REGIONS, normalizeTeamType } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { PairingCategory, PairingPlayer } from "@/lib/queries-dashboard"
@@ -86,7 +84,7 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
     prLabel: "text-sky-600/80",
     prValue: "text-sky-900",
   },
-  "Company Team": {
+  "Business Team": {
     dot: "bg-amber-500",
     badge: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
     bar: "bg-amber-500",
@@ -106,7 +104,7 @@ const TYPE_STYLES: Record<string, { dot: string; badge: string; bar: string }> =
   },
 }
 function typeStyle(t: string) {
-  return TYPE_STYLES[t] ?? {
+  return TYPE_STYLES[normalizeTeamType(t)] ?? {
     dot: "bg-muted-foreground",
     badge: "",
     bar: "bg-muted-foreground",
@@ -129,7 +127,6 @@ function PayDot({ state }: { state: "paid" | "partial" | "unpaid" }) {
         : "ring-red-500/20"
   return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2", color, ring)} aria-hidden />
 }
-type FreeAgent = { playerId: string; name: string; li: number }
 type Venue = { id: number; name: string; remaining: number; hosts: boolean; available: boolean }
 
 /**
@@ -142,19 +139,13 @@ function venueOptions(venues: Venue[], currentId: number | null) {
 }
 
 export function OrgHub({
-  orgId,
   teams,
-  freeAgents,
   venues,
-  playerFee,
   locked = false,
   registeredEmails = [],
 }: {
-  orgId: number
   teams: Team[]
-  freeAgents: FreeAgent[]
   venues: Venue[]
-  playerFee: number
   locked?: boolean
   /** Lowercase emails of all registered members — used to warn when ownerEmail has no account. */
   registeredEmails?: string[]
@@ -166,8 +157,6 @@ export function OrgHub({
   const squadFor = squadForId != null ? (teams.find((t) => t.id === squadForId) ?? null) : null
   const [editFor, setEditFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
-  const [search, setSearch] = useState("")
-
   // List filters
   const [fType, setFType] = useState<string>("all")
   const [fDivision, setFDivision] = useState<"all" | "assigned" | "unassigned">("all")
@@ -179,7 +168,7 @@ export function OrgHub({
   ).sort()
 
   const visibleTeams = teams.filter((t) => {
-    if (fType !== "all" && t.teamType !== fType) return false
+    if (fType !== "all" && normalizeTeamType(t.teamType) !== fType) return false
     if (fDivision === "assigned" && t.divisionId == null) return false
     if (fDivision === "unassigned" && t.divisionId != null) return false
     if (fPayer === "team" && !t.clubPaysFees) return false
@@ -212,7 +201,7 @@ export function OrgHub({
           Assign players directly into pairing slots. All 8 players in the pairings are the squad — there is no separate roster. Set a team owner via the edit button.
         </p>
         <div className="flex items-center gap-2">
-          <CreateTeamDialog orgId={orgId} venues={venues} pending={pending} start={start} />
+          <CreateTeamDialog venues={venues} pending={pending} start={start} />
           <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
         </div>
       </div>
@@ -359,7 +348,7 @@ export function OrgHub({
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                           <Badge variant="outline" className={cn("h-4 gap-1 px-1.5 py-0 text-[10px] font-normal", ts.badge)}>
                             <span className={cn("h-1.5 w-1.5 rounded-full", ts.dot)} />
-                            {t.teamType}
+                            {normalizeTeamType(t.teamType)}
                           </Badge>
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
@@ -492,6 +481,7 @@ export function OrgHub({
               teamId={squadFor.id}
               teamName={squadFor.name}
               categories={squadFor.pairingCategories}
+              roster={squadFor.pairingRoster}
               invites={squadFor.pairingInvites}
               clubPaysFees={squadFor.clubPaysFees}
             />
@@ -566,12 +556,10 @@ function FilterSelect({
 }
 
 function CreateTeamDialog({
-  orgId,
   venues,
   pending,
   start,
 }: {
-  orgId: number
   venues: Venue[]
   pending: boolean
   start: (cb: () => Promise<void>) => void
@@ -592,7 +580,6 @@ function CreateTeamDialog({
         </DialogHeader>
         <form
           action={(fd) => {
-            fd.set("orgId", String(orgId))
             start(async () => {
               const res = await createTeam(fd)
               if (res.ok) {
@@ -706,7 +693,7 @@ function EditTeamDialog({
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
-  const [teamType, setTeamType] = useState<string>(team.teamType)
+  const [teamType, setTeamType] = useState<string>(normalizeTeamType(team.teamType))
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
   const [saplRegion, setSaplRegion] = useState<string>(team.saplRegion ?? "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
@@ -714,7 +701,7 @@ function EditTeamDialog({
   // owner email has been set yet, pre-fill the club's contact email. The field
   // stays editable so the org can hand ownership to a different person.
   const [ownerEmail, setOwnerEmail] = useState(
-    team.ownerEmail ?? (team.teamType === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
+    team.ownerEmail ?? (normalizeTeamType(team.teamType) === "Club Team" ? (team.homeClubContactEmail ?? "") : ""),
   )
   // Guard: if ownerName was accidentally saved as the email address, treat it as blank.
   const safeOwnerName = (team.ownerName ?? "").includes("@") ? "" : (team.ownerName ?? "")
@@ -793,7 +780,7 @@ function EditTeamDialog({
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Club Teams are entered by a venue, Company Teams represent a business, and Private Teams are independent
+              Club Teams are entered by a venue, Business Teams represent a business, and Private Teams are independent
               groups.
             </p>
           </div>
@@ -956,5 +943,3 @@ function EditTeamDialog({
 
 // View and edit a team captain's contact details. Email is the captain's login
 // identity so it's shown read-only; name and phone can be edited inline.
-
-

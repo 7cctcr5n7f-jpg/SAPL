@@ -29,6 +29,8 @@ import { syncDivisionFixtures } from "@/lib/fixtures-sync"
 import { validateSeason } from "@/lib/engine/validation"
 import { REGIONAL_FINALS_GAP_DAYS, TSHWANE_MASTERS_GAP_DAYS, DIVISIONS, TEAMS_PER_DIVISION } from "@/lib/constants"
 import { notify } from "@/lib/notify"
+import { isSeasonLocked, seasonLockedResult } from "@/lib/season-lock"
+import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -41,13 +43,27 @@ async function requireAdmin() {
   return user
 }
 
+async function syncSeasonTeamLifecycle(seasonId: number) {
+  const seasonTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.seasonId, seasonId))
+  for (const team of seasonTeams) await syncTeamLifecycleStatus(team.id)
+}
+
 // ---- Fixture generation ---------------------------------------------------
 
 export async function generateFixtures(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const divisionId = Number(formData.get("divisionId"))
   const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
+  const [existing] = await db
+    .select({ id: fixtures.id })
+    .from(fixtures)
+    .where(eq(fixtures.divisionId, divisionId))
+    .limit(1)
+  if (existing) {
+    return { ok: false, error: "Fixtures were already generated for this division and cannot be regenerated." }
+  }
 
   const divTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.divisionId, divisionId))
   if (divTeams.length < 2) return { ok: false, error: "Need at least 2 teams in the division" }
@@ -72,6 +88,7 @@ export async function generateFixtures(formData: FormData) {
       status: "scheduled",
     })
   }
+  for (const team of divTeams) await syncTeamLifecycleStatus(team.id)
 
   revalidatePath("/admin/fixtures")
   revalidatePath("/fixtures")
@@ -90,9 +107,18 @@ export async function generateFixtures(formData: FormData) {
  */
 export async function generateSeason(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
   const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
   if (!season) return { ok: false, error: "Season not found" }
+  const [existingSeasonFixture] = await db
+    .select({ id: fixtures.id })
+    .from(fixtures)
+    .where(eq(fixtures.seasonId, seasonId))
+    .limit(1)
+  if (existingSeasonFixture) {
+    return { ok: false, error: "Fixtures already exist for this season. Fixture generation is a one-time action." }
+  }
 
   const allDivs = await db
     .select()
@@ -148,9 +174,6 @@ export async function generateSeason(formData: FormData) {
 
   const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
 
-  // Idempotent rebuild: remove only scheduled fixtures for this season.
-  await db.delete(fixtures).where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.status, "scheduled")))
-
   let total = 0
   let lastRoundDate = firstNight
   for (const d of divs) {
@@ -189,6 +212,7 @@ export async function generateSeason(formData: FormData) {
 
   // Link any teams already placed (and their venues) into the fresh template.
   for (const d of divs) await syncDivisionFixtures(d.id)
+  await syncSeasonTeamLifecycle(seasonId)
 
   // ---- Playoff + Tshwane Masters placeholders -----------------------------
   // Wipe any previously generated (un-played) playoff rows for this season.
@@ -255,8 +279,9 @@ export async function generateSeason(formData: FormData) {
     })),
   )
 
-  // Generation produces a Draft season; it must be validated before publishing.
-  await db.update(seasons).set({ status: "draft" }).where(eq(seasons.id, seasonId))
+  // Fixture generation is a one-time phase transition.
+  await db.update(seasons).set({ status: "fixtures_generated" }).where(eq(seasons.id, seasonId))
+  await syncSeasonTeamLifecycle(seasonId)
 
   revalidatePath("/admin")
   revalidatePath("/admin/fixtures")
@@ -275,6 +300,7 @@ export async function generateSeason(formData: FormData) {
  */
 export async function adjustDivisionFixtures(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const divisionId = Number(formData.get("divisionId"))
   const [division] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
   if (!division) return { ok: false, error: "Division not found" }
@@ -497,7 +523,11 @@ export async function resolveDispute(formData: FormData) {
   const resolution = String(formData.get("resolution") ?? "")
   const penalty = String(formData.get("penalty") ?? "") || null
 
-  const [dispute] = await db.select({ id: disputes.id }).from(disputes).where(eq(disputes.id, id)).limit(1)
+  const [dispute] = await db
+    .select({ id: disputes.id, fixtureId: disputes.fixtureId, raisedByUserId: disputes.raisedByUserId })
+    .from(disputes)
+    .where(eq(disputes.id, id))
+    .limit(1)
   if (!dispute) return { ok: false, error: "Dispute not found" }
 
   await db
@@ -510,6 +540,13 @@ export async function resolveDispute(formData: FormData) {
     await db.update(fixtures).set({ status: "scheduled" }).where(
       and(eq(fixtures.id, dispute.fixtureId), eq(fixtures.status, "disputed")),
     )
+    const [fx] = await db
+      .select({ homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
+      .from(fixtures)
+      .where(eq(fixtures.id, dispute.fixtureId))
+      .limit(1)
+    if (fx?.homeTeamId != null) await syncTeamLifecycleStatus(fx.homeTeamId)
+    if (fx?.awayTeamId != null) await syncTeamLifecycleStatus(fx.awayTeamId)
   }
 
   await notify({
@@ -564,7 +601,7 @@ export async function createSeason(formData: FormData) {
       weeks,
       startDate,
       endDate,
-      status: "setup",
+      status: "registration_open",
       isCurrent: makeCurrent,
       playerFee,
       regionalFinalsVenueClubId: num("regionalFinalsVenueClubId"),
@@ -601,7 +638,7 @@ export async function createSeason(formData: FormData) {
   return { ok: true, seasonId: created.id }
 }
 
-// ---- Season lifecycle: Draft -> Validated -> Published --------------------
+// ---- Season lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked ----
 
 /** Run validation and return the full report (does not change status). */
 export async function checkSeason(formData: FormData) {
@@ -613,7 +650,7 @@ export async function checkSeason(formData: FormData) {
 }
 
 /**
- * Validate the draft and, when clean, mark it "validated". Returns the report
+ * Validate the season and, when clean, mark it "divisions_finalised". Returns the report
  * either way so the UI can surface errors/warnings.
  */
 export async function validateSeasonAction(formData: FormData) {
@@ -622,14 +659,15 @@ export async function validateSeasonAction(formData: FormData) {
   if (!seasonId) return { ok: false, error: "Season id required" }
   const report = await validateSeason(seasonId)
   if (report.ok) {
-    await db.update(seasons).set({ status: "validated" }).where(eq(seasons.id, seasonId))
+    await db.update(seasons).set({ status: "divisions_finalised" }).where(eq(seasons.id, seasonId))
+    await syncSeasonTeamLifecycle(seasonId)
   }
   revalidatePath("/admin")
   return { ok: report.ok, report, error: report.ok ? undefined : "Fix all errors before validating." }
 }
 
 /**
- * Start a validated season (status -> "active"). Makes fixtures live to players
+ * Start a fixtures-generated season (status -> "league_locked"). Makes fixtures live to players
  * and LOCKS editing of team names, home venues and club court-slot settings.
  * Gated on:
  *  - a clean validation (no errors), re-run defensively, and
@@ -656,7 +694,8 @@ export async function publishSeasonAction(formData: FormData) {
     }
   }
 
-  await db.update(seasons).set({ status: "active" }).where(eq(seasons.id, seasonId))
+  await db.update(seasons).set({ status: "league_locked" }).where(eq(seasons.id, seasonId))
+  await syncSeasonTeamLifecycle(seasonId)
   revalidatePath("/admin")
   revalidatePath("/admin/clubs")
   revalidatePath("/fixtures")
@@ -675,14 +714,15 @@ async function assignedTeamsMissingCaptain(seasonId: number): Promise<string[]> 
 }
 
 /**
- * Unlock an active season back to "validated" so admins can edit team names,
+ * Unlock a locked season back to "divisions_finalised" so admins can edit team names,
  * home venues and club slot allocation again. Fixtures are preserved.
  */
 export async function unlockSeasonAction(formData: FormData) {
   await requireAdmin()
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
-  await db.update(seasons).set({ status: "validated" }).where(eq(seasons.id, seasonId))
+  await db.update(seasons).set({ status: "divisions_finalised" }).where(eq(seasons.id, seasonId))
+  await syncSeasonTeamLifecycle(seasonId)
   revalidatePath("/admin")
   revalidatePath("/admin/clubs")
   return { ok: true }
@@ -693,7 +733,8 @@ export async function revertSeasonToDraftAction(formData: FormData) {
   await requireAdmin()
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
-  await db.update(seasons).set({ status: "draft" }).where(eq(seasons.id, seasonId))
+  await db.update(seasons).set({ status: "registration_open" }).where(eq(seasons.id, seasonId))
+  await syncSeasonTeamLifecycle(seasonId)
   revalidatePath("/admin")
   return { ok: true }
 }
@@ -706,6 +747,7 @@ export async function revertSeasonToDraftAction(formData: FormData) {
  */
 export async function deleteSeason(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
 
@@ -722,7 +764,9 @@ export async function deleteSeason(formData: FormData) {
   await db.delete(divisions).where(eq(divisions.seasonId, seasonId))
 
   // Detach any live team still pointing at this season.
+  const detachedTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.seasonId, seasonId))
   await db.update(teams).set({ divisionId: null, seasonId: null }).where(eq(teams.seasonId, seasonId))
+  for (const team of detachedTeams) await syncTeamLifecycleStatus(team.id)
 
   await db.delete(seasons).where(eq(seasons.id, seasonId))
 
@@ -733,6 +777,7 @@ export async function deleteSeason(formData: FormData) {
 
 export async function createDivision(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
   const name = String(formData.get("name") ?? "").trim()
   const level = Number(formData.get("level") ?? 4)
@@ -755,6 +800,7 @@ export async function setSeasonDivisions(input: {
   cells: { regionId: number | null; name: string; level: number; maxTeams: number; active: boolean }[]
 }) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const { seasonId } = input
   const existing = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
   const keyOf = (regionId: number | null, level: number) => `${regionId ?? "none"}:${level}`
@@ -795,6 +841,7 @@ export async function setSeasonDivisions(input: {
 
 export async function setDivisionRegion(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const divisionId = Number(formData.get("divisionId"))
   const regionId = formData.get("regionId") ? Number(formData.get("regionId")) : null
   await db.update(divisions).set({ regionId }).where(eq(divisions.id, divisionId))
@@ -805,11 +852,13 @@ export async function setDivisionRegion(formData: FormData) {
 // Assign a team to a division (and inherit the division's season + region).
 export async function assignTeamToDivision(formData: FormData) {
   await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
   const teamId = Number(formData.get("teamId"))
   const divisionId = formData.get("divisionId") ? Number(formData.get("divisionId")) : null
 
   if (divisionId === null) {
     await db.update(teams).set({ divisionId: null }).where(eq(teams.id, teamId))
+    await syncTeamLifecycleStatus(teamId)
     revalidatePath("/admin")
     return { ok: true }
   }
@@ -828,6 +877,7 @@ export async function assignTeamToDivision(formData: FormData) {
     .update(teams)
     .set({ divisionId, seasonId: division.seasonId, regionId: division.regionId, updatedAt: new Date() })
     .where(eq(teams.id, teamId))
+  await syncTeamLifecycleStatus(teamId)
 
   revalidatePath("/admin")
   revalidatePath("/admin/fixtures")
