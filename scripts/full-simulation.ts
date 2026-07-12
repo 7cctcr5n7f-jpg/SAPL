@@ -1,27 +1,23 @@
 import { readFile } from "node:fs/promises"
 import { db } from "@/lib/db"
 import {
-  account,
   clubs,
   divisions,
   fixtures,
   matches,
   organisations,
-  regions,
-  seasons,
-  session,
-  standings,
-  teamEntries,
-  teamInvites,
-  teamMembers,
-  teamPairings,
-  teams,
-  tprHistory,
-  user,
-  userMeta,
-  verification,
+ regions,
+ seasons,
+ standings,
+ teamEntries,
+ teamInvites,
+ teamMembers,
+ teamPairings,
+ teams,
+ user,
+ userMeta,
 } from "@/lib/db/schema"
-import { and, desc, eq, inArray, like, ne, sql } from "drizzle-orm"
+import { and, eq, inArray, ne, sql } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { validateSeason } from "@/lib/engine/validation"
 import { applyFixtureResult } from "@/lib/engine/apply-result"
@@ -30,6 +26,7 @@ import { getLeagueCentreData } from "@/lib/queries-league-centre"
 import { getPendingInvitesForEmail, getFreeAgents } from "@/lib/queries-dashboard"
 import { isSeasonLocked } from "@/lib/season-lock"
 import type { CurrentUser } from "@/lib/session"
+import { cleanupSimulationData } from "@/scripts/simulation-cleanup"
 
 type Check = { name: string; ok: boolean; detail: string }
 
@@ -227,15 +224,7 @@ async function main() {
   const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail })
 
   const run = nowId()
-  const simUserIds: string[] = []
-  const authCreatedUserIds: string[] = []
-  const simTeamIds: number[] = []
-  const simClubIds: number[] = []
-  let simSeasonId: number | null = null
-  let simDivisionId: number | null = null
-  const previousCurrentSeasonIds: number[] = []
-  let baseClubOriginalContactEmail: string | null = null
-  let baseClubId: number | null = null
+  let exitCode = 1
 
   try {
     const [org] = await db.select({ id: organisations.id }).from(organisations).limit(1)
@@ -243,11 +232,9 @@ async function main() {
     const [baseClub] = await db.select({ id: clubs.id, name: clubs.name, contactEmail: clubs.contactEmail }).from(clubs).limit(1)
     if (!org || !region || !baseClub) {
       console.log(JSON.stringify({ ok: false, blocker: "Missing base organisation/region/club seed data.", checks }, null, 2))
-      process.exit(2)
+      exitCode = 2
+      return exitCode
     }
-    baseClubOriginalContactEmail = baseClub.contactEmail ?? null
-    baseClubId = baseClub.id
-
     const coreUsers: SimUser[] = [
       { id: `${run}-super`, name: "Sim Super", email: `${run}-super@sapl.local`, role: "super_admin" },
       { id: `${run}-club-owner`, name: "Sim Club Owner", email: `${run}-club-owner@sapl.local`, role: "org_admin" },
@@ -263,7 +250,6 @@ async function main() {
       { id: `${run}-replacement`, name: "Sim Replacement", email: `${run}-replacement@sapl.local`, role: "player" },
       { id: `${run}-plain`, name: "Sim Plain Player", email: `${run}-plain@sapl.local`, role: "player" },
     ]
-    simUserIds.push(...coreUsers.map((u) => u.id))
     await db.insert(user).values(
       coreUsers.map((u) => ({
         id: u.id,
@@ -308,8 +294,6 @@ async function main() {
         contactEmail: `${run}-club4@sapl.local`,
       })
       .returning({ id: clubs.id })
-    simClubIds.push(club2.id, club4.id)
-
     await db.update(clubs).set({ contactEmail: `${run}-club-owner@sapl.local` }).where(eq(clubs.id, baseClub.id))
 
     const [simSeason] = await db
@@ -322,10 +306,6 @@ async function main() {
         playerFee: 500,
       })
       .returning({ id: seasons.id, name: seasons.name, status: seasons.status })
-    simSeasonId = simSeason.id
-    previousCurrentSeasonIds.push(
-      ...(await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.isCurrent, true))).map((r) => r.id),
-    )
     await db.update(seasons).set({ isCurrent: false })
     await db.update(seasons).set({ isCurrent: true }).where(eq(seasons.id, simSeason.id))
 
@@ -339,8 +319,6 @@ async function main() {
         maxTeams: 6,
       })
       .returning({ id: divisions.id })
-    simDivisionId = simDivision.id
-
     const [teamA] = await db
       .insert(teams)
       .values({
@@ -395,8 +373,6 @@ async function main() {
         highestTpr: 1000,
       })
       .returning({ id: teams.id })
-    simTeamIds.push(teamA.id, teamB.id, teamC.id)
-
     await db.insert(teamEntries).values([
       { seasonId: simSeason.id, teamId: teamA.id, divisionId: simDivision.id, regionId: region.id, slot: 1, status: "assigned" },
       { seasonId: simSeason.id, teamId: teamB.id, divisionId: simDivision.id, regionId: region.id, slot: 2, status: "assigned" },
@@ -500,7 +476,7 @@ async function main() {
       { category: "Mens Intermediate", session: 1, isFeatureCourt: false, sets: [{ home: 4, away: 6 }, { home: 6, away: 3 }, { home: 6, away: 4 }] },
     ])
 
-    add("Simulation seed", true, `season=${simSeason.id}, division=${simDivision.id}, teams=${simTeamIds.length}`)
+    add("Simulation seed", true, `season=${simSeason.id}, division=${simDivision.id}, teams=3`)
 
     // Invitation Workflow
     const inviteTokens = {
@@ -596,7 +572,6 @@ async function main() {
     const signUp = await auth.api.signUpEmail({
       body: { name: "Simulation Register", email: regEmail, password: "Password123!", callbackURL: "/dashboard" },
     })
-    if (signUp?.user?.id) authCreatedUserIds.push(signUp.user.id)
     const authConfig = await readFile("lib/auth.ts", "utf8")
     const registrationOk =
       !!signUp?.token &&
@@ -738,7 +713,6 @@ async function main() {
     for (const [idx, teamId] of [teamA.id, teamB.id, teamC.id].entries()) {
       const recruitId = `${run}-type-recruit-${idx}`
       const recruitEmail = `${run}-type-recruit-${idx}@sapl.local`
-      simUserIds.push(recruitId)
       await db.insert(user).values({
         id: recruitId,
         name: `Type Recruit ${idx}`,
@@ -845,7 +819,6 @@ async function main() {
       { id: `${run}-stable-r1`, name: "Stable R1", email: `${run}-stable-r1@sapl.local`, role: "player" },
       { id: `${run}-stable-r2`, name: "Stable R2", email: `${run}-stable-r2@sapl.local`, role: "player" },
     ]
-    simUserIds.push(...stableReplUsers.map((u) => u.id))
     await db.insert(user).values(
       stableReplUsers.map((u) => ({
         id: u.id,
@@ -908,60 +881,16 @@ async function main() {
         2,
       ),
     )
-    process.exit(failed.length === 0 ? 0 : 1)
+    exitCode = failed.length === 0 ? 0 : 1
+    return exitCode
   } finally {
-    if (simSeasonId != null) {
-      const fixtureIds = (await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.seasonId, simSeasonId))).map((r) => r.id)
-      if (fixtureIds.length > 0) await db.delete(matches).where(inArray(matches.fixtureId, fixtureIds))
-      await db.delete(fixtures).where(eq(fixtures.seasonId, simSeasonId))
-      await db.delete(standings).where(eq(standings.seasonId, simSeasonId))
-      await db.delete(tprHistory).where(inArray(tprHistory.teamId, simTeamIds.length ? simTeamIds : [0]))
-      await db.delete(teamInvites).where(inArray(teamInvites.teamId, simTeamIds.length ? simTeamIds : [0]))
-      await db.delete(teamPairings).where(inArray(teamPairings.teamId, simTeamIds.length ? simTeamIds : [0]))
-      await db.delete(teamMembers).where(inArray(teamMembers.teamId, simTeamIds.length ? simTeamIds : [0]))
-      await db.delete(teamEntries).where(eq(teamEntries.seasonId, simSeasonId))
-      if (simTeamIds.length > 0) await db.delete(teams).where(inArray(teams.id, simTeamIds))
-      if (simDivisionId != null) await db.delete(divisions).where(eq(divisions.id, simDivisionId))
-      await db.delete(seasons).where(eq(seasons.id, simSeasonId))
-    }
-
-    if (simClubIds.length > 0) await db.delete(clubs).where(inArray(clubs.id, simClubIds))
-    if (baseClubId != null) {
-      if (baseClubOriginalContactEmail !== null) {
-        await db.update(clubs).set({ contactEmail: baseClubOriginalContactEmail }).where(eq(clubs.id, baseClubId))
-      } else {
-        await db.update(clubs).set({ contactEmail: null }).where(eq(clubs.id, baseClubId))
-      }
-    }
-
-    const idsToDelete = [...new Set([...simUserIds, ...authCreatedUserIds])]
-    if (idsToDelete.length > 0) {
-      await db.delete(session).where(inArray(session.userId, idsToDelete))
-      await db.delete(account).where(inArray(account.userId, idsToDelete))
-      await db.delete(verification).where(inArray(verification.identifier, idsToDelete))
-      await db.delete(userMeta).where(inArray(userMeta.userId, idsToDelete))
-      await db.delete(user).where(inArray(user.id, idsToDelete))
-    }
-
-    const probeRows = await db.select({ id: user.id }).from(user).where(like(user.email, "sim-reg-%@sapl.local")).orderBy(desc(user.createdAt)).limit(20)
-    if (probeRows.length > 0) {
-      const probeIds = probeRows.map((r) => r.id)
-      await db.delete(session).where(inArray(session.userId, probeIds))
-      await db.delete(account).where(inArray(account.userId, probeIds))
-      await db.delete(userMeta).where(inArray(userMeta.userId, probeIds))
-      await db.delete(user).where(inArray(user.id, probeIds))
-    }
-
-    if (previousCurrentSeasonIds.length > 0) {
-      await db.update(seasons).set({ isCurrent: false })
-      for (const seasonId of previousCurrentSeasonIds) {
-        await db.update(seasons).set({ isCurrent: true }).where(eq(seasons.id, seasonId))
-      }
-    }
+    await cleanupSimulationData({ runId: run })
   }
 }
 
 main().catch((err) => {
   console.error(err)
   process.exit(1)
+}).then((code) => {
+  if (typeof code === "number") process.exit(code)
 })

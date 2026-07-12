@@ -747,9 +747,15 @@ export async function revertSeasonToDraftAction(formData: FormData) {
  */
 export async function deleteSeason(formData: FormData) {
   await requireAdmin()
-  if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
+  const [season] = await db
+    .select({ status: seasons.status })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1)
+  if (!season) return { ok: false, error: "Season not found" }
+  if (["league_locked", "active", "published"].includes(season.status)) return seasonLockedResult()
 
   // Disputes hang off fixtures, so clear them before the fixtures go.
   const fxRows = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.seasonId, seasonId))
