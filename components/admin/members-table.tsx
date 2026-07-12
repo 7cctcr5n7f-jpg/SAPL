@@ -1,15 +1,13 @@
 "use client"
 
-import { useCallback, useMemo, useRef, useState, useTransition } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   setMemberRole,
   sendMemberResetEmail,
-  setMemberTempPassword,
   updateMemberRating,
   updateMemberTeam,
-  updateMemberStatus,
   updateMemberDetails,
   updateMemberEmail,
   updateMemberPaid,
@@ -29,7 +27,6 @@ import {
   Loader2,
   Pencil,
   UserCircle,
-  ChevronDown,
   X,
   Check,
   Send,
@@ -55,12 +52,6 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "super_admin", label: "Main Admin" },
 ]
 
-const STATUSES: { value: MemberRow["status"]; label: string }[] = [
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "suspended", label: "Suspended" },
-]
-
 const ROLE_BADGE: Record<Role, string> = {
   player: "bg-secondary text-secondary-foreground",
   captain: "bg-sky-100 text-sky-700",
@@ -68,26 +59,9 @@ const ROLE_BADGE: Record<Role, string> = {
   super_admin: "bg-primary/10 text-primary font-semibold",
 }
 
-const STATUS_DOT: Record<MemberRow["status"], string> = {
-  active: "bg-emerald-500",
-  inactive: "bg-slate-300",
-  suspended: "bg-red-500",
-}
-
 const PAYMENT_BADGE: Record<string, { label: string; cls: string; title: string }> = {
   paid:        { label: "Paid",        cls: "bg-emerald-100 text-emerald-700", title: "Fee has been received" },
   outstanding: { label: "Outstanding", cls: "bg-red-100 text-red-700",         title: "Fee has not yet been received" },
-}
-
-const ACCOUNT_BADGE: Record<MemberRow["accountLinked"], { label: string; cls: string }> = {
-  linked: { label: "Linked", cls: "text-emerald-600" },
-  invited: { label: "Invited", cls: "text-amber-600" },
-  not_registered: { label: "Not registered", cls: "text-slate-400" },
-}
-
-function fmtDate(iso: string | null) {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
 }
 
 function fmtRelative(iso: string | null) {
@@ -307,7 +281,6 @@ function TeamOwnerCell({
 
 function RoleCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: boolean; onSaved: () => void }) {
   const [pending, start] = useTransition()
-  const router = useRouter()
 
   if (isSelf) {
     return (
@@ -332,37 +305,6 @@ function RoleCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: bool
       className="h-7 rounded border border-input bg-background px-1.5 text-xs disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-primary"
     >
       {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-    </select>
-  )
-}
-
-function StatusCell({ member, isSelf, onSaved }: { member: MemberRow; isSelf: boolean; onSaved: () => void }) {
-  const [pending, start] = useTransition()
-
-  if (isSelf) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs">
-        <span className={cn("h-2 w-2 rounded-full shrink-0", STATUS_DOT[member.status])} />
-        {member.status}
-      </span>
-    )
-  }
-
-  return (
-    <select
-      value={member.status}
-      disabled={pending}
-      onChange={(e) => {
-        const status = e.target.value as MemberRow["status"]
-        start(async () => {
-          const res = await updateMemberStatus(member.id, status)
-          if (res.ok) onSaved()
-          else toast.error("Could not update status")
-        })
-      }}
-      className="h-7 rounded border border-input bg-background px-1.5 text-xs disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-primary"
-    >
-      {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
     </select>
   )
 }
@@ -806,10 +748,8 @@ export function MembersTable({
   const [unregistered, setUnregistered] = useState<UnregisteredContact[]>(initialUnregistered)
   const [completingContact, setCompletingContact] = useState<UnregisteredContact | null>(null)
   const [query, setQuery] = useState("")
-  const [pendingId, setPendingId] = useState<string | null>(null)
   const [pwModal, setPwModal] = useState<{ name: string; email: string; password: string } | null>(null)
   const [editMember, setEditMember] = useState<MemberRow | null>(null)
-  const [, startTransition] = useTransition()
 
   // Filters
   const [filters, setFilters] = useState<Partial<Record<FilterKey, string>>>({})
@@ -883,26 +823,6 @@ export function MembersTable({
   }
 
   const hasFilters = query || summaryFilter || Object.values(filters).some(Boolean)
-
-  function emailReset(m: MemberRow) {
-    setPendingId(m.id)
-    startTransition(async () => {
-      const res = await sendMemberResetEmail(m.id)
-      setPendingId(null)
-      if (res.ok) toast.success(`Reset link sent to ${m.email}`)
-      else toast.error(res.error ?? "Could not send reset email")
-    })
-  }
-
-  function tempPassword(m: MemberRow) {
-    setPendingId(m.id)
-    startTransition(async () => {
-      const res = await setMemberTempPassword(m.id)
-      setPendingId(null)
-      if (res.ok && res.password) setPwModal({ name: m.name, email: m.email, password: res.password })
-      else toast.error(res.error ?? "Could not set password")
-    })
-  }
 
   return (
     <div className="flex flex-col gap-4">

@@ -69,7 +69,7 @@ export async function reconcileClubTeams(clubId: number) {
         homeClubId: clubId,
         saplRegion: club.saplRegion ?? null,
         regionId,
-        status: "active" as const,
+        status: "draft" as const,
       })
     }
     if (rows.length) await db.insert(teams).values(rows)

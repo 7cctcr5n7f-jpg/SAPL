@@ -1,10 +1,10 @@
 import "server-only"
 import { db } from "@/lib/db"
-import { userMeta, clubs, teams } from "@/lib/db/schema"
-import { eq, sql, inArray } from "drizzle-orm"
+import { clubs, teamMembers, teams } from "@/lib/db/schema"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { redirect } from "next/navigation"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { getEffectivePermissions, type Permission } from "@/lib/permissions"
+import { PERMISSIONS, type Permission } from "@/lib/permissions"
 
 export type ClubAssignment = {
   clubId: number
@@ -17,10 +17,11 @@ export type TeamAssignment = {
   teamId: number
   teamName: string
   /**
-   * "owner" (email match), "captain", "club" (team homed at a managed club), or
-   * "manual". owner/captain/club are auto (cannot be removed manually).
+   * "owner" (email match), "captain" (active captain membership),
+   * "member" (active non-captain membership), or "club" (team homed at a
+   * managed club).
    */
-  source: "owner" | "captain" | "club" | "manual"
+  source: "owner" | "captain" | "member" | "club" | "manual"
 }
 
 export type AccessContext = {
@@ -29,9 +30,13 @@ export type AccessContext = {
   /** Effective club ids this user may manage. */
   clubIds: number[]
   clubAssignments: ClubAssignment[]
-  /** Effective team ids this user may manage. */
+  /** Teams associated to this user (ownership, captaincy, membership, club scope). */
   teamIds: number[]
   teamAssignments: TeamAssignment[]
+  /** Teams this user may actively manage. */
+  manageableTeamIds: number[]
+  /** Team-owner scope (owner email / co-owner email / captain membership). */
+  ownedTeamIds: number[]
   /** True when the user has full league access (sees everything). */
   isLeagueAdmin: boolean
   can(permission: Permission): boolean
@@ -39,45 +44,24 @@ export type AccessContext = {
   canManageTeam(teamId: number): boolean
 }
 
-type OverrideShape = { add: number[]; remove: number[] }
-
-function normaliseOverride(value: unknown): OverrideShape {
-  const v = (value ?? {}) as Partial<OverrideShape>
-  const toInts = (arr: unknown) =>
-    Array.isArray(arr) ? arr.map((n) => Number(n)).filter((n) => Number.isInteger(n)) : []
-  return { add: toInts(v.add), remove: toInts(v.remove) }
-}
-
 /**
  * Resolves the full access context for a user: effective permissions, assigned
  * clubs and teams (email-matched + manual overrides), and convenience guards.
  *
- * Assignment rules (per the SAPL brief):
- *  - Clubs: clubs whose contactEmail == user email (auto) ∪ manual adds − manual removes.
- *  - Teams: teams whose ownerEmail == user email (auto) ∪ teams the user captains
- *    (auto) ∪ manual adds − manual removes.
- *  - League admins / super admins are unrestricted (clubIds/teamIds still computed
- *    for display, but isLeagueAdmin short-circuits the can* guards to allow all).
+ * Assignment rules (per the SAPL workflow):
+ *  - Super Admin: unrestricted.
+ *  - Club scope: clubs whose contact emails match the user's email.
+ *  - Team-owner scope: teams whose owner/co-owner email matches the user, plus
+ *    active captain memberships.
+ *  - Team-member scope: active team memberships (non-captain) for visibility.
  */
 export async function getAccessContext(user: CurrentUser): Promise<AccessContext> {
-  const [meta] = await db
-    .select({
-      permissions: userMeta.permissions,
-      clubOverrides: userMeta.clubOverrides,
-      teamOverrides: userMeta.teamOverrides,
-    })
-    .from(userMeta)
-    .where(eq(userMeta.userId, user.id))
-    .limit(1)
-
-  const permissions = getEffectivePermissions(user.role, meta?.permissions ?? null)
-  const isLeagueAdmin = permissions.has("league_management")
+  const isLeagueAdmin = user.role === "super_admin"
+  const permissions = isLeagueAdmin ? new Set<Permission>(PERMISSIONS) : new Set<Permission>()
 
   const email = user.email.trim().toLowerCase()
-  const clubOverrides = normaliseOverride(meta?.clubOverrides)
-  const teamOverrides = normaliseOverride(meta?.teamOverrides)
 
-  // --- Clubs: email-matched (auto) + manual overrides ---
+  // --- Clubs: email-matched (auto only) ---
   const autoClubs = email
     ? await db
         .select({ id: clubs.id, name: clubs.name })
@@ -86,38 +70,17 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
           sql`lower(${clubs.contactEmail}) = ${email} OR lower(${clubs.contactEmail2}) = ${email}`,
         )
     : []
-  const autoClubIds = new Set(autoClubs.map((c) => c.id))
-
-  const manualAddClubIds = clubOverrides.add.filter((id) => !autoClubIds.has(id))
-  const manualClubs = manualAddClubIds.length
-    ? await db
-        .select({ id: clubs.id, name: clubs.name })
-        .from(clubs)
-        .where(inArrayInts(clubs.id, manualAddClubIds))
-    : []
-
-  const removeClubSet = new Set(clubOverrides.remove)
-  const clubAssignments: ClubAssignment[] = [
-    ...autoClubs.map((c) => ({ clubId: c.id, clubName: c.name, auto: true })),
-    ...manualClubs.map((c) => ({ clubId: c.id, clubName: c.name, auto: false })),
-  ].filter((c) => c.auto || !removeClubSet.has(c.clubId)) // manual removals only affect manual/non-auto
+  const clubAssignments: ClubAssignment[] = autoClubs.map((c) => ({ clubId: c.id, clubName: c.name, auto: true }))
   const clubIds = [...new Set(clubAssignments.map((c) => c.clubId))]
 
-  // Being assigned a club — via the club's contact email (auto) or a manual
-  // assignment — makes the user a club manager for that venue, but ONLY when
-  // their role is captain or above. Plain players should never receive
-  // management permissions just because their email coincidentally matches a
-  // club's contact address.
-  const isElevatedRole = ["captain", "org_admin", "super_admin"].includes(user.role)
-  if (clubIds.length > 0 && !isLeagueAdmin && isElevatedRole) {
+  if (clubIds.length > 0 && !isLeagueAdmin) {
     permissions.add("club_management")
     permissions.add("fixture_management")
-    // Player Management is league admin only — removed from club managers and team owners
     permissions.add("team_management")
     permissions.add("captain_hub")
   }
 
-  // --- Teams: owner-email (auto) + co-owner-email (auto) + captaincy (auto) + manual overrides ---
+  // --- Teams: owner-email / co-owner-email (auto) ---
   const autoOwnerTeams = email
     ? await db
         .select({ id: teams.id, name: teams.name })
@@ -130,50 +93,60 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
         .from(teams)
         .where(sql`lower(${teams.coOwnerEmail}) = ${email}`)
     : []
-  const captainTeams = await db
-    .select({ id: teams.id, name: teams.name })
-    .from(teams)
-    .where(eq(teams.captainUserId, user.id))
+  const memberships = await db
+    .select({ teamId: teams.id, teamName: teams.name, role: teamMembers.role })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(and(eq(teamMembers.playerId, user.id), eq(teamMembers.status, "active")))
 
   const teamSourceMap = new Map<number, { name: string; source: TeamAssignment["source"] }>()
-  for (const t of autoOwnerTeams) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
-  for (const t of autoCoOwnerTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
-  for (const t of captainTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "captain" })
+  const ownerTeamIds = new Set<number>()
+  const captainTeamIds = new Set<number>()
+  const memberTeamIds = new Set<number>()
 
-  // Any user who owns teams via ownerEmail (or captainUserId) must have
-  // captain_hub + team_management regardless of their role. A team owner can
-  // be a plain player — we must not gate these permissions on isElevatedRole.
-  if (teamSourceMap.size > 0 && !isLeagueAdmin) {
-    permissions.add("captain_hub")
-    permissions.add("team_management")
+  for (const t of autoOwnerTeams) {
+    teamSourceMap.set(t.id, { name: t.name, source: "owner" })
+    ownerTeamIds.add(t.id)
+  }
+  for (const t of autoCoOwnerTeams) {
+    if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "owner" })
+    ownerTeamIds.add(t.id)
+  }
+  for (const m of memberships) {
+    const source: TeamAssignment["source"] = m.role === "captain" ? "captain" : "member"
+    if (!teamSourceMap.has(m.teamId)) teamSourceMap.set(m.teamId, { name: m.teamName, source })
+    if (source === "captain") captainTeamIds.add(m.teamId)
+    else memberTeamIds.add(m.teamId)
   }
 
-  // Teams homed at a club this user manages (via the club's contact email or a
-  // manual club assignment) are also in their scope. This gives club managers
-  // the Captain Hub — and all other team-scoped management — for every team
-  // that plays out of their venue, without a separate per-team assignment.
+  if ((ownerTeamIds.size > 0 || captainTeamIds.size > 0) && !isLeagueAdmin) {
+    permissions.add("captain_hub")
+    permissions.add("team_management")
+    permissions.add("fixture_management")
+  }
+
+  // Teams homed at a managed club are manageable by that club owner.
+  const clubTeamIds = new Set<number>()
   if (clubIds.length) {
     const clubTeams = await db
       .select({ id: teams.id, name: teams.name })
       .from(teams)
       .where(inArrayInts(teams.homeClubId, clubIds))
-    for (const t of clubTeams) if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "club" })
+    for (const t of clubTeams) {
+      clubTeamIds.add(t.id)
+      if (!teamSourceMap.has(t.id)) teamSourceMap.set(t.id, { name: t.name, source: "club" })
+    }
   }
 
-  const manualAddTeamIds = teamOverrides.add.filter((id) => !teamSourceMap.has(id))
-  if (manualAddTeamIds.length) {
-    const manualTeams = await db
-      .select({ id: teams.id, name: teams.name })
-      .from(teams)
-      .where(inArrayInts(teams.id, manualAddTeamIds))
-    for (const t of manualTeams) teamSourceMap.set(t.id, { name: t.name, source: "manual" })
-  }
+  const teamAssignments: TeamAssignment[] = [...teamSourceMap.entries()].map(([id, info]) => ({
+    teamId: id,
+    teamName: info.name,
+    source: info.source,
+  }))
 
-  const removeTeamSet = new Set(teamOverrides.remove)
-  const teamAssignments: TeamAssignment[] = [...teamSourceMap.entries()]
-    .filter(([id, info]) => info.source !== "manual" || !removeTeamSet.has(id))
-    .map(([id, info]) => ({ teamId: id, teamName: info.name, source: info.source }))
-  const teamIds = teamAssignments.map((t) => t.teamId)
+  const ownedTeamIds = [...new Set([...ownerTeamIds, ...captainTeamIds])]
+  const manageableTeamIds = [...new Set([...ownedTeamIds, ...clubTeamIds])]
+  const teamIds = [...new Set([...manageableTeamIds, ...memberTeamIds])]
 
   return {
     user,
@@ -182,10 +155,12 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
     clubAssignments,
     teamIds,
     teamAssignments,
+    manageableTeamIds,
+    ownedTeamIds,
     isLeagueAdmin,
     can: (permission: Permission) => permissions.has(permission),
     canManageClub: (clubId: number) => isLeagueAdmin || clubIds.includes(clubId),
-    canManageTeam: (teamId: number) => isLeagueAdmin || teamIds.includes(teamId),
+    canManageTeam: (teamId: number) => isLeagueAdmin || manageableTeamIds.includes(teamId),
   }
 }
 

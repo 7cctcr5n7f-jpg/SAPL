@@ -2,12 +2,13 @@
 
 import { cn } from "@/lib/utils"
 import type { BoardTeam } from "@/lib/placement-types"
+import { normalizeTeamType } from "@/lib/constants"
 
 // Team type is conveyed with a small color dot instead of a text badge to keep
 // cards compact. Keep these in sync with TEAM_TYPES in lib/constants.
 const TYPE_COLOR: Record<string, string> = {
   "Club Team": "bg-sky-500",
-  "Company Team": "bg-amber-500",
+  "Business Team": "bg-amber-500",
   "Private Team": "bg-emerald-500",
 }
 
@@ -30,9 +31,12 @@ export function TeamCardContent({
       )}
     >
       <span
-        className={cn("h-2.5 w-2.5 shrink-0 self-start mt-1 rounded-full", TYPE_COLOR[team.teamType] ?? "bg-muted-foreground")}
-        title={team.teamType}
-        aria-label={team.teamType}
+        className={cn(
+          "h-2.5 w-2.5 shrink-0 self-start mt-1 rounded-full",
+          TYPE_COLOR[normalizeTeamType(team.teamType)] ?? "bg-muted-foreground",
+        )}
+        title={normalizeTeamType(team.teamType)}
+        aria-label={normalizeTeamType(team.teamType)}
       />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium leading-tight">{team.name}</p>

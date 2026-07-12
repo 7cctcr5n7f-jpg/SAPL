@@ -10,7 +10,7 @@ type Option = { value: "self" | "org_admin" | "captain" | "player"; label: strin
 
 const OPTIONS: Option[] = [
   { value: "self", label: "Main Admin", hint: "Full control" },
-  { value: "org_admin", label: "Club Admin", hint: "Manage a club" },
+  { value: "org_admin", label: "Team Manager", hint: "Manage teams and clubs" },
   { value: "captain", label: "Captain", hint: "Run a team" },
   { value: "player", label: "Player", hint: "Compete" },
 ]

@@ -17,7 +17,8 @@ import {
   user,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
-import { and, asc, desc, eq, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
+import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
 
 export async function getCurrentSeason() {
   const [season] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
@@ -85,7 +86,7 @@ export async function getTeamRankings(limit = 100) {
     .from(teams)
     .leftJoin(organisations, eq(teams.organisationId, organisations.id))
     .leftJoin(divisions, eq(teams.divisionId, divisions.id))
-    .where(eq(teams.status, "active"))
+    .where(inArray(teams.status, [...TEAM_VISIBLE_STATUSES]))
     .orderBy(desc(teams.tpr))
     .limit(limit)
 }

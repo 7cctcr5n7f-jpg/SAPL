@@ -5,7 +5,6 @@ import { changeOwnPassword } from "@/lib/actions/player"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
 import { AlertCircle, CheckCircle } from "lucide-react"
 
 export function ChangePasswordForm() {

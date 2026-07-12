@@ -1,5 +1,5 @@
 import { requirePermissionPage } from "@/lib/access"
-import { getAdminSummary, getSeasonsWithDivisions, getRegions } from "@/lib/queries-admin"
+import { getAdminSummary } from "@/lib/queries-admin"
 import { getCurrentSeason } from "@/lib/queries"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { getPlacementBoard } from "@/lib/queries-placement"

@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/session"
 import { getPlayerByUserId } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { userMeta, user as user, teamMembers } from "@/lib/db/schema"
+import { userMeta, teamMembers } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { ProfileForm } from "@/components/dashboard/profile-form"
@@ -12,13 +12,6 @@ import { NoProfile } from "@/components/dashboard/no-profile"
 export default async function ProfilePage() {
   const me = await getCurrentUser()
   if (!me) return null
-
-  // Get user flags
-  const [userData] = await db
-    .select({ isPlayer: user.isPlayer })
-    .from(user)
-    .where(eq(user.id, me.id))
-    .limit(1)
 
   // Check if player is already on a team
   const [userTeam] = await db
@@ -57,7 +50,6 @@ export default async function ProfilePage() {
               email={me.email}
               phone={meta?.phone ?? null}
               isOnTeam={!!userTeam}
-              isPlayer={userData?.isPlayer ?? false}
             />
           </CardContent>
         </Card>

@@ -6,6 +6,7 @@ import {
   fixtures,
   teams,
   teamMembers,
+  teamPairings,
   user as user,
   notifications,
   fixtureUnavailable,
@@ -208,7 +209,7 @@ export async function addPlayer(teamId: number, playerId: string) {
 
   await recomputeTeamStats(teamId)
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard")
   return { success: `${player ? player.firstName : "Player"} added to ${team.name}.` }
 }
@@ -218,11 +219,37 @@ export async function removeMember(teamId: number, membershipId: number) {
   if (!me) return { error: "Not authorised" }
   if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
 
+  const [membership] = await db
+    .select({ playerId: teamMembers.playerId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.teamId, teamId)))
+    .limit(1)
+  if (!membership) return { error: "Membership not found." }
+
   await db
     .update(teamMembers)
     .set({ status: "removed", updatedAt: new Date() })
     .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.teamId, teamId)))
 
+  await db
+    .delete(teamPairings)
+    .where(and(eq(teamPairings.teamId, teamId), eq(teamPairings.playerId, membership.playerId)))
+
+  const stillActive = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, membership.playerId), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (stillActive.length === 0) {
+    await db
+      .update(user)
+      .set({ availability: "available", updatedAt: new Date() })
+      .where(eq(user.id, membership.playerId))
+  }
+
+  await recomputeTeamStats(teamId)
   revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/dashboard")
   return { success: "Player removed from roster." }
 }

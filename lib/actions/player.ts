@@ -56,9 +56,12 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
     .set({
       firstName,
       lastName,
+      bio: bio || null,
       city,
       playtomicUrl: playtomicUrl || null,
       playtomicRating,
+      preferredClubIds,
+      anyClub,
       lookingForTeam,
       availability: lookingForTeam ? "available" : "unavailable",
       updatedAt: new Date(),
@@ -71,9 +74,9 @@ export async function updateProfile(_prev: unknown, formData: FormData) {
   // Contact number and bio live on userMeta; upsert them.
   const [meta] = await db.select({ id: userMeta.id }).from(userMeta).where(eq(userMeta.userId, me.id)).limit(1)
   if (meta) {
-    await db.update(userMeta).set({ phone: phone || null, bio: bio || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
+    await db.update(userMeta).set({ phone: phone || null, updatedAt: new Date() }).where(eq(userMeta.userId, me.id))
   } else {
-    await db.insert(userMeta).values({ userId: me.id, phone: phone || null, bio: bio || null })
+    await db.insert(userMeta).values({ userId: me.id, phone: phone || null })
   }
 
   // If the player's Playtomic rating changed and they are on a team,
@@ -184,18 +187,46 @@ export async function payTeamFee(teamId: number) {
 
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   return { success: `Payment received for ${team.name}.` }
 }
 
 export async function leaveTeam(membershipId: number) {
   const me = await getCurrentUser()
   if (!me?.isPlayer) return { error: "Not authorised" }
+
+  const [membership] = await db
+    .select({ teamId: teamMembers.teamId, playerId: teamMembers.playerId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.id)))
+    .limit(1)
+  if (!membership) return { error: "Membership not found." }
+
   await db
     .update(teamMembers)
     .set({ status: "removed", updatedAt: new Date() })
     .where(and(eq(teamMembers.id, membershipId), eq(teamMembers.playerId, me.id)))
+
+  await db
+    .delete(teamPairings)
+    .where(and(eq(teamPairings.teamId, membership.teamId), eq(teamPairings.playerId, membership.playerId)))
+
+  const stillActive = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, membership.playerId), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (stillActive.length === 0) {
+    await db
+      .update(user)
+      .set({ availability: "available", updatedAt: new Date() })
+      .where(eq(user.id, membership.playerId))
+  }
+
+  await recomputeTeamStats(membership.teamId)
   revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/my-team")
   return { success: "You left the team." }
 }
 
@@ -357,7 +388,7 @@ export async function adminUpdatePlayer(input: {
   revalidatePath("/admin/players")
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/marketplace")
   return { ok: true }
 }

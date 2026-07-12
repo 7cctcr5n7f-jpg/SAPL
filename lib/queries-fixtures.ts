@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 import { fixtures, teams, divisions, clubs, regions, user, results, matches, seasons } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { asc, eq, inArray } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
 import type { CurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -58,7 +58,7 @@ export type DashboardFixture = {
   matches: FixtureCategoryMatch[]
 }
 
-export type FixtureScope = "all" | "club" | "none"
+export type FixtureScope = "all" | "club" | "team" | "none"
 
 export type HostClub = { id: number; name: string; courts: number | null }
 
@@ -200,8 +200,9 @@ export function computeFixtureHealth(list: DashboardFixture[]): FixtureHealth {
 /**
  * Admin-only fixtures for the League Operations Console:
  *  - league/super admin: every fixture, full edit rights
- *  - club manager: fixtures hosted at their club(s) or involving their teams,
- *    may edit booking details for fixtures hosted at their own clubs
+ *  - club owner: fixtures hosted at their club(s), plus involved team fixtures
+ *  - team owner/captain: fixtures involving their own teams
+ *    (editing links only for those teams)
  * Captains/players do NOT use this route — they use League Centre.
  */
 export async function getDashboardFixtures(user: CurrentUser): Promise<DashboardFixturesResult> {
@@ -219,8 +220,8 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
   const seasonName = seasonRow?.name ?? null
 
   const access = await getAccessContext(user)
-  const isClubManager = access.can("club_management") && access.clubIds.length > 0
-  if (!access.isLeagueAdmin && !isClubManager) return empty
+  const hasScopedManagerAccess = access.clubIds.length > 0 || access.manageableTeamIds.length > 0
+  if (!access.isLeagueAdmin && !hasScopedManagerAccess) return empty
 
   const rows = await baseFixtures(season.id)
   const mMap = await matchesByFixture(rows.map((r) => r.id))
@@ -251,13 +252,9 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     }
   }
 
-  // Club manager: fixtures hosted at their clubs or involving teams homed there.
+  // Club owners and team owners/captains: scoped fixture visibility.
   const clubIds = new Set(access.clubIds)
-  const homedTeams = await db
-    .select({ id: teams.id })
-    .from(teams)
-    .where(inArray(teams.homeClubId, access.clubIds))
-  const teamIds = new Set<number>([...access.teamIds, ...homedTeams.map((t) => t.id)])
+  const teamIds = new Set<number>(access.manageableTeamIds)
   const visible = rows.filter(
     (f) =>
       (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
@@ -269,12 +266,15 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
       mine:
         (f.homeTeamId != null && teamIds.has(f.homeTeamId)) ||
         (f.awayTeamId != null && teamIds.has(f.awayTeamId)),
-      canEditLink: f.venueClubId != null && clubIds.has(f.venueClubId),
+      canEditLink:
+        (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
+        (f.homeTeamId != null && access.ownedTeamIds.includes(f.homeTeamId)) ||
+        (f.awayTeamId != null && access.ownedTeamIds.includes(f.awayTeamId)),
     }),
   )
   return {
     seasonName,
-    scope: "club",
+    scope: clubIds.size > 0 ? "club" : "team",
     canManageVenue: false,
     clubs: [],
     fixtures: list,

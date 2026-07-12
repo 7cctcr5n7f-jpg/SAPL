@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
@@ -32,12 +32,6 @@ type ContentTab = "schedule" | "standings"
 const DIVISION_ORDER = ["Premier", "Championship", "Shield", "Challenge"]
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-
-function timeLabel(iso: string | null, timeslot: string | null) {
-  if (timeslot) return timeslot
-  if (!iso) return "TBD"
-  return new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso))
-}
 
 function shortDate(iso: string | null) {
   if (!iso) return null
@@ -106,9 +100,6 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
         ),
     [divisionFixtures, activeWeek],
   )
-
-  const upcomingFixtures = useMemo(() => weekFixtures.filter((f) => f.status !== "completed"), [weekFixtures])
-  const completedFixtures = useMemo(() => weekFixtures.filter((f) => f.status === "completed"), [weekFixtures])
 
   if (!data.regions.length) {
     return (
@@ -597,7 +588,6 @@ function FormDots({
         const scoreLabel = item.isHome
           ? `${item.homeScore}–${item.awayScore}`
           : `${item.awayScore}–${item.homeScore}`
-        const tooltip = `${item.result === "W" ? "Won" : "Lost"} vs ${item.opponentName} (${scoreLabel})`
         return (
           <div key={i} className="group relative">
             <span
@@ -709,8 +699,7 @@ function FixtureBreakdown({
                 ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
                 : fixture.mine
 
-            // Prefer the per-category booking link; fall back to the fixture-level one.
-            const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? fixture.joinUrl
+            const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? null
             const courtInfo = fixture.courtInfoByCategory?.[category]
             const showJoin = fixture.mine && !isCompleted && !!categoryJoinUrl
             const showScore = fixture.mine && iMyRubber

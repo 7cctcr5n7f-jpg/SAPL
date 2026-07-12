@@ -11,7 +11,7 @@ import {
   notifications,
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
-import { and, eq, desc, not, inArray, sql, or } from "drizzle-orm"
+import { and, eq, desc, ne, not, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { randomUUID } from "crypto"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -97,7 +97,7 @@ export async function setPairingSlot(input: {
     }
   }
 
-  const [existing] = await db
+  const existingRows = await db
     .select()
     .from(teamPairings)
     .where(
@@ -108,13 +108,19 @@ export async function setPairingSlot(input: {
         eq(teamPairings.slotIndex, input.slotIndex),
       ),
     )
-    .limit(1)
 
-  if (existing) {
+  if (existingRows.length > 0) {
     await db
       .update(teamPairings)
       .set({ playerId: input.playerId, updatedAt: new Date() })
-      .where(eq(teamPairings.id, existing.id))
+      .where(
+        and(
+          eq(teamPairings.teamId, input.teamId),
+          eq(teamPairings.category, input.category),
+          eq(teamPairings.pairIndex, input.pairIndex),
+          eq(teamPairings.slotIndex, input.slotIndex),
+        ),
+      )
   } else {
     await db.insert(teamPairings).values({
       teamId: input.teamId,
@@ -149,11 +155,10 @@ export async function setPairingSlot(input: {
       })
     }
   } else {
-    // Slot was cleared — find the player who was just removed.
+    // Slot was cleared — find the player(s) who were just removed.
     // We only remove their membership if they hold no other pairing slots.
-    // (existing.playerId holds who was in the slot before clearing)
-    const clearedPlayerId = existing?.playerId ?? null
-    if (clearedPlayerId) {
+    const clearedPlayerIds = [...new Set(existingRows.map((r) => r.playerId).filter((id): id is string => id != null))]
+    for (const clearedPlayerId of clearedPlayerIds) {
       const otherSlots = await db
         .select({ id: teamPairings.id })
         .from(teamPairings)
@@ -187,7 +192,9 @@ export async function setPairingSlot(input: {
 
   await recomputeTeamStats(input.teamId)
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
+  revalidatePath("/admin/teams")
   return { success: "Lineup updated." }
 }
 
@@ -233,8 +240,9 @@ export async function removeFromTeam(input: { teamId: number; playerId: string }
 
   await recomputeTeamStats(input.teamId)
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard")
+  revalidatePath("/admin/teams")
   return { success: "Player removed from team." }
 }
 
@@ -271,6 +279,13 @@ export async function invitePlayerByEmail(input: {
     .limit(1)
 
   if (existingUser?.isPlayer) {
+    const active = await getActiveMembership(existingUser.id, input.teamId)
+    if (active) {
+      return {
+        error: `${existingUser.firstName} is already an active team member of ${active.teamName}. They must leave that team first.`,
+      }
+    }
+
     // Block the invite early if they are already on another team this season.
     const conflict = await getPlayerSeasonTeamConflict(existingUser.id, team.seasonId, input.teamId)
     if (conflict) {
@@ -316,7 +331,14 @@ export async function invitePlayerByEmail(input: {
 
   // Fetch the token we just stored so we can build the accept/decline URLs
   const [storedInvite] = await db
-    .select({ token: teamInvites.token })
+    .select({
+      id: teamInvites.id,
+      token: teamInvites.token,
+      email: teamInvites.email,
+      category: teamInvites.category,
+      pairIndex: teamInvites.pairIndex,
+      slotIndex: teamInvites.slotIndex,
+    })
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, input.teamId), eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
     .orderBy(desc(teamInvites.createdAt))
@@ -338,9 +360,18 @@ export async function invitePlayerByEmail(input: {
   }
 
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   return {
     success: `Invite sent to ${email}. They are shown as pending in your squad until they accept.`,
+    invite: storedInvite
+      ? {
+          id: storedInvite.id,
+          email: storedInvite.email,
+          category: storedInvite.category,
+          pairIndex: storedInvite.pairIndex,
+          slotIndex: storedInvite.slotIndex,
+        }
+      : null,
   }
 }
 
@@ -369,12 +400,11 @@ export async function getFreeAgentsAction() {
 }
 
   /**
-  * Fetch all registered players (isPlayer = true) who are NOT currently an
-  * active member of any team. These are shown in the "Add registered player"
-  * tab so a team owner can add them directly without going through the invite
-  * flow.
+  * Fetch all registered players who are NOT currently an active member of any
+  * team. These are shown in the registered-player tab so a team owner can send
+  * them invitations.
   */
-  export async function getRegisteredFreeAgentsAction(teamId: number) {
+  export async function getRegisteredFreeAgentsAction() {
     const me = await getCurrentUser()
     if (!me) return []
 
@@ -417,81 +447,19 @@ export async function getFreeAgentsAction() {
     return query
   }
 
-  /**
-  * Directly add a registered player (who has no current active team) to a
-  * team's roster. Unlike inviteMarketplacePlayer this bypasses the email invite
-  * flow — the player appears immediately on the roster.
-  */
-  export async function addRegisteredPlayerDirectly(input: {
-    teamId: number
-    playerId: string
-    category?: string
-    pairIndex?: number
-    slotIndex?: number
-  }) {
-    const me = await getCurrentUser()
-    if (!me) return { error: "Not authorised" }
-    const team = await canManageTeam(me, input.teamId)
-    if (!team) return { error: "You cannot manage this team." }
-
-    const [playerUser] = await db
-      .select({
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        name: user.name,
-        isPlayer: user.isPlayer,
-      })
-      .from(user)
-      .where(eq(user.id, input.playerId))
-      .limit(1)
-
-    if (!playerUser) return { error: "Player not found." }
-    // Do not gate on isPlayer — everyone who registers is treated as a player.
-
-    // Check they are not already on another team this season.
-    const conflict = await getPlayerSeasonTeamConflict(playerUser.id, team.seasonId, input.teamId)
-    if (conflict) {
-      const name = playerUser.firstName ?? playerUser.name
-      return { error: `${name} already plays for ${conflict.teamName} this season.` }
-    }
-
-    // Check they are not already an active member of this specific team.
-    const [existing] = await db
-      .select({ id: teamMembers.id, status: teamMembers.status })
-      .from(teamMembers)
-      .where(and(eq(teamMembers.teamId, input.teamId), eq(teamMembers.playerId, playerUser.id)))
-      .limit(1)
-
-    if (existing?.status === "active") {
-      return { error: "This player is already on your team." }
-    }
-
-    try {
-      // joinTeam handles the teamMembers row AND the teamPairings slot row in
-      // one transaction — do not write the pairing row again after this call.
-      await joinTeam(input.teamId, playerUser.id, {
-        category: input.category,
-        pairIndex: input.pairIndex,
-        slotIndex: input.slotIndex,
-      })
-    } catch (err) {
-      if (err instanceof TeamFullError) return { error: "Your squad is full (8 players maximum)." }
-      throw err
-    }
-
-    await recomputeTeamStats(input.teamId)
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/captain")
-    revalidatePath("/dashboard/org")
-
-    const displayName = playerUser.firstName
-      ? `${playerUser.firstName} ${playerUser.lastName ?? ""}`.trim()
-      : playerUser.name
-
-    return { success: `${displayName} has been added to your team.` }
-  }
+/**
+ * Legacy compatibility shim.
+ * Registered players must now always go through the invitation flow.
+ */
+export async function addRegisteredPlayerDirectly(input: {
+  teamId: number
+  playerId: string
+  category?: string
+  pairIndex?: number
+  slotIndex?: number
+}) {
+  return inviteMarketplacePlayer(input)
+}
 
   /**
   * Look up a registered player by email.
@@ -596,7 +564,8 @@ export async function cancelInvite(inviteId: number) {
   await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, inviteId))
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
   return { success: "Invite cancelled." }
 }
 
@@ -666,6 +635,39 @@ async function joinTeam(
   }
 
   await recomputeTeamStats(teamId)
+}
+
+async function markPlayerAsActiveTeamMember(playerId: string) {
+  await db
+    .update(user)
+    .set({ availability: "on_team", lookingForTeam: false, onMarketplace: false, updatedAt: new Date() })
+    .where(eq(user.id, playerId))
+}
+
+async function getActiveMembership(playerId: string, excludeTeamId?: number) {
+  const rows = await db
+    .select({ teamId: teamMembers.teamId, teamName: teams.name })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
+    .limit(5)
+
+  const active = excludeTeamId != null ? rows.find((r) => r.teamId !== excludeTeamId) : rows[0]
+  return active ?? null
+}
+
+async function cancelOtherPendingInvites(email: string, acceptedInviteId: number) {
+  const normalized = email.trim().toLowerCase()
+  await db
+    .update(teamInvites)
+    .set({ status: "cancelled" })
+    .where(
+      and(
+        sql`lower(${teamInvites.email}) = ${normalized}`,
+        eq(teamInvites.status, "pending"),
+        ne(teamInvites.id, acceptedInviteId),
+      ),
+    )
 }
 
 /**
@@ -768,7 +770,10 @@ export async function getInvitePreview(
  *  - { needsAccount: true, token, email }        → send to sign-up with token
  *  - { error: string }                           → show error
  */
-export async function processTeamInviteByToken(token: string): Promise<
+export async function processTeamInviteByToken(
+  token: string,
+  options?: { userId?: string },
+): Promise<
   | { joined: true; teamName: string }
   | { needsProfile: true; token: string; teamName: string }
   | { needsAccount: true; token: string; email: string; teamName: string }
@@ -799,18 +804,18 @@ export async function processTeamInviteByToken(token: string): Promise<
   // (e.g. onboarding email match) without the teamMembers row being created,
   // so we check and repair that here rather than silently returning success.
   if (invite.status === "accepted") {
-    const sessionUser = await getCurrentUser()
-    if (sessionUser) {
+    const resolvedUserId = options?.userId ?? (await getCurrentUser())?.id ?? null
+    if (resolvedUserId) {
       const [existingMember] = await db
         .select({ id: teamMembers.id, status: teamMembers.status })
         .from(teamMembers)
-        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, sessionUser.id)))
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, resolvedUserId)))
         .limit(1)
 
       if (!existingMember || existingMember.status !== "active") {
         // Roster row is missing or stale — add them now.
         try {
-          await joinTeam(team.id, sessionUser.id, {
+          await joinTeam(team.id, resolvedUserId, {
             category: invite.category ?? undefined,
             pairIndex: invite.pairIndex ?? undefined,
             slotIndex: invite.slotIndex ?? undefined,
@@ -821,9 +826,11 @@ export async function processTeamInviteByToken(token: string): Promise<
         }
         revalidatePath("/dashboard")
         revalidatePath("/dashboard/captain")
-        revalidatePath("/dashboard/org")
+        revalidatePath("/dashboard/my-team")
       }
+      await markPlayerAsActiveTeamMember(resolvedUserId)
     }
+    await cancelOtherPendingInvites(invite.email, invite.id)
     return { joined: true, teamName: team.name }
   }
 
@@ -831,31 +838,42 @@ export async function processTeamInviteByToken(token: string): Promise<
     return { error: "This invitation has been cancelled." }
   }
 
-  // Prefer the currently signed-in user over an email lookup.
-  // The invite email and the account email may differ (e.g. iCloud relay vs
-  // real address), so we always honour the authenticated session first.
-  const sessionUser = await getCurrentUser()
-
   let invitedUser: { id: string; isPlayer: boolean } | undefined
 
-  if (sessionUser) {
+  if (options?.userId) {
     const [row] = await db
       .select({ id: user.id, isPlayer: user.isPlayer })
       .from(user)
-      .where(eq(user.id, sessionUser.id))
+      .where(eq(user.id, options.userId))
       .limit(1)
     invitedUser = row ?? undefined
   } else {
-    // No session — fall back to matching by invite email
-    const [row] = await db
-      .select({ id: user.id, isPlayer: user.isPlayer })
-      .from(user)
-      .where(eq(user.email, invite.email))
-      .limit(1)
-    invitedUser = row ?? undefined
+    // Prefer the currently signed-in user over an email lookup.
+    // The invite email and the account email may differ (e.g. iCloud relay vs
+    // real address), so we always honour the authenticated session first.
+    const sessionUser = await getCurrentUser()
+    if (sessionUser) {
+      const [row] = await db
+        .select({ id: user.id, isPlayer: user.isPlayer })
+        .from(user)
+        .where(eq(user.id, sessionUser.id))
+        .limit(1)
+      invitedUser = row ?? undefined
+    } else {
+      // No session — fall back to matching by invite email
+      const [row] = await db
+        .select({ id: user.id, isPlayer: user.isPlayer })
+        .from(user)
+        .where(eq(user.email, invite.email))
+        .limit(1)
+      invitedUser = row ?? undefined
+    }
   }
 
   if (!invitedUser) {
+    if (options?.userId) {
+      return { error: "Could not verify your account. Please sign in again." }
+    }
     // No account at all — send to sign-up preserving the token
     return { needsAccount: true, token, email: invite.email, teamName: team.name }
   }
@@ -877,6 +895,11 @@ export async function processTeamInviteByToken(token: string): Promise<
   }
 
   // Check for season conflict
+  const active = await getActiveMembership(invitedUser.id, team.id)
+  if (active) {
+    return { alreadyOnTeam: true, teamName: active.teamName }
+  }
+
   const conflict = await getPlayerSeasonTeamConflict(invitedUser.id, team.seasonId, team.id)
   if (conflict) {
     return { alreadyOnTeam: true, teamName: conflict.teamName }
@@ -895,14 +918,19 @@ export async function processTeamInviteByToken(token: string): Promise<
   }
 
   if (invite.invitedRating != null && invite.invitedRating > 0) {
-    const [prof] = await db.select({ rating: user.playtomicRating }).from(user).where(eq(user.id, invitedUser.id)).limit(1)
-    if (!prof?.rating) {
+    const [row] = await db
+      .select({ rating: user.playtomicRating })
+      .from(user)
+      .where(eq(user.id, invitedUser.id))
+      .limit(1)
+    if (!row?.rating) {
       await db.update(user).set({ playtomicRating: invite.invitedRating }).where(eq(user.id, invitedUser.id))
     }
   }
 
   await db.update(teamInvites).set({ status: "accepted", acceptedAt: new Date() }).where(eq(teamInvites.id, invite.id))
-  await db.update(user).set({ lookingForTeam: false, onMarketplace: false, availability: "unavailable" }).where(eq(user.id, invitedUser.id))
+  await markPlayerAsActiveTeamMember(invitedUser.id)
+  await cancelOtherPendingInvites(invite.email, invite.id)
 
   await db.insert(notifications).values({
     userId: invitedUser.id,
@@ -914,7 +942,7 @@ export async function processTeamInviteByToken(token: string): Promise<
 
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
 
   return { joined: true, teamName: team.name }
 }
@@ -937,13 +965,14 @@ export async function declineTeamInviteByToken(token: string): Promise<{ ok: boo
   await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, invite.id))
 
   revalidatePath("/dashboard/captain")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
 
   return { ok: true, teamName: team?.name ?? "the team" }
 }
 
-// Resolve any pending email invites for a freshly-registered player.
-// Called from the onboarding action once a player profile exists.
+// Legacy compatibility hook.
+// Pending invites are no longer auto-accepted on registration; players must
+// explicitly accept one invitation from the invite flow.
 export async function resolvePendingInvites(email: string, playerId: string) {
   const normalized = email.trim().toLowerCase()
   const pending = await db
@@ -951,50 +980,6 @@ export async function resolvePendingInvites(email: string, playerId: string) {
     .from(teamInvites)
     .where(and(eq(teamInvites.email, normalized), eq(teamInvites.status, "pending")))
 
-  for (const invite of pending) {
-    const [team] = await db
-      .select({ id: teams.id, seasonId: teams.seasonId })
-      .from(teams)
-      .where(eq(teams.id, invite.teamId))
-      .limit(1)
-    // Respect "one team per player per season": if the player has already been
-    // joined to another team in this season (e.g. an earlier pending invite),
-    // skip this one and leave it pending so a captain/player can resolve it.
-    if (team) {
-      const conflict = await getPlayerSeasonTeamConflict(playerId, team.seasonId, invite.teamId)
-      if (conflict) continue
-    }
-    try {
-      await joinTeam(invite.teamId, playerId, {
-        category: invite.category ?? undefined,
-        pairIndex: invite.pairIndex ?? undefined,
-        slotIndex: invite.slotIndex ?? undefined,
-      })
-    } catch (err) {
-      // Team filled up before this invite resolved — leave it pending so a
-      // manager can make room or cancel it later.
-      if (err instanceof TeamFullError) continue
-      throw err
-    }
-    // Carry the Playtomic rating captured at Add Player time onto the new
-    // player's profile if they haven't set one themselves.
-    if (invite.invitedRating != null && invite.invitedRating > 0) {
-      const [prof] = await db
-        .select({ rating: user.playtomicRating })
-        .from(user)
-        .where(eq(user.id, playerId))
-        .limit(1)
-      if (!prof?.rating) {
-        await db
-          .update(user)
-          .set({ playtomicRating: invite.invitedRating, updatedAt: new Date() })
-          .where(eq(user.id, playerId))
-      }
-    }
-    await db
-      .update(teamInvites)
-      .set({ status: "accepted", acceptedAt: new Date() })
-      .where(eq(teamInvites.id, invite.id))
-  }
+  void playerId // preserved for call-site compatibility; acceptance now requires explicit invite action.
   return pending.length
 }

@@ -26,8 +26,15 @@ export const ORGANISATION_TYPES = [
 ] as const
 
 // Team types shown on registration + the Placement Board cards.
-export const TEAM_TYPES = ["Club Team", "Company Team", "Private Team"] as const
+export const TEAM_TYPES = ["Club Team", "Business Team", "Private Team"] as const
 export type TeamType = (typeof TEAM_TYPES)[number]
+
+// Backward compatibility for pre-migration data.
+export function normalizeTeamType(teamType: string): TeamType {
+  if (teamType === "Company Team") return "Business Team"
+  if (teamType === "Private Team") return "Private Team"
+  return "Club Team"
+}
 
 // SAPL operating regions for the Tshwane competition.
 export const SAPL_REGIONS = ["Tshwane Central", "Tshwane East", "Tshwane South", "Tshwane West"] as const

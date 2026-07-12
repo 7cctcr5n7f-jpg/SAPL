@@ -112,8 +112,13 @@ export async function runDemoSeed() {
 
   // Make the captain own + captain the first team of that organisation.
   const [firstTeam] = firstOrg
-    ? await db.select({ id: teams.id }).from(teams).where(eq(teams.organisationId, firstOrg.id)).orderBy(teams.id).limit(1)
-    : await db.select({ id: teams.id }).from(teams).orderBy(teams.id).limit(1)
+    ? await db
+      .select({ id: teams.id, regionId: teams.regionId, name: teams.name })
+      .from(teams)
+      .where(eq(teams.organisationId, firstOrg.id))
+      .orderBy(teams.id)
+      .limit(1)
+    : await db.select({ id: teams.id, regionId: teams.regionId, name: teams.name }).from(teams).orderBy(teams.id).limit(1)
   if (firstTeam) {
     await db
       .update(teams)

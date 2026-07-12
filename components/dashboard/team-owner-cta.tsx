@@ -20,7 +20,7 @@ import { Users, Store } from "lucide-react"
 import { TEAM_TYPES, SAPL_REGIONS } from "@/lib/constants"
 
 // Self-service teams are not entered through a venue, so they default to a
-// Private Team. Captains/managers can pick Company or Private here; "Club Team"
+// Private Team. Captains/managers can pick Business or Private here; "Club Team"
 // is reserved for teams a venue enters under Venue Management.
 const SELF_SERVICE_TEAM_TYPES = TEAM_TYPES.filter((t) => t !== "Club Team")
 
@@ -121,7 +121,7 @@ function CreateTeamCard() {
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Choose Private Team for a group of friends, or Company Team if you represent a business. Club Teams are
+                  Choose Private Team for a group of friends, or Business Team if you represent a business. Club Teams are
                   entered by a venue under Venue Management.
                 </p>
               </div>

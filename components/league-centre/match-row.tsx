@@ -97,7 +97,7 @@ export function MatchRow({ fixture, showMeta = false }: { fixture: LCFixture; sh
 
       {/* Right action */}
       <div className="flex shrink-0 items-center">
-        {!isCompleted && fixture.joinUrl ? (
+        {!isCompleted && fixture.assignedToFixture && fixture.joinUrl ? (
           <a
             href={fixture.joinUrl}
             target="_blank"

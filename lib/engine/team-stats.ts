@@ -1,6 +1,8 @@
 import { db } from "@/lib/db"
-import { teams, teamPairings, players, clubs } from "@/lib/db/schema"
-import { and, eq, inArray, isNotNull } from "drizzle-orm"
+import { teams, teamPairings, players, clubs, fixtures, seasons } from "@/lib/db/schema"
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm"
+import { deriveTeamLifecycleStatus } from "@/lib/team-lifecycle"
+import { isSeasonLockedStatus } from "@/lib/season-lifecycle"
 
 /**
  * Recomputes the cached roster aggregates for a team (average League Index and
@@ -12,7 +14,16 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm"
  */
 export async function recomputeTeamStats(teamId: number) {
   const [team] = await db
-    .select({ id: teams.id, homeClubId: teams.homeClubId, saplRegion: teams.saplRegion, regionId: teams.regionId })
+    .select({
+      id: teams.id,
+      homeClubId: teams.homeClubId,
+      saplRegion: teams.saplRegion,
+      regionId: teams.regionId,
+      divisionId: teams.divisionId,
+      seasonId: teams.seasonId,
+      maxPlayers: teams.maxPlayers,
+      status: teams.status,
+    })
     .from(teams)
     .where(eq(teams.id, teamId))
     .limit(1)
@@ -58,8 +69,42 @@ export async function recomputeTeamStats(teamId: number) {
     }
   }
 
+  let seasonStatus: string | null = null
+  if (team.seasonId != null) {
+    const [season] = await db
+      .select({ status: seasons.status })
+      .from(seasons)
+      .where(eq(seasons.id, team.seasonId))
+      .limit(1)
+    seasonStatus = season?.status ?? null
+  }
+
+  const [fixtureAgg] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      remaining: sql<number>`count(case when ${fixtures.status} != 'completed' then 1 end)::int`,
+    })
+    .from(fixtures)
+    .where(or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)))
+
+  const lifecycleStatus =
+    team.status === "inactive"
+      ? "inactive"
+      : deriveTeamLifecycleStatus({
+          playerCount,
+          maxPlayers: team.maxPlayers ?? 8,
+          divisionId: team.divisionId ?? null,
+          fixtureCount: fixtureAgg?.total ?? 0,
+          remainingFixtureCount: fixtureAgg?.remaining ?? 0,
+          seasonStatus: isSeasonLockedStatus(seasonStatus) ? "active" : seasonStatus,
+        })
+
   await db
     .update(teams)
-    .set({ avgLi, playerCount, saplRegion, regionId, updatedAt: new Date() })
+    .set({ avgLi, playerCount, saplRegion, regionId, status: lifecycleStatus, updatedAt: new Date() })
     .where(eq(teams.id, teamId))
+}
+
+export async function syncTeamLifecycleStatus(teamId: number) {
+  await recomputeTeamStats(teamId)
 }

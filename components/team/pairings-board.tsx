@@ -17,7 +17,6 @@ import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -26,9 +25,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { invitePlayerByEmail, setPairingSlot, cancelInvite } from "@/lib/actions/pairings"
-import { PAIRING_LAYOUT, CATEGORY_RULES } from "@/lib/constants"
+import { CATEGORY_RULES } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { MyTeamAddPlayer } from "@/components/team/my-team-add-player"
 import {
   AlertTriangle,
   ChevronDown,
@@ -42,7 +42,13 @@ import {
 } from "lucide-react"
 import type { PairingCategory, PairingPlayer, PairingSlot } from "@/lib/queries-dashboard"
 
-type Invite = { id: number; email: string; category: string | null }
+type Invite = {
+  id: number
+  email: string
+  category: string | null
+  pairIndex?: number | null
+  slotIndex?: number | null
+}
 
 // Slot drop-zone id format: "slot|{category}|{pairIndex}|{slotIndex}"
 // Draggable id format:       "player|{playerId}|{fromCategory}|{fromPairIndex}|{fromSlotIndex}"
@@ -66,11 +72,11 @@ function parseDroppable(id: string) {
 function DraggablePlayer({
   slot,
   categoryName,
-  isOver,
   overCap,
   clubPaysFees,
   onRemove,
   isDragging,
+  canManage,
 }: {
   slot: PairingSlot
   categoryName: string
@@ -79,10 +85,11 @@ function DraggablePlayer({
   clubPaysFees: boolean
   onRemove: () => void
   isDragging?: boolean
+  canManage: boolean
 }) {
   const player = slot.player!
   const id = `player|${player.playerId}|${categoryName}|${slot.pairIndex}|${slot.slotIndex}`
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id })
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id, disabled: !canManage })
 
   const style = transform
     ? { transform: CSS.Translate.toString(transform), zIndex: 50, opacity: isDragging ? 0.4 : 1 }
@@ -101,10 +108,14 @@ function DraggablePlayer({
       <div className="flex items-center gap-2.5">
         {/* Drag handle */}
         <button
-          {...listeners}
-          {...attributes}
-          className="cursor-grab touch-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+          {...(canManage ? listeners : {})}
+          {...(canManage ? attributes : {})}
+          className={cn(
+            "touch-none text-slate-300",
+            canManage ? "cursor-grab hover:text-slate-500 active:cursor-grabbing" : "cursor-default",
+          )}
           aria-label="Drag to reorder"
+          disabled={!canManage}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -141,13 +152,15 @@ function DraggablePlayer({
           </p>
         </div>
       </div>
-      <button
-        onClick={onRemove}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-        aria-label="Remove from slot"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      {canManage && (
+        <button
+          onClick={onRemove}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          aria-label="Remove from slot"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }
@@ -155,6 +168,8 @@ function DraggablePlayer({
 // ─── Drop zone slot ─────────────────────────────────────────────────────────
 
 function DroppableSlot({
+  teamId,
+  slotsRemaining,
   slot,
   categoryName,
   avail,
@@ -162,10 +177,15 @@ function DroppableSlot({
   overCap,
   onAssign,
   onRemove,
-  onInvite,
+  onInviteCreated,
+  pendingInvite,
+  onCancelInvite,
   pending,
   activePlayerId,
+  canManage,
 }: {
+  teamId: number
+  slotsRemaining: number
   slot: PairingSlot
   categoryName: string
   avail: PairingPlayer[]
@@ -173,9 +193,12 @@ function DroppableSlot({
   overCap: boolean
   onAssign: (playerId: string) => void
   onRemove: () => void
-  onInvite: () => void
+  onInviteCreated?: (invite: Invite) => void
+  pendingInvite: Invite | null
+  onCancelInvite: (inviteId: number) => void
   pending: boolean
   activePlayerId: string | null
+  canManage: boolean
 }) {
   const droppableId = slotId(categoryName, slot.pairIndex, slot.slotIndex)
   const { isOver, setNodeRef } = useDroppable({ id: droppableId })
@@ -199,7 +222,25 @@ function DroppableSlot({
           clubPaysFees={clubPaysFees}
           onRemove={onRemove}
           isDragging={isDraggingThisPlayer}
+          canManage={canManage}
         />
+      ) : pendingInvite ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-slate-700">{pendingInvite.email}</p>
+            <p className="text-xs text-amber-700">Pending invitation</p>
+          </div>
+          {canManage && (
+            <button
+              onClick={() => onCancelInvite(pendingInvite.id)}
+              disabled={pending}
+              className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:text-red-500"
+              aria-label="Cancel invite"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       ) : (
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
@@ -214,7 +255,7 @@ function DroppableSlot({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {avail.length > 0 && (
+            {canManage && avail.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -243,15 +284,28 @@ function DroppableSlot({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 px-3 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              onClick={onInvite}
-            >
-              <Mail className="h-3 w-3" />
-              Invite
-            </Button>
+            {canManage && (
+              <MyTeamAddPlayer
+                teamId={teamId}
+                slotsRemaining={slotsRemaining}
+                targetCategory={categoryName}
+                targetPairIndex={slot.pairIndex}
+                targetSlotIndex={slot.slotIndex}
+                onInviteCreated={(invite) => {
+                  onInviteCreated?.(invite)
+                }}
+                trigger={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 px-3 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  >
+                    <Mail className="h-3 w-3" />
+                    Add
+                  </Button>
+                }
+              />
+            )}
           </div>
         </div>
       )}
@@ -284,29 +338,37 @@ function PlayerDragOverlay({ player }: { player: PairingPlayer }) {
 
 export function PairingsBoard({
   teamId,
-  teamName,
   categories,
+  roster: rosterProp,
   invites: initialInvites,
   clubPaysFees,
   teamAvgPr,
+  canManage = true,
 }: {
   teamId: number
-  teamName?: string
   categories: PairingCategory[]
+  roster?: PairingPlayer[]
   invites: Invite[]
   clubPaysFees: boolean
   teamAvgPr?: number | null
+  canManage?: boolean
 }) {
-  const roster: PairingPlayer[] = []
-  for (const cat of categories) {
-    for (const pair of cat.pairs) {
-      for (const slot of pair) {
-        if (slot.player && !roster.find((p) => p.playerId === slot.player!.playerId)) {
-          roster.push(slot.player)
-        }
-      }
-    }
-  }
+  const roster: PairingPlayer[] =
+    rosterProp && rosterProp.length > 0
+      ? rosterProp
+      : (() => {
+          const derived: PairingPlayer[] = []
+          for (const cat of categories) {
+            for (const pair of cat.pairs) {
+              for (const slot of pair) {
+                if (slot.player && !derived.find((p) => p.playerId === slot.player!.playerId)) {
+                  derived.push(slot.player)
+                }
+              }
+            }
+          }
+          return derived
+        })()
 
   const [pending, start] = useTransition()
   const router = useRouter()
@@ -342,6 +404,8 @@ export function PairingsBoard({
       }),
     ),
   )
+  const totalSlotCount = categories.reduce((sum, c) => sum + c.pairs.reduce((pairSum, p) => pairSum + p.length, 0), 0)
+  const slotsRemaining = Math.max(0, totalSlotCount - (placedIds.size + invites.length))
 
   function assign(category: string, pairIndex: number, slotIndex: number, playerId: string | null) {
     start(async () => {
@@ -355,6 +419,7 @@ export function PairingsBoard({
   }
 
   function handleDragStart(event: DragStartEvent) {
+    if (!canManage) return
     const id = String(event.active.id)
     if (!id.startsWith("player|")) return
     const { playerId } = parseDraggable(id)
@@ -363,6 +428,7 @@ export function PairingsBoard({
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    if (!canManage) return
     setActivePlayer(null)
     const overId = event.over?.id
     const activeId = String(event.active.id)
@@ -400,6 +466,24 @@ export function PairingsBoard({
     })
   }
 
+  function upsertInvite(invite: Invite) {
+    setInvites((prev) => {
+      const filtered = prev.filter(
+        (i) =>
+          !(
+            i.category === invite.category &&
+            i.pairIndex === invite.pairIndex &&
+            i.slotIndex === invite.slotIndex
+          ),
+      )
+      return [...filtered, invite]
+    })
+  }
+
+  function removeInviteLocally(inviteId: number) {
+    setInvites((prev) => prev.filter((i) => i.id !== inviteId))
+  }
+
   function sendInvite() {
     if (!inviteTarget) return
     const target = inviteTarget
@@ -416,7 +500,15 @@ export function PairingsBoard({
         toast.error(res.error)
       } else {
         toast.success(res?.success ?? "Invite sent")
-        setInvites((prev) => [...prev, { id: Date.now(), email: trimmed, category: target.category }])
+        if (res?.invite) {
+          upsertInvite({
+            id: res.invite.id,
+            email: res.invite.email,
+            category: res.invite.category,
+            pairIndex: res.invite.pairIndex,
+            slotIndex: res.invite.slotIndex,
+          })
+        }
         setInviteTarget(null)
         setEmail("")
         router.refresh()
@@ -425,7 +517,7 @@ export function PairingsBoard({
   }
 
   function removeCancelledInvite(id: number) {
-    setInvites((prev) => prev.filter((i) => i.id !== id))
+    removeInviteLocally(id)
   }
 
   function availableFor(cat: PairingCategory | undefined): PairingPlayer[] {
@@ -439,7 +531,7 @@ export function PairingsBoard({
     })
   }
 
-  function PairBlock({ categoryName }: { categoryName: string }) {
+  function renderPairBlock(categoryName: string) {
     const cat = catByName.get(categoryName)
     const existing = cat?.pairs[0] ?? []
     const pair: PairingSlot[] = [1, 2].map(
@@ -451,7 +543,6 @@ export function PairingsBoard({
         },
     )
     const avail = availableFor(cat ?? { category: categoryName, pairs: [] })
-    const catInvites = invites.filter((i) => i.category === categoryName)
     const filled = pair.filter((s) => s.player).length
     const complete = filled === 2
     const isLadies = /^Ladies/.test(categoryName)
@@ -508,6 +599,8 @@ export function PairingsBoard({
           {pair.map((slot) => (
             <DroppableSlot
               key={slot.slotIndex}
+              teamId={teamId}
+              slotsRemaining={slotsRemaining}
               slot={slot}
               categoryName={categoryName}
               avail={avail}
@@ -515,9 +608,29 @@ export function PairingsBoard({
               overCap={playerOverCap(slot.player)}
               onAssign={(pid) => assign(categoryName, slot.pairIndex, slot.slotIndex, pid)}
               onRemove={() => assign(categoryName, slot.pairIndex, slot.slotIndex, null)}
-              onInvite={() => setInviteTarget({ category: categoryName, pairIndex: slot.pairIndex, slotIndex: slot.slotIndex })}
+              onInviteCreated={(invite) => upsertInvite(invite)}
+              pendingInvite={
+                invites.find(
+                  (i) =>
+                    i.category === categoryName &&
+                    (i.pairIndex ?? null) === slot.pairIndex &&
+                    (i.slotIndex ?? null) === slot.slotIndex,
+                ) ?? null
+              }
+              onCancelInvite={(inviteId) =>
+                start(async () => {
+                  const res = await cancelInvite(inviteId)
+                  if (res?.error) toast.error(res.error)
+                  else {
+                    toast.success(res?.success ?? "Cancelled")
+                    removeInviteLocally(inviteId)
+                    router.refresh()
+                  }
+                })
+              }
               pending={pending}
               activePlayerId={activePlayer?.playerId ?? null}
+              canManage={canManage}
             />
           ))}
         </div>
@@ -532,39 +645,6 @@ export function PairingsBoard({
           </div>
         )}
 
-        {catInvites.length > 0 && (
-          <div className="border-t border-amber-100 bg-amber-50 px-4 py-2.5 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600">
-              Awaiting response
-            </p>
-            {catInvites.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2 text-xs">
-                  <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                  <span className="truncate text-slate-600">{inv.email}</span>
-                </div>
-                <button
-                  onClick={() =>
-                    start(async () => {
-                      const res = await cancelInvite(inv.id)
-                      if (res?.error) toast.error(res.error)
-                      else {
-                        toast.success(res?.success ?? "Cancelled")
-                        removeCancelledInvite(inv.id)
-                        router.refresh()
-                      }
-                    })
-                  }
-                  disabled={pending}
-                  className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:text-red-500"
-                  aria-label="Cancel invite"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     )
   }
@@ -603,19 +683,19 @@ export function PairingsBoard({
         */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
           {/* Top-left: Ladies Open */}
-          <PairBlock categoryName="Ladies Open" />
+          {renderPairBlock("Ladies Open")}
 
           {/* Top-right: Mens Open */}
-          <PairBlock categoryName="Mens Open" />
+          {renderPairBlock("Mens Open")}
 
           {/* Bottom-left: Mens Beginner */}
-          <PairBlock categoryName="Mens Beginner" />
+          {renderPairBlock("Mens Beginner")}
 
           {/* Bottom-right: Mens Intermediate */}
-          <PairBlock categoryName="Mens Intermediate" />
+          {renderPairBlock("Mens Intermediate")}
         </div>
 
-        {uncategorisedInvites.length > 0 && (
+        {canManage && uncategorisedInvites.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-700">
               <Clock className="h-4 w-4" />
@@ -652,7 +732,7 @@ export function PairingsBoard({
           </div>
         )}
 
-        <Dialog open={!!inviteTarget} onOpenChange={(open) => !open && setInviteTarget(null)}>
+        <Dialog open={canManage && !!inviteTarget} onOpenChange={(open) => !open && setInviteTarget(null)}>
           <DialogContent className="w-[92vw] max-w-sm bg-white">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-slate-800">
@@ -672,8 +752,8 @@ export function PairingsBoard({
                 </div>
               )}
               <p className="text-sm text-slate-500">
-                Enter the player&apos;s email. If they already have an account they&apos;ll be added
-                immediately — otherwise they&apos;ll receive an invite link.
+                Enter the player&apos;s email. The player will receive an invite link and
+                must accept before occupying this slot.
               </p>
               <Input
                 type="email"
@@ -708,7 +788,7 @@ export function PairingsBoard({
       </div>
 
       <DragOverlay>
-        {activePlayer ? <PlayerDragOverlay player={activePlayer} /> : null}
+        {canManage && activePlayer ? <PlayerDragOverlay player={activePlayer} /> : null}
       </DragOverlay>
     </DndContext>
   )

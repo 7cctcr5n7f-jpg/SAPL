@@ -40,7 +40,7 @@ import {
   type SlotTimeslot,
 } from "@/lib/constants"
 import { saveClub, deleteClub, updateTeamOwnerEmail } from "@/lib/actions/clubs"
-import type { ClubRow, PlayerOption } from "@/lib/queries-clubs"
+import type { ClubRow } from "@/lib/queries-clubs"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -72,14 +72,9 @@ const SLOT_META: Record<CourtSlotMode, { label: string; short: string; className
 
 export function ClubsManager({
   clubs,
-  players,
-  organisationId,
   locked = false,
 }: {
   clubs: ClubRow[]
-  players: PlayerOption[]
-  // When provided (club-owner dashboard), new venues are created under this org.
-  organisationId?: number
   // When the season is active, court slot / own-team / public-slot settings are
   // frozen. The editor renders read-only and the server rejects slot changes.
   locked?: boolean
@@ -170,7 +165,6 @@ export function ClubsManager({
     startTransition(async () => {
       const res = await saveClub({
         id: form.id,
-        organisationId,
         name: form.name,
         description: form.description,
         address: form.address,

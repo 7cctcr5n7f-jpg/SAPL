@@ -72,7 +72,7 @@ export type NavUser = {
 }
 
 // Routes where the bottom nav should never appear (auth + onboarding flows).
-const HIDDEN_PREFIXES = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/verify-email", "/onboarding"]
+const HIDDEN_PREFIXES = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/onboarding"]
 
 export function GlobalBottomNav({ model, user }: { model: NavModel; user: NavUser | null }) {
   const pathname = usePathname()

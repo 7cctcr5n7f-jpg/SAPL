@@ -82,7 +82,7 @@ async function migratePlayersToUser() {
 
     // Step 6: Update ppl_matches
     console.log("[v0] Updating ppl_matches foreign keys...")
-    for (const { id, userId } of playerMap) {
+    for (const { id } of playerMap) {
       await sql`
         UPDATE ppl_matches
         SET homeSetsWon = homeSetsWon WHERE homePlayerId1 = ${id} OR homePlayerId2 = ${id} OR awayPlayerId1 = ${id} OR awayPlayerId2 = ${id}

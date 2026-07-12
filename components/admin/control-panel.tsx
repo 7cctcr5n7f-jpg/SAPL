@@ -27,6 +27,7 @@ import {
 } from "@/lib/actions/admin"
 import type { SeasonValidation } from "@/lib/engine/validation"
 import { DIVISIONS } from "@/lib/constants"
+import { normalizeSeasonStatus, seasonStatusLabel } from "@/lib/season-lifecycle"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
@@ -152,7 +153,7 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
                 </div>
               )}
 
-              {/* Lifecycle: Draft -> Validated -> Published */}
+              {/* Lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked */}
               <SeasonLifecycle season={s} />
             </div>
           )
@@ -163,37 +164,34 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const normalized = normalizeSeasonStatus(status)
   const map: Record<string, string> = {
-    setup: "bg-muted text-muted-foreground",
-    draft: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
-    validated: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-    active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-    // legacy
-    published: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    registration_open: "bg-muted text-muted-foreground",
+    registration_closed: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+    divisions_finalised: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    fixtures_generated: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    league_locked: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
   }
   return (
-    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium capitalize", map[status] ?? map.setup)}>
-      {status}
+    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", map[normalized] ?? map.registration_open)}>
+      {seasonStatusLabel(status)}
     </span>
   )
 }
 
 /**
- * The Setup -> Draft -> Validated -> Active workflow for one season.
- *  - Generate fixtures: prunes empty regions/divisions and builds the schedule
- *    (Setup -> Draft).
- *  - Validate: checks venue/timeslot collisions, division completeness and that
- *    every assigned team has a captain (Draft -> Validated).
- *  - Start season: makes fixtures live and locks team/venue editing; gated on a
- *    clean validation AND all captains assigned (Validated -> Active).
- *  - Unlock season: re-opens editing (Active -> Validated).
+ * Lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked.
+ *  - Validate finalises divisions readiness.
+ *  - Generate fixtures is one-time.
+ *  - Start season locks structure.
+ *  - Unlock season re-opens back to Divisions Finalised.
  */
 function SeasonLifecycle({ season }: { season: Season }) {
   const [pending, start] = useTransition()
   const [report, setReport] = useState<SeasonValidation | null>(null)
-  const status = season.status
-  const isActive = status === "active"
-  const hasFixtures = status === "draft" || status === "validated" || isActive || status === "published"
+  const status = normalizeSeasonStatus(season.status)
+  const isActive = status === "league_locked"
+  const hasFixtures = status === "fixtures_generated" || isActive
 
   function run<T extends { report?: SeasonValidation }>(
     action: (fd: FormData) => Promise<T & { ok: boolean; error?: string }>,
@@ -214,14 +212,14 @@ function SeasonLifecycle({ season }: { season: Season }) {
       {isActive && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
           <Lock className="h-4 w-4 shrink-0" />
-          Season is active — team names, home venues and club slot settings are locked. Unlock to make changes.
+          League is locked — team names, home venues and club slot settings are locked. Unlock to make changes.
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant="outline"
-          disabled={pending || isActive}
+          disabled={pending || isActive || hasFixtures || status !== "divisions_finalised"}
           onClick={() =>
             run(async (fd) => {
               const res = await generateSeason(fd)
@@ -229,14 +227,14 @@ function SeasonLifecycle({ season }: { season: Season }) {
             }, "Fixtures generated")
           }
         >
-          <Wand2 className="mr-1 h-4 w-4" /> {hasFixtures ? "Regenerate fixtures" : "Generate fixtures"}
+          <Wand2 className="mr-1 h-4 w-4" /> Generate fixtures
         </Button>
 
         <Button
           size="sm"
           variant="outline"
-          disabled={pending || isActive}
-          onClick={() => run(validateSeasonAction, "Season validated")}
+          disabled={pending || isActive || status === "fixtures_generated"}
+          onClick={() => run(validateSeasonAction, "Divisions finalised")}
         >
           <ShieldCheck className="mr-1 h-4 w-4" /> Validate
         </Button>
@@ -253,22 +251,22 @@ function SeasonLifecycle({ season }: { season: Season }) {
         ) : (
           <Button
             size="sm"
-            disabled={pending || status !== "validated"}
+            disabled={pending || status !== "fixtures_generated"}
             onClick={() => run(publishSeasonAction, "Season started")}
           >
             <Rocket className="mr-1 h-4 w-4" /> Start season
           </Button>
         )}
 
-        {!isActive && hasFixtures && status !== "draft" && (
+        {!isActive && hasFixtures && (
           <Button
             size="sm"
             variant="ghost"
             className="text-muted-foreground"
             disabled={pending}
-            onClick={() => run(revertSeasonToDraftAction, "Reverted to draft")}
+            onClick={() => run(revertSeasonToDraftAction, "Registration re-opened")}
           >
-            <Undo2 className="mr-1 h-4 w-4" /> Back to draft
+            <Undo2 className="mr-1 h-4 w-4" /> Re-open registration
           </Button>
         )}
       </div>

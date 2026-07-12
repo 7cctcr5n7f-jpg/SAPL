@@ -1,12 +1,6 @@
 import { betterAuth } from "better-auth"
 import { pool } from "@/lib/db"
-import { sendEmail, resetPasswordEmail, verifyEmail, adminNewMemberEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
-
-// Email verification is built but NOT enforced yet: users can still sign in
-// before activating. Flip `requireEmailVerification` to true (below) once a
-// RESEND_API_KEY + verified sender domain are configured so real activation
-// emails reach users.
-const ENFORCE_EMAIL_VERIFICATION = false
+import { sendEmail, resetPasswordEmail, adminNewMemberEmail, ADMIN_EMAIL, appBaseUrl } from "@/lib/email"
 
 export const auth = betterAuth({
   database: pool,
@@ -21,7 +15,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
-    requireEmailVerification: ENFORCE_EMAIL_VERIFICATION,
+    requireEmailVerification: false,
     resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
     sendResetPassword: async ({ user, url }) => {
       const { subject, html, text } = resetPasswordEmail(url)
@@ -34,12 +28,9 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // Auto-verify email on account creation while email verification is not
-        // enforced. This prevents users from being locked out if the flag is
-        // toggled on later without a backfill.
-        before: async (user) => {
-          return { data: { ...user, emailVerified: ENFORCE_EMAIL_VERIFICATION ? user.emailVerified : true } }
-        },
+        // Email verification is disabled, so mark accounts verified at signup to
+        // keep downstream checks and reports consistent with the current flow.
+        before: async (user) => ({ data: { ...user, emailVerified: true } }),
         // Fire-and-forget admin alert — never blocks the registration flow.
         after: async (user) => {
           const adminUrl = `${appBaseUrl()}/admin/members`
@@ -47,19 +38,6 @@ export const auth = betterAuth({
           sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
         },
       },
-    },
-  },
-  emailVerification: {
-    sendOnSignUp: true,
-    autoSignInAfterVerification: true,
-    expiresIn: 60 * 60 * 24, // 24 hours
-    sendVerificationEmail: async ({ user, url }) => {
-      const { subject, html, text } = verifyEmail(url)
-      const { sent } = await sendEmail({ to: user.email, subject, html, text })
-      if (!sent) {
-        // No email provider configured — surface the activation link for testing.
-        console.log(`[v0] Account activation link for ${user.email}: ${url}`)
-      }
     },
   },
   trustedOrigins: [
@@ -85,17 +63,12 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // 1 day
   },
   advanced: {
-    // The app runs inside a cross-site preview iframe (and may be embedded
-    // elsewhere), so the session cookie must be SameSite=None + Secure or the
-    // browser drops it and sign-in appears to "do nothing". Browsers treat
-    // localhost as a secure context, so this also works in local dev.
-    // `partitioned: true` (CHIPS) is required for modern browsers (Chrome,
-    // Safari) that block/partition third-party cookies in iframes — without it
-    // the cookie is silently dropped and the user is bounced back to sign-in.
-    defaultCookieAttributes: {
-      sameSite: "none" as const,
-      secure: true,
-      partitioned: true,
-    },
+    // In production / preview iframes the session cookie must be SameSite=None
+    // + Secure + Partitioned (CHIPS) or browsers silently drop it.
+    // In local development use standard Lax cookies so they work over plain HTTP.
+    defaultCookieAttributes:
+      process.env.NODE_ENV === "production"
+        ? { sameSite: "none" as const, secure: true, partitioned: true }
+        : { sameSite: "lax" as const, secure: false },
   },
 })

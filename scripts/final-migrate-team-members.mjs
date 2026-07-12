@@ -14,7 +14,7 @@ try {
   try {
     await client.query('ALTER TABLE ppl_team_members DROP COLUMN IF EXISTS "playerId_new"');
     console.log("[v0] Cleaned up temporary column");
-  } catch (err) {
+  } catch {
     console.log("[v0] No cleanup needed");
   }
 
@@ -64,7 +64,7 @@ try {
   console.log("[v0] Recreating index...");
   try {
     await client.query('DROP INDEX IF EXISTS ppl_team_members_player_idx');
-  } catch (err) {
+  } catch {
     console.log("[v0] Index didn't exist");
   }
   await client.query('CREATE INDEX ppl_team_members_player_idx ON ppl_team_members("playerId")');

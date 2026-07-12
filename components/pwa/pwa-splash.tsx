@@ -22,12 +22,17 @@ export function PwaSplash() {
     if (sessionStorage.getItem("sapl-splash-shown")) return
     sessionStorage.setItem("sapl-splash-shown", "1")
 
-    setShow(true)
-    const fadeTimer = setTimeout(() => setFading(true), 1100)
-    const hideTimer = setTimeout(() => setShow(false), 1600)
+    let fadeTimer: ReturnType<typeof setTimeout> | null = null
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+    const frame = window.requestAnimationFrame(() => {
+      setShow(true)
+      fadeTimer = setTimeout(() => setFading(true), 1100)
+      hideTimer = setTimeout(() => setShow(false), 1600)
+    })
     return () => {
-      clearTimeout(fadeTimer)
-      clearTimeout(hideTimer)
+      window.cancelAnimationFrame(frame)
+      if (fadeTimer) clearTimeout(fadeTimer)
+      if (hideTimer) clearTimeout(hideTimer)
     }
   }, [])
 

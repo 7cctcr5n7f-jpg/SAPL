@@ -7,12 +7,11 @@ import {
   standings,
   disputes,
   playoffs,
-  players,
   regions,
   organisations,
   clubs,
 } from "@/lib/db/schema"
-import { eq, and, desc, asc, inArray } from "drizzle-orm"
+import { eq, desc, asc, inArray } from "drizzle-orm"
 
 export async function getRegions() {
   return db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.name))

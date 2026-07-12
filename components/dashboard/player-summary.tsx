@@ -8,28 +8,23 @@ import { cn } from "@/lib/utils"
 
 export function PlayerSummary({
   firstName,
-  leagueIndex,
   team,
   feesPaid,
   playtomicRating,
-  eligibleCategories,
   avatarUrl,
   onPhotoChange,
   pendingInvites = [],
   partner,
 }: {
   firstName: string
-  leagueIndex: number | null
   team: PlayerOverviewTeam | null
   feesPaid: boolean
   playtomicRating: string | null
-  eligibleCategories: string[]
   avatarUrl?: string | null
   onPhotoChange?: (url: string) => void
   pendingInvites?: PendingTeamInvite[]
   partner?: PairingPartner | null
 }) {
-  const primaryCategory = eligibleCategories?.[0] || null
   const myPr = playtomicRating ? parseFloat(playtomicRating) : null
   const combinedAvg =
     myPr != null && partner?.playtomicRating != null
@@ -102,7 +97,7 @@ export function PlayerSummary({
           </h1>
           {team ? (
             <Link
-              href="/dashboard/org"
+              href="/dashboard/my-team"
               className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
             >
               <Users className="h-3.5 w-3.5 shrink-0" />

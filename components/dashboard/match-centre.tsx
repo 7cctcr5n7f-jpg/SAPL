@@ -54,12 +54,11 @@ function courtLinksOf(f: DashboardFixture): Record<string, string> {
   return (f.courtLinks ?? {}) as Record<string, string>
 }
 
-/** The booking link most relevant to the player: their own court, else the first available. */
+/** The booking link for the player's assigned category only. */
 function primaryJoinLink(f: DashboardFixture, detail?: FixtureDetail): string | null {
   const links = courtLinksOf(f)
-  if (detail?.myCategory && links[detail.myCategory]) return links[detail.myCategory]
-  for (const c of COURTS) if (links[c]) return links[c]
-  return null
+  if (!detail?.myCategory) return null
+  return links[detail.myCategory] ?? null
 }
 
 function teamLabel(name: string | null, slot: number | null) {
@@ -200,7 +199,7 @@ function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail
                     )}
                   </span>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {url ? (
+                    {cat?.isMine && url ? (
                       <a
                         href={url}
                         target="_blank"
@@ -209,11 +208,11 @@ function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail
                       >
                         <ExternalLink className="h-3.5 w-3.5" /> Join
                       </a>
-                    ) : (
+                    ) : cat?.isMine ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
                         <AlertTriangle className="h-3.5 w-3.5" /> No link
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </li>
               )
@@ -230,11 +229,9 @@ function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail
 export function MatchCentre({
   matches,
   details = {},
-  isCaptain,
 }: {
   matches: DashboardFixture[]
   details?: Record<number, FixtureDetail>
-  isCaptain: boolean
 }) {
   const [scoreFixture, setScoreFixture] = useState<DashboardFixture | null>(null)
 
@@ -286,6 +283,7 @@ export function MatchCentre({
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/[0.03]">
               {toDoFixtures.map((f) => {
                 const url = primaryJoinLink(f, details[f.id])
+                const hasAssignedCategory = Boolean(details[f.id]?.myCategory)
                 const isAwaiting = groupOf(f) === "awaiting"
                 return (
                   <ActionItem
@@ -296,10 +294,15 @@ export function MatchCentre({
                       <div className="flex items-center gap-2">
                         {url ? (
                           <JoinButton url={url} />
-                        ) : (
+                        ) : hasAssignedCategory ? (
                           <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
                             <Clock className="h-3 w-3" />
                             Link soon
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-300/60 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                            <Clock className="h-3 w-3" />
+                            Not assigned
                           </span>
                         )}
                         <button

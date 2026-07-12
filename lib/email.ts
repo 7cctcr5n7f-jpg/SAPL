@@ -10,7 +10,7 @@ export const ADMIN_EMAIL = "admin@southafricapadelleague.co.za"
 // is verified in Resend (https://resend.com/domains). Override with RESEND_FROM.
 const FROM = process.env.RESEND_FROM ?? `SAPL <${ADMIN_EMAIL}>`
 // Resend's shared, always-verified sender. Used as an automatic fallback when
-// the branded domain isn't verified yet, so password resets/activations still
+// the branded domain isn't verified yet, so password resets/invites still
 // go out instead of failing.
 const FALLBACK_FROM = "SAPL <onboarding@resend.dev>"
 
@@ -96,35 +96,6 @@ export function resetPasswordEmail(url: string) {
     </div>
   </div>`
   const text = `Reset your ${BRAND.name} password using this link (expires in 1 hour): ${url}`
-  return { subject, html, text }
-}
-
-/** Branded email-verification (account activation) markup. */
-export function verifyEmail(url: string) {
-  const subject = `Activate your ${BRAND.short} account`
-  const html = `
-  <div style="background:#0a0a0a;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:480px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden;">
-      <div style="padding:28px 32px;border-bottom:1px solid #262626;">
-        <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:2px;">${BRAND.short}</span>
-        <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
-      </div>
-      <div style="padding:32px;">
-        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">Activate your account</h1>
-        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 24px;">
-          Welcome to ${BRAND.name}. Confirm your email address to activate your account and start competing. This link expires in 24 hours.
-        </p>
-        <a href="${url}" style="display:inline-block;background:#E10600;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:8px;">
-          Activate account
-        </a>
-        <p style="color:#737373;font-size:12px;line-height:1.6;margin:24px 0 0;">
-          If you didn't create this account, you can safely ignore this email. Or paste this link into your browser:<br/>
-          <a href="${url}" style="color:#E10600;word-break:break-all;">${url}</a>
-        </p>
-      </div>
-    </div>
-  </div>`
-  const text = `Activate your ${BRAND.name} account using this link (expires in 24 hours): ${url}`
   return { subject, html, text }
 }
 

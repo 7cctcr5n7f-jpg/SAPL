@@ -24,6 +24,7 @@ import {
 import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
+import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
 
 /**
  * Players a captain has marked unavailable, keyed by fixtureId.
@@ -167,7 +168,14 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
   })
 
   const invites = await db
-    .select({ id: teamInvites.id, email: teamInvites.email, category: teamInvites.category, status: teamInvites.status })
+    .select({
+      id: teamInvites.id,
+      email: teamInvites.email,
+      category: teamInvites.category,
+      pairIndex: teamInvites.pairIndex,
+      slotIndex: teamInvites.slotIndex,
+      status: teamInvites.status,
+    })
     .from(teamInvites)
     .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")))
 
@@ -175,7 +183,13 @@ export async function getTeamPairingData(teamId: number, categoryNames: string[]
     team: { id: team.id, name: team.name, clubPaysFees: team.clubPaysFees },
     roster,
     categories: categoryBoards,
-    invites: invites.map((i) => ({ id: i.id, email: i.email, category: i.category })),
+    invites: invites.map((i) => ({
+      id: i.id,
+      email: i.email,
+      category: i.category,
+      pairIndex: i.pairIndex,
+      slotIndex: i.slotIndex,
+    })),
   }
 }
 
@@ -700,7 +714,13 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     })
     .from(teams)
     // Same rule for team-funded squads: only billable once placed in a division.
-    .where(and(eq(teams.clubPaysFees, true), eq(teams.status, "active"), isNotNull(teams.divisionId)))
+    .where(
+      and(
+        eq(teams.clubPaysFees, true),
+        inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
+        isNotNull(teams.divisionId),
+      ),
+    )
 
   for (const t of fundedTeams) {
     const [pay] = await db
@@ -1177,13 +1197,6 @@ export async function getAddablePlayers(limit = 500): Promise<AddablePlayer[]> {
   }))
 }
 
-// Org admin helpers ---------------------------------------------------------
-
-export async function getOrgByOwner(userId: string) {
-  const [o] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.ownerUserId, userId)).limit(1)
-  return o ?? null
-}
-
 // Shared team+division field shape used by all three team-row queries below.
 const teamRowFields = {
   team: {
@@ -1215,17 +1228,8 @@ const teamRowFields = {
   },
 }
 
-export async function getOrgTeams(orgId: number) {
-  return db
-    .select(teamRowFields)
-    .from(teams)
-    .leftJoin(divisions, eq(teams.divisionId, divisions.id))
-    .where(eq(teams.organisationId, orgId))
-    .orderBy(teams.name)
-}
-
-// League/super admins manage every team, not just one org's. Returns the same
-// shape as getOrgTeams so the Team Admin page can render either set.
+// League/super admins manage every team. Returns the shared { team, division }
+// shape used by Team Admin.
 export async function getAllTeamsForAdmin() {
   return db
     .select(teamRowFields)
@@ -1237,7 +1241,7 @@ export async function getAllTeamsForAdmin() {
 // Teams a club manager may manage in Team Admin: every team within their access
 // scope (assigned teams via owner email / captaincy / manual, UNION every team
 // homed at one of their assigned clubs). Returns the same { team, division }
-// shape as getOrgTeams so the Team Admin page can render it the same way.
+// shape used by Team Admin.
 export async function getScopedTeamRows(access: AccessContext) {
   const scopedTeamIds = await getScopedTeamIds(access)
   // null means "no restriction" (league admin) — callers handle that separately.

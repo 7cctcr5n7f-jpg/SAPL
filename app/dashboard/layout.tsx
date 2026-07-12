@@ -8,7 +8,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const me = await getCurrentUser()
   if (!me) redirect("/sign-in")
   // Only pure "player" role users who haven't completed onboarding get redirected.
-  // Captains, org admins, and super admins bypass onboarding regardless of isPlayer.
+  // Captains, team managers, and super admins bypass onboarding regardless of isPlayer.
   if (!me.isPlayer && me.realRole === "player") redirect("/onboarding")
 
   const access = await getAccessContext(me)

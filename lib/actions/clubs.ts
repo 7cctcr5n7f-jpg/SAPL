@@ -22,8 +22,7 @@ function slugify(input: string) {
 // manager assigned to a specific venue — via the venue's contact email (auto)
 // or a manual Members & Roles assignment — may manage that venue. For an
 // existing venue we authorise on the clubId (the contact-email assignment),
-// falling back to org ownership; for a brand-new venue (no clubId yet) only
-// league admins or the requested owner org may create it.
+// falling back to group ownership for legacy rows.
 async function requireClubManager(opts: { clubId?: number; organisationId?: number }) {
   const user = await getCurrentUser()
   if (!user) throw new Error("Not authenticated")
@@ -74,9 +73,6 @@ async function ensureUniqueSlug(base: string, ignoreId?: number) {
 
 type ClubInput = {
   id?: number
-  // For a NEW venue created from a club-owner dashboard, the organisation it
-  // belongs to. Ignored for existing venues and falls back to the default org.
-  organisationId?: number
   name: string
   description?: string
   address?: string
@@ -98,14 +94,11 @@ type ClubInput = {
 }
 
 export async function saveClub(input: ClubInput) {
-  // Scope the permission check to the venue's org: its current owner for an
-  // existing venue, or the requested owner org for a new one.
+  // Scope the permission check to the venue owner group for existing rows.
   let existingOrgId: number | undefined
   if (input.id) {
     const [existing] = await db.select({ organisationId: clubs.organisationId }).from(clubs).where(eq(clubs.id, input.id)).limit(1)
     existingOrgId = existing?.organisationId
-  } else if (input.organisationId) {
-    existingOrgId = input.organisationId
   }
   try {
     await requireClubManager({ clubId: input.id, organisationId: existingOrgId })
@@ -195,7 +188,7 @@ export async function saveClub(input: ClubInput) {
 
   revalidatePath("/admin/clubs")
   revalidatePath("/clubs")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin")
   return { ok: true }
 }
@@ -252,7 +245,7 @@ export async function setClubTeamCaptain(input: {
     }
     await db.update(teams).set({ captainUserId: null, updatedAt: new Date() }).where(eq(teams.id, team.id))
     revalidatePath("/admin/clubs")
-    revalidatePath("/dashboard/org")
+    revalidatePath("/dashboard/my-team")
     return { ok: true }
   }
 
@@ -288,7 +281,7 @@ export async function setClubTeamCaptain(input: {
   }
 
   revalidatePath("/admin/clubs")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
@@ -323,6 +316,6 @@ export async function updateTeamOwnerEmail(input: { teamId: number; ownerEmail: 
     .where(eq(teams.id, team.id))
 
   revalidatePath("/admin/clubs")
-  revalidatePath("/dashboard/org")
+  revalidatePath("/dashboard/my-team")
   return { ok: true }
 }

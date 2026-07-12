@@ -254,7 +254,7 @@ export const seasons = pgTable("ppl_seasons", {
   startDate: timestamp("startDate"),
   endDate: timestamp("endDate"),
   weeks: integer("weeks").notNull().default(7),
-  status: text("status").notNull().default("draft"), // setup | draft | validated | active (legacy: published)
+  status: text("status").notNull().default("registration_open"), // registration_open | registration_closed | divisions_finalised | fixtures_generated | league_locked
   isCurrent: boolean("isCurrent").notNull().default(false),
   // League join fee per player for this season (VAT inclusive, in Rand).
   playerFee: integer("playerFee").notNull().default(500),
@@ -290,7 +290,7 @@ export const teams = pgTable(
     id: serial("id").primaryKey(),
     organisationId: integer("organisationId").notNull(),
     name: text("name").notNull(),
-    teamType: text("teamType").notNull().default("Club Team"), // Club Team | Company Team | Private Team
+    teamType: text("teamType").notNull().default("Club Team"), // Club Team | Business Team | Private Team
     homeClubId: integer("homeClubId"), // venue (ppl_clubs id) this team plays out of
     saplRegion: text("saplRegion"), // denormalised from home club for fast board display
     divisionId: integer("divisionId"),
@@ -314,7 +314,7 @@ export const teams = pgTable(
     // When true the club/organisation covers entry fees for the whole team.
     // When false each player pays their own fee.
     clubPaysFees: boolean("clubPaysFees").notNull().default(true),
-    status: text("status").notNull().default("active"), // active | pending | inactive
+    status: text("status").notNull().default("draft"), // draft | recruiting | ready | division_assigned | fixtures_generated | league_active | completed | inactive
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },

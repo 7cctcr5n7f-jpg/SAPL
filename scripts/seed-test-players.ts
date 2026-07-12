@@ -49,7 +49,6 @@ const LAST = [
   "Maluleke", "Naidoo", "Pillay", "Govender", "Erasmus", "Molefe", "Smit", "Radebe", "Nel", "Tshabalala", "Viljoen",
 ]
 const CITIES = ["Centurion", "Faerie Glen", "Lynnwood", "Montana", "Hatfield", "Rosslyn", "Garsfontein", "Menlyn"]
-const REGIONS = ["Pretoria East", "Pretoria North", "Centurion", "Pretoria Old East"]
 
 type Band = {
   key: string

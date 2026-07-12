@@ -1,15 +1,12 @@
 import {
-  getOrgByOwner,
-  getOrgTeams,
   getAllTeamsForAdmin,
   getScopedTeamRows,
   getStandingForTeam,
   getTeamPairingData,
   getCategories,
-  getUnassignedPlayers,
 } from "@/lib/queries-dashboard"
 import { db } from "@/lib/db"
-import { organisations, user as userTable, userMeta, payments } from "@/lib/db/schema"
+import { user as userTable, userMeta, payments } from "@/lib/db/schema"
 import { eq, and, desc } from "drizzle-orm"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { getClubsWithUsage } from "@/lib/queries-clubs"
@@ -21,43 +18,14 @@ import { requirePermissionPage } from "@/lib/access"
 
 export default async function AdminTeamsPage() {
   const access = await requirePermissionPage("team_management")
-  const user = access.user
 
-  // League and super admins manage every team; org admins are scoped to their
-  // own. A super admin previewing the org_admin role drops to the scoped view.
+  // League and super admins manage every team; team-manager views are scoped to
+  // their access set.
   const isAdminWide = access.isLeagueAdmin
-
-  // A club manager assigned via a venue's contact email (or a manual team/club
-  // assignment) owns no organisation, but should still manage the teams within
-  // their scope.
-  const hasScopedAccess = !isAdminWide && (access.clubIds.length > 0 || access.teamIds.length > 0)
-
-  let org = await getOrgByOwner(user.id)
-
-  if (!org && (isAdminWide || user.isSuperAdmin || hasScopedAccess)) {
-    const [sample] = await db.select({ id: organisations.id, ownerUserId: organisations.ownerUserId }).from(organisations).orderBy(organisations.id).limit(1)
-    org = sample ?? null
-  }
-
-  if (!org) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Team Admin" subtitle="Create and manage teams, captains, squads and fees" />
-        <div className="rounded-lg border border-border bg-card p-10 text-center">
-          <p className="text-lg font-semibold">No teams linked to your account yet</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Team manager access is granted by the league office. Once you&apos;re set up, your teams will appear here.
-          </p>
-        </div>
-      </div>
-    )
-  }
 
   const orgTeamRows = isAdminWide
     ? await getAllTeamsForAdmin()
-    : hasScopedAccess
-      ? await getScopedTeamRows(access)
-      : await getOrgTeams(org.id)
+    : await getScopedTeamRows(access)
 
   type CaptainInfo = {
     playerId: string
@@ -170,8 +138,6 @@ export default async function AdminTeamsPage() {
     })
   }
 
-  const freeAgents = await getUnassignedPlayers()
-
   const clubUsage = await getClubsWithUsage()
   const orgClubs = clubUsage.map((c) => ({
     id: c.id,
@@ -194,7 +160,7 @@ export default async function AdminTeamsPage() {
         title="Team Admin"
         subtitle={isAdminWide ? "All teams across the league" : "Create and manage your teams, captains, squads and fees"}
       />
-      <OrgHub orgId={org.id} teams={teamData} freeAgents={freeAgents} venues={orgClubs} playerFee={playerFee} locked={locked} registeredEmails={registeredEmails} />
+      <OrgHub teams={teamData} venues={orgClubs} locked={locked} registeredEmails={registeredEmails} />
     </div>
   )
 }

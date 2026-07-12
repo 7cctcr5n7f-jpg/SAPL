@@ -2,6 +2,7 @@ import "server-only"
 import { db } from "@/lib/db"
 import { teams, teamMembers, user, payments } from "@/lib/db/schema"
 import { and, eq, inArray } from "drizzle-orm"
+import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
 import { TEAM_SQUAD_SIZE } from "@/lib/constants"
 
 /** Hard cap on the number of active players a team may carry (4 pairs x 2). */
@@ -150,7 +151,7 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
   const teamRows = await db
     .select({ id: teams.id, name: teams.name, clubPaysFees: teams.clubPaysFees })
     .from(teams)
-    .where(and(eq(teams.seasonId, seasonId), inArray(teams.status, ["active", "pending"])))
+    .where(and(eq(teams.seasonId, seasonId), inArray(teams.status, [...TEAM_VISIBLE_STATUSES])))
 
   const empty: SeasonReadiness = {
     teams: [],

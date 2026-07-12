@@ -1,6 +1,5 @@
 "use client"
 
-import { useTransition } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,34 +10,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MyTeamAddPlayer } from "@/components/team/my-team-add-player"
-import { removeFromTeam, cancelInvite } from "@/lib/actions/pairings"
-import { toast } from "sonner"
-import { useRouter } from "next/navigation"
 import {
   CheckCircle2,
   AlertCircle,
-  AlertTriangle,
-  Crown,
-  MoreVertical,
-  Plus,
-  Star,
-  Trophy,
   Calendar,
   CreditCard,
-  Clock,
-  ExternalLink,
   ChevronDown,
-  Users,
-  MapPin,
   Phone,
   Mail,
-  Mars,
-  Venus,
-  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { MyTeamView as MyTeamViewData, MyTeamCategory, MyTeamCategorySlot } from "@/lib/my-team"
+import type { MyTeamView as MyTeamViewData, MyTeamSlot } from "@/lib/my-team"
+import { PairingsBoard } from "@/components/team/pairings-board"
 
 function initials(name: string) {
   return name
@@ -74,7 +57,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function MyTeamView({ data }: { data: MyTeamViewData }) {
-  const { team, readiness, avgRating, pairingCategories, payment, nextFixture, standing, otherTeams, canManage } = data
+  const { team, readiness, avgRating, pairingCategories, slots, payment, nextFixture, standing, otherTeams, canManage } = data
 
   // Count filled slots across all categories — active players + pending invites
   // both reserve a slot visually.
@@ -84,6 +67,51 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
   const slotsRemaining = totalSlots - filledSlots
 
   const hasOwnerInfo = team.ownerName || team.ownerPhone || team.ownerEmail
+
+  const boardCategories = pairingCategories.map((cat) => ({
+    category: cat.name,
+    pairs: [
+      [...cat.slots]
+        .sort((a, b) => a.slotIndex - b.slotIndex)
+        .map((slot) => ({
+          pairIndex: slot.pairIndex,
+          slotIndex: slot.slotIndex,
+          player: slot.player
+            ? {
+                playerId: slot.player.playerId,
+                name: slot.player.name,
+                li: slot.player.playtomicRating ?? 0,
+                playtomicRating: slot.player.playtomicRating,
+                gender: slot.player.gender,
+                paid: slot.player.paid,
+              }
+            : null,
+        })),
+    ],
+  }))
+
+  const boardInvites = pairingCategories.flatMap((cat) =>
+    cat.slots
+      .filter((slot) => slot.inviteId != null && slot.inviteEmail != null)
+      .map((slot) => ({
+        id: slot.inviteId as number,
+        email: slot.inviteEmail as string,
+        category: cat.name,
+        pairIndex: slot.pairIndex,
+        slotIndex: slot.slotIndex,
+      })),
+  )
+
+  const boardRoster = slots
+    .filter((s): s is Extract<MyTeamSlot, { kind: "player" }> => s.kind === "player")
+    .map((s) => ({
+      playerId: s.playerId,
+      name: s.name,
+      li: s.playtomicRating ?? 0,
+      playtomicRating: s.playtomicRating,
+      gender: null as string | null,
+      paid: s.paid,
+    }))
 
   return (
     <div className="space-y-5">
@@ -155,7 +183,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
             />
             <DropdownMenuContent align="end">
               {otherTeams.map((t) => (
-                <DropdownMenuItem key={t.id} render={<Link href={`/dashboard/org?team=${t.id}`} />}>
+                <DropdownMenuItem key={t.id} render={<Link href={`/dashboard/my-team?team=${t.id}`} />}>
                   {t.name}
                 </DropdownMenuItem>
               ))}
@@ -264,26 +292,16 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
 
       {/* ── Squad roster (category-grouped) ──────────────────────────────── */}
       <div>
-        <div className="flex items-center justify-between">
-          <SectionHeading>Squad</SectionHeading>
-          {canManage && slotsRemaining > 0 && (
-            <div className="mb-5">
-              <MyTeamAddPlayer teamId={team.id} slotsRemaining={slotsRemaining} />
-            </div>
-          )}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {pairingCategories.map((cat) => (
-            <CategorySection
-              key={cat.name}
-              cat={cat}
-              teamId={team.id}
-              canManage={canManage}
-              slotsRemaining={slotsRemaining}
-              clubPaysFees={payment.clubPaysFees}
-            />
-          ))}
-        </div>
+        <SectionHeading>Squad</SectionHeading>
+        <PairingsBoard
+          teamId={team.id}
+          categories={boardCategories}
+          roster={boardRoster}
+          invites={boardInvites}
+          clubPaysFees={payment.clubPaysFees}
+          teamAvgPr={avgRating}
+          canManage={canManage}
+        />
       </div>
     </div>
   )
@@ -349,296 +367,6 @@ function StatPill({
         {value}
       </span>
       {sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>}
-    </div>
-  )
-}
-
-// ── Category section ──────────────────────────────────────────────────────────
-
-function CategorySection({
-  cat,
-  teamId,
-  canManage,
-  slotsRemaining,
-  clubPaysFees,
-}: {
-  cat: MyTeamCategory
-  teamId: number
-  canManage: boolean
-  slotsRemaining: number
-  clubPaysFees: boolean
-}) {
-  const filledCount = cat.slots.filter((s) => s.player !== null || s.inviteEmail !== null).length
-  const totalCount = cat.slots.length
-  const dotColor =
-    filledCount === totalCount
-      ? "bg-emerald-500"
-      : filledCount > 0
-        ? "bg-amber-500"
-        : "bg-amber-400"
-
-  const accentColor = cat.gender === "female" ? "bg-pink-500" : "bg-sky-500"
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      {/* Category header */}
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <div className={cn("w-1 self-stretch rounded-full", accentColor)} />
-          <span className="text-muted-foreground">
-            {cat.gender === "female" ? (
-              <Venus className="h-4 w-4" />
-            ) : (
-              <Mars className="h-4 w-4" />
-            )}
-          </span>
-          <span className="font-heading text-sm font-bold uppercase tracking-wide text-foreground">
-            {cat.name}
-          </span>
-          {cat.isFeatureCourt && (
-            <Badge
-              variant="outline"
-              className="h-5 px-1.5 text-[10px] font-bold uppercase tracking-wide border-primary/40 text-primary bg-primary/5"
-            >
-              Feature
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className={cn("h-2 w-2 rounded-full", dotColor)} />
-          <span className="text-xs text-muted-foreground">
-            {filledCount}/{totalCount}
-          </span>
-        </div>
-      </div>
-
-      {/* Slots */}
-      <div className="space-y-1.5">
-        {cat.slots.map((slot, i) => (
-          <CategorySlotRow
-            key={i}
-            slot={slot}
-            cat={cat}
-            teamId={teamId}
-            canManage={canManage}
-            slotsRemaining={slotsRemaining}
-            clubPaysFees={clubPaysFees}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Single category slot row ──────────────────────────────────────────────────
-
-/** Returns a human-readable reason if the player violates the category rules, otherwise null. */
-function checkSlotViolation(
-  player: MyTeamCategorySlot["player"],
-  cat: MyTeamCategory,
-): string | null {
-  if (!player) return null
-
-  // Gender check: ladies category requires female players; mens requires male.
-  // Mixed categories accept anyone.
-  if (cat.gender === "female" && player.gender && player.gender !== "female") {
-    return `Male player in ${cat.name} (ladies only).`
-  }
-  if (cat.gender === "male" && player.gender && player.gender === "female") {
-    return `Female player in ${cat.name} (mens only).`
-  }
-
-  // Rating check: Ladies Open has no cap (playerMaxLi = 7, skip entirely for
-  // female categories). Mens Open also has no cap (playerMaxLi = 7). For capped
-  // categories the rule is strictly less-than the cap value, e.g. Intermediate
-  // requires < 3.5 so a player rated exactly 3.5 is over the limit.
-  if (cat.gender !== "female" && player.playtomicRating != null) {
-    // Caps: Intermediate < 3.5, Beginner < 2.5. Open has max 7 so never triggers.
-    if (cat.playerMaxLi < 7 && player.playtomicRating >= cat.playerMaxLi) {
-      return `Rating ${player.playtomicRating.toFixed(1)} is too high for ${cat.name} (must be below ${cat.playerMaxLi.toFixed(1)}).`
-    }
-  }
-
-  return null
-}
-
-function CategorySlotRow({
-  slot,
-  cat,
-  teamId,
-  canManage,
-  slotsRemaining,
-  clubPaysFees,
-}: {
-  slot: MyTeamCategorySlot
-  cat: MyTeamCategory
-  teamId: number
-  canManage: boolean
-  slotsRemaining: number
-  clubPaysFees: boolean
-}) {
-  const router = useRouter()
-  const [pending, start] = useTransition()
-
-  // Pending invite
-  if (!slot.player && slot.inviteEmail) {
-    return (
-      <div className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <Avatar className="h-8 w-8 border border-border shrink-0">
-            <AvatarFallback className="bg-secondary text-xs text-muted-foreground">
-              {slot.inviteName ? initials(slot.inviteName) : "?"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">
-              {slot.inviteName ?? slot.inviteEmail}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">{slot.inviteEmail}</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="flex flex-col items-end gap-0.5">
-            <Badge variant="secondary" className="gap-1 text-amber-600 bg-amber-500/10 border-amber-400/30">
-              <Clock className="h-3 w-3" /> Invite sent
-            </Badge>
-            <span className="text-[10px] text-muted-foreground">Awaiting acceptance</span>
-          </div>
-          {canManage && slot.inviteId != null && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  const res = await cancelInvite(slot.inviteId!)
-                  if (res.error) toast.error(res.error)
-                  else {
-                    toast.success("Invite cancelled.")
-                    router.refresh()
-                  }
-                })
-              }
-            >
-              <X className="h-3.5 w-3.5" />
-              <span className="sr-only">Cancel invite</span>
-            </Button>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // Empty slot
-  if (!slot.player) {
-    if (canManage) {
-      return (
-        <MyTeamAddPlayer
-          teamId={teamId}
-          slotsRemaining={slotsRemaining}
-          targetCategory={slot.category}
-          targetPairIndex={slot.pairIndex}
-          targetSlotIndex={slot.slotIndex}
-          trigger={
-            <button className="flex w-full items-center gap-3 border-b border-border py-2 last:border-0 text-sm text-muted-foreground hover:text-primary transition-colors">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
-                <Plus className="h-4 w-4" />
-              </div>
-              <span>Open slot</span>
-            </button>
-          }
-        />
-      )
-    }
-    return (
-      <div className="flex items-center gap-3 border-b border-border py-2 last:border-0 text-sm text-muted-foreground">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border shrink-0">
-          <Plus className="h-4 w-4" />
-        </div>
-        <span>Open slot</span>
-      </div>
-    )
-  }
-
-  // Active player
-  const { player } = slot
-  const payBadge = clubPaysFees ? null : player.paid ? "paid" : "unpaid"
-  const violation = checkSlotViolation(player, cat)
-
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
-      <div className="flex items-center gap-3 min-w-0">
-        <Avatar className="h-8 w-8 border border-border shrink-0">
-          <AvatarFallback className="bg-secondary text-xs font-semibold">
-            {initials(player.name)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-foreground">{player.name}</p>
-            {player.isCaptain && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-            {violation && (
-              <span title={violation} className="shrink-0 cursor-help">
-                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Star className="h-3 w-3" />
-            {player.playtomicRating != null ? (
-              <span>{player.playtomicRating.toFixed(1)}</span>
-            ) : (
-              <span>Unrated</span>
-            )}
-          </div>
-          {violation && (
-            <p className="text-[11px] text-destructive mt-0.5 leading-tight">{violation}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        {payBadge === "paid" && (
-          <Badge variant="secondary" className="text-emerald-600 dark:text-emerald-400">
-            Paid
-          </Badge>
-        )}
-        {payBadge === "unpaid" && (
-          <Badge variant="outline" className="text-amber-600 dark:text-amber-400">
-            Unpaid
-          </Badge>
-        )}
-        {canManage && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                  <span className="sr-only">Player options</span>
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() =>
-                  start(async () => {
-                    const res = await removeFromTeam({ teamId, playerId: player.playerId })
-                    if (res.error) toast.error(res.error)
-                    else {
-                      toast.success("Player removed — you can now add them to a different slot.")
-                      router.refresh()
-                    }
-                  })
-                }
-              >
-                Remove from squad
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
     </div>
   )
 }

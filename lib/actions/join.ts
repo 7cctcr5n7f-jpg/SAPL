@@ -15,6 +15,10 @@ import {
 } from "@/lib/db/schema"
 import { eq, and, asc, desc, gt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { isSeasonLocked } from "@/lib/season-lock"
+import { recomputeTeamStats } from "@/lib/engine/team-stats"
+import { TEAM_TYPES, normalizeTeamType } from "@/lib/constants"
+import { processTeamInviteByToken } from "@/lib/actions/pairings"
 
 import { headers } from "next/headers"
 
@@ -165,7 +169,7 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
         name: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
-        callbackURL: "/onboarding",
+        callbackURL: "/dashboard",
       },
     })
   } catch (err: unknown) {
@@ -204,13 +208,20 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     .where(eq(user.id, userId))
 
   revalidatePath("/dashboard")
-  // Invited players skip the onboarding wizard and go straight to the invite
-  // accept page — their basic profile is already set above (name, isPlayer,
-  // playtomicUrl). Non-invited players complete onboarding first.
   if (inviteToken) {
-    return { ok: true, redirectTo: `/invite/${encodeURIComponent(inviteToken)}` }
+    const inviteResult = await processTeamInviteByToken(inviteToken, { userId })
+    if ("joined" in inviteResult || "alreadyOnTeam" in inviteResult) {
+      return { ok: true, redirectTo: "/dashboard" }
+    }
+    if ("needsProfile" in inviteResult) {
+      return { ok: true, redirectTo: `/onboarding?inviteToken=${encodeURIComponent(inviteToken)}` }
+    }
+    if ("needsAccount" in inviteResult) {
+      return { ok: false, error: "Could not finalise your invitation. Please try signing in and opening the invite again." }
+    }
+    return { ok: false, error: inviteResult.error }
   }
-  return { ok: true, redirectTo: "/onboarding" }
+  return { ok: true, redirectTo: "/dashboard" }
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +235,7 @@ export type RegisterTeamInput = {
   password: string
   // Team details
   teamName: string
+  teamType: string
   paymentModel: "club" | "individual" // club = R4,000 lump sum | individual = R500 per player
   homeClubId: number
   // Captain plays themselves?
@@ -233,12 +245,21 @@ export type RegisterTeamInput = {
 }
 
 export async function registerTeam(input: RegisterTeamInput): Promise<RegisterResult> {
-  const { fullName, email, password, teamName, paymentModel, homeClubId, captainPlays, captainGender, playtomicUrl } = input
+  const { fullName, email, password, teamName, teamType: rawTeamType, paymentModel, homeClubId, captainPlays, captainGender, playtomicUrl } = input
+  const teamType = normalizeTeamType(rawTeamType)
+
+  if (await isSeasonLocked()) {
+    return { ok: false, error: "League registration is closed. New teams can no longer be created this season." }
+  }
 
   if (!fullName.trim()) return { ok: false, error: "Full name is required." }
   if (!email.trim()) return { ok: false, error: "Email is required." }
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters." }
   if (!teamName.trim()) return { ok: false, error: "Team name is required." }
+  if (!TEAM_TYPES.includes(teamType)) return { ok: false, error: "Invalid team type." }
+  if (teamType === "Club Team") {
+    return { ok: false, error: "Club Teams are entered through venue management. Please choose Business Team or Private Team." }
+  }
   if (!homeClubId) return { ok: false, error: "Please select a home club." }
   if (captainPlays && !playtomicUrl.trim()) return { ok: false, error: "Playtomic profile link is required when you play in the team." }
 
@@ -308,7 +329,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     })
     .where(eq(user.id, userId))
 
-  // Get or create a default organisation for this captain
+  // Get or create a default team group row for this captain (legacy FK holder).
   const [existingOrg] = await db
     .select({ id: organisations.id })
     .from(organisations)
@@ -323,7 +344,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     const [newOrg] = await db
       .insert(organisations)
       .values({
-        name: `${fullName.trim()}'s Organisation`,
+        name: `${fullName.trim()}'s Teams`,
         slug: `${slugBase}-${Date.now()}`,
         ownerUserId: userId,
         type: "Social Group",
@@ -355,6 +376,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
     .values({
       name: teamName.trim(),
       organisationId: orgId,
+      teamType,
       homeClubId,
       saplRegion: homeClub?.saplRegion ?? null,
       regionId: homeClub?.regionId ?? null,
@@ -363,7 +385,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       ownerEmail: email.trim().toLowerCase(),
       ownerName: fullName.trim(),
       clubPaysFees: paymentModel === "club",
-      status: "pending",
+      status: "draft",
     })
     .returning({ id: teams.id })
 
@@ -377,6 +399,7 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
       initiatedBy: "self",
     })
   }
+  await recomputeTeamStats(newTeam.id)
 
   // Fire-and-forget admin alert — never blocks the sign-up flow.
   const { subject, html, text } = adminNewTeamEmail({ teamName: teamName.trim(), ownerName: fullName.trim(), ownerEmail: email.trim().toLowerCase(), adminUrl: `${appBaseUrl()}/admin/teams` })

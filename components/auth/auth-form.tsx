@@ -24,12 +24,9 @@ export function AuthForm({ mode, defaultEmail = "", callbackUrl, signUpInviteTok
     setLoading(true)
     try {
       if (isSignUp) {
-        const { error } = await signUp.email({ name, email, password, callbackURL: "/onboarding" })
+        const { error } = await signUp.email({ name, email, password, callbackURL: callbackUrl ?? "/dashboard" })
         if (error) throw new Error(error.message || "Could not create account")
-        // An activation email is sent on sign-up. Send the user to the
-        // "check your email" screen (activation isn't enforced yet, so they
-        // can still continue into setup from there).
-        router.push(`/verify-email?email=${encodeURIComponent(email)}`)
+        router.push(callbackUrl ?? "/dashboard")
       } else {
         const { error } = await signIn.email({ email, password })
         if (error) throw new Error(error.message || "Invalid email or password")
