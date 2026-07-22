@@ -1,11 +1,12 @@
 import Link from "next/link"
 import { WordMark } from "@/components/brand/logo"
+import { LegalLinks } from "@/components/legal/legal-links"
 
 export function SiteFooter() {
   return (
     <footer className="border-t border-border bg-background">
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
-        <div className="grid gap-8 md:grid-cols-4">
+        <div className="grid gap-8 md:grid-cols-5">
           <div className="md:col-span-2">
             <WordMark className="text-2xl" />
             <p className="mt-3 max-w-sm text-sm text-muted-foreground">
@@ -30,6 +31,10 @@ export function SiteFooter() {
               <li><Link href="/contact" className="hover:text-primary">Contact</Link></li>
               <li><Link href="/sign-up" className="hover:text-primary">Register</Link></li>
             </ul>
+          </div>
+          <div>
+            <h3 className="heading text-sm tracking-widest">Legal</h3>
+            <LegalLinks stacked className="mt-3 text-sm text-muted-foreground" />
           </div>
         </div>
         <div className="mt-10 flex flex-col items-start justify-between gap-2 border-t border-border pt-6 text-xs text-muted-foreground md:flex-row md:items-center">
