@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useTransition, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +25,7 @@ import {
   registerTeam,
 } from "@/lib/actions/join"
 import { TEAM_TYPES } from "@/lib/constants"
+import { LegalLinks, RegistrationComplianceNotice } from "@/components/legal/legal-links"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +70,63 @@ function PlaytomicHelp() {
           <li>Copy the link and paste it here</li>
         </ol>
       )}
+    </div>
+  )
+}
+
+function PaymentInformationCard() {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-4">
+      <h3 className="text-sm font-semibold text-foreground">Payment Information</h3>
+      <div className="mt-3 space-y-2 text-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-border pb-2">
+          <span className="text-muted-foreground">Payment Provider</span>
+          <span className="text-right font-medium text-foreground">PayFast (Coming Soon)</span>
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <span className="text-muted-foreground">Payment Status</span>
+          <span className="text-right font-medium text-foreground">Integration Pending</span>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        No payment processing is implemented yet.
+      </p>
+    </div>
+  )
+}
+
+function LegalAcknowledgement({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheckedChange(e.target.checked)}
+          className="mt-1 accent-primary"
+        />
+        <span className="text-sm text-muted-foreground leading-relaxed">
+          I have read and agree to the{" "}
+          <Link href="/terms-and-conditions" className="text-primary hover:underline">
+            Terms &amp; Conditions
+          </Link>
+          ,{" "}
+          <Link href="/cancellation-policy" className="text-primary hover:underline">
+            Cancellation Policy
+          </Link>{" "}
+          and{" "}
+          <Link href="/refund-policy" className="text-primary hover:underline">
+            Refund Policy
+          </Link>
+          .
+        </span>
+      </label>
     </div>
   )
 }
@@ -195,6 +254,7 @@ function TeamFlow({
   const [captainPlays, setCaptainPlays] = useState<"yes" | "no">("yes")
   const [captainGender, setCaptainGender] = useState<"male" | "female">("male")
   const [playtomicUrl, setPlaytomicUrl] = useState("")
+  const [agreedToLegal, setAgreedToLegal] = useState(false)
 
   const stepIndex = TEAM_STEPS.indexOf(step)
   const selectedClub = hostingClubs.find((c) => String(c.id) === homeClubId)
@@ -464,6 +524,12 @@ function TeamFlow({
           <p className="text-xs text-muted-foreground mt-1">
             Your team will be submitted for review. You&apos;ll receive a confirmation once it&apos;s approved and placed in a division.
           </p>
+          <PaymentInformationCard />
+          <LegalAcknowledgement checked={agreedToLegal} onCheckedChange={setAgreedToLegal} />
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary">Legal</p>
+            <LegalLinks className="mt-3 text-sm text-muted-foreground" />
+          </div>
         </div>
       )}
 
@@ -471,7 +537,7 @@ function TeamFlow({
 
       <div className="flex gap-3">
         {step === "review" ? (
-          <Button className="flex-1" onClick={submit} disabled={pending} size="lg">
+          <Button className="flex-1" onClick={submit} disabled={pending || !agreedToLegal} size="lg">
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Register Team"}
           </Button>
         ) : (
@@ -514,6 +580,7 @@ function PlayerFlow({
   const [playtomicRating, setPlaytomicRating] = useState("")
   const [gender, setGender] = useState<"male" | "female">("male")
   const [joinMarketplace, setJoinMarketplace] = useState(true)
+  const [agreedToLegal, setAgreedToLegal] = useState(false)
 
   const [invite, setInvite] = useState<{ teamName: string; category: string; invitedName: string | null; token: string } | null | "loading">(
     initialInviteToken ? "loading" : null
@@ -799,8 +866,14 @@ function PlayerFlow({
           <p className="text-xs text-muted-foreground mt-1">
             Registration fee: <strong className="text-foreground">R{playerFee.toLocaleString()}</strong> — online payment coming next week.
           </p>
+          <PaymentInformationCard />
+          <LegalAcknowledgement checked={agreedToLegal} onCheckedChange={setAgreedToLegal} />
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary">Legal</p>
+            <LegalLinks className="mt-3 text-sm text-muted-foreground" />
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button onClick={submit} disabled={pending} size="lg">
+          <Button onClick={submit} disabled={pending || !agreedToLegal} size="lg">
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Account"}
           </Button>
         </div>
@@ -825,7 +898,15 @@ export function JoinWizard({ hostingClubs, playerFee, teamFee, inviteToken, defa
   const [path, setPath] = useState<Path>(inviteToken ? "player" : "choose")
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-6">
+      <RegistrationComplianceNotice />
+      <div className="rounded-lg border border-border bg-muted/20 p-4">
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Legal</p>
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+          Review the placeholder legal documents before completing registration or checkout.
+        </p>
+        <LegalLinks className="mt-3 text-sm text-muted-foreground" />
+      </div>
       {path === "choose" && <PathChooser onChoose={setPath} />}
       {path === "team" && (
         <TeamFlow
