@@ -970,6 +970,37 @@ export async function declineTeamInviteByToken(token: string): Promise<{ ok: boo
   return { ok: true, teamName: team?.name ?? "the team" }
 }
 
+/**
+ * Read-only decline preview. This does NOT mutate invite state.
+ * Used by the decline landing page so crawlers/prefetchers cannot auto-cancel
+ * invites just by opening the link.
+ */
+export async function getDeclineInvitePreview(
+  token: string,
+): Promise<
+  | { ready: true; teamName: string }
+  | { alreadySettled: true; teamName: string; status: "accepted" | "cancelled" }
+  | { error: string }
+> {
+  const [invite] = await db
+    .select({ id: teamInvites.id, teamId: teamInvites.teamId, status: teamInvites.status })
+    .from(teamInvites)
+    .where(eq(teamInvites.token, token))
+    .limit(1)
+
+  if (!invite) return { error: "Invalid invitation link." }
+
+  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+  const teamName = team?.name ?? "the team"
+
+  if (invite.status === "pending") return { ready: true, teamName }
+  if (invite.status === "accepted" || invite.status === "cancelled") {
+    return { alreadySettled: true, teamName, status: invite.status }
+  }
+
+  return { error: "This invitation has already been used." }
+}
+
 // Legacy compatibility hook.
 // Pending invites are no longer auto-accepted on registration; players must
 // explicitly accept one invitation from the invite flow.
