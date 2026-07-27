@@ -1,5 +1,5 @@
-import { declineTeamInviteByToken } from "@/lib/actions/pairings"
-import { InviteResult } from "@/components/invite/invite-result"
+import { getDeclineInvitePreview } from "@/lib/actions/pairings"
+import { InviteDecline } from "@/components/invite/invite-decline"
 
 interface Props {
   params: Promise<{ token: string }>
@@ -7,15 +7,7 @@ interface Props {
 
 export default async function InviteDeclinePage({ params }: Props) {
   const { token } = await params
-  const result = await declineTeamInviteByToken(token)
+  const preview = await getDeclineInvitePreview(token)
 
-  return (
-    <InviteResult
-      result={
-        result.ok
-          ? { declined: true }
-          : { error: result.error ?? "Something went wrong." }
-      }
-    />
-  )
+  return <InviteDecline token={token} preview={preview} />
 }
