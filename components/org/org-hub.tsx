@@ -285,7 +285,12 @@ export function OrgHub({
               const ts = typeStyle(t.teamType)
               // The squad is exactly the 8 pairing slots. Count filled slots.
               const minPlayers = TEAM_SQUAD_SIZE
-              const filledSlots = t.pairingRoster.length
+              // Only count players actually placed in a pairing slot. Active
+              // team-members who haven't been slotted yet (e.g. a captain who
+              // hasn't been assigned to a category) must not inflate this count.
+              const filledSlots = t.pairingCategories
+                .flatMap((c) => c.pairs.flat())
+                .filter((s) => s.player != null).length
               const squadComplete = filledSlots >= minPlayers
               // Compute avg PR live from pairingRoster — same logic as the squad board.
               const ratedRoster = t.pairingRoster.filter((p) => p.playtomicRating != null)
