@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { SectionTitle } from "@/components/brand/bits"
 import { ContactForm } from "@/components/site/contact-form"
 import { Mail, MapPin, MessageCircle } from "lucide-react"
+import { PUBLIC_CONTACT_EMAIL } from "@/lib/contact"
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -13,15 +14,15 @@ const CHANNELS = [
     icon: Mail,
     title: "General & Support",
     detail: "Questions about your account, fixtures, rankings or results.",
-    value: "support@sapl.co.za",
-    href: "mailto:support@sapl.co.za",
+    value: PUBLIC_CONTACT_EMAIL,
+    href: `mailto:${PUBLIC_CONTACT_EMAIL}`,
   },
   {
     icon: MessageCircle,
     title: "Partnerships & Sponsors",
     detail: "Sponsorship tiers, marketplace listings and brand collaborations.",
-    value: "partners@sapl.co.za",
-    href: "mailto:partners@sapl.co.za",
+    value: PUBLIC_CONTACT_EMAIL,
+    href: `mailto:${PUBLIC_CONTACT_EMAIL}`,
   },
   {
     icon: MapPin,

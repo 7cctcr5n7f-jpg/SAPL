@@ -7,8 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Send } from "lucide-react"
-
-const SUPPORT_EMAIL = "support@sapl.co.za"
+import { PUBLIC_CONTACT_EMAIL } from "@/lib/contact"
 
 export function ContactForm() {
   const [name, setName] = useState("")
@@ -19,7 +18,7 @@ export function ContactForm() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const body = `Name: ${name}\nEmail: ${email}\n\n${message}`
-    const href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+    const href = `mailto:${PUBLIC_CONTACT_EMAIL}?subject=${encodeURIComponent(
       subject || "SAPL enquiry",
     )}&body=${encodeURIComponent(body)}`
     window.location.href = href
