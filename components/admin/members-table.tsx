@@ -1000,7 +1000,17 @@ export function MembersTable({
                       {isAssigned && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title={`On ${m.teamName}`} />}
                       <div className="min-w-0">
                         <div className="font-medium text-foreground leading-tight truncate">
-                          {m.name}
+                          {cleanPlaytomicUrl(m.playtomicUrl) ? (
+                            <a
+                              href={cleanPlaytomicUrl(m.playtomicUrl)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline hover:text-primary transition-colors"
+                              title="Open Playtomic profile"
+                            >
+                              {m.name}
+                            </a>
+                          ) : m.name}
                           {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
                         </div>
                         {m.playerName && m.playerName !== m.name && (
