@@ -58,6 +58,7 @@ export type MemberRow = {
   currentLi: number | null
   playtomicRating: number | null
   playtomicUrl: string | null
+  playtomicRatingVerified: boolean
   avatarUrl: string | null
   // Team / club / region / division assignment
   teamId: number | null
@@ -101,6 +102,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       currentLi: user.currentLi,
       playtomicRating: user.playtomicRating,
       playtomicUrl: user.playtomicUrl,
+      playtomicRatingVerified: user.playtomicRatingVerified,
       avatarUrl: user.avatarUrl,
     })
     .from(user)
@@ -212,6 +214,7 @@ export async function listMembers(): Promise<MemberRow[]> {
       currentLi: r.currentLi ?? null,
       playtomicRating: r.playtomicRating ?? null,
       playtomicUrl: r.playtomicUrl ?? null,
+      playtomicRatingVerified: r.playtomicRatingVerified ?? false,
       avatarUrl: r.avatarUrl ?? null,
       teamId: ms?.teamId ?? null,
       teamName: ms?.teamName ?? null,
@@ -401,6 +404,14 @@ export async function updateMemberDetails(
     await upsertMeta(userId, metaUpdate)
   }
 
+  revalidatePath("/admin/members")
+  return { ok: true }
+}
+
+/** Admin: toggle the verified flag on a member's Playtomic rating. */
+export async function verifyMemberRating(userId: string, verified: boolean) {
+  await requireMemberManager()
+  await db.update(user).set({ playtomicRatingVerified: verified, updatedAt: new Date() }).where(eq(user.id, userId))
   revalidatePath("/admin/members")
   return { ok: true }
 }

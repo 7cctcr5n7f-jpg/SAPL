@@ -15,6 +15,7 @@ import {
   deleteMember,
   createAccountForContact,
   setMemberAsTeamOwner,
+  verifyMemberRating,
   type MemberRow,
   type UnregisteredContact,
 } from "@/lib/actions/members"
@@ -38,12 +39,27 @@ import {
   Clock,
   UserPlus,
   Building2,
+  ShieldCheck,
+  ExternalLink,
 } from "lucide-react"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Role = MemberRow["role"]
 type FilterKey = "region" | "division" | "club" | "team" | "role" | "paymentStatus" | "status"
+
+// Strip share-sheet prefixes like "Check out my profile https://..." and fix
+// common typos like "httpsd://" that appear when users paste from the iOS share sheet.
+function cleanPlaytomicUrl(raw: string | null): string | null {
+  if (!raw) return null
+  let url = raw.trim()
+  // Remove share-sheet prose prefix up to the first http
+  const httpIdx = url.toLowerCase().indexOf("http")
+  if (httpIdx > 0) url = url.slice(httpIdx)
+  // Fix "httpsd://" → "https://"
+  url = url.replace(/^httpsd?:\/\//i, "https://")
+  return url || null
+}
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "player", label: "Player" },
@@ -128,6 +144,9 @@ function RatingCell({ member, onSaved }: { member: MemberRow; onSaved: (val: num
         title="Click to edit"
       >
         {displayRating != null ? displayRating.toFixed(2) : <span className="text-muted-foreground">—</span>}
+        {member.playtomicRatingVerified && (
+          <ShieldCheck className="h-3 w-3 text-emerald-500 shrink-0" title="Admin verified" />
+        )}
         <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
       </button>
     )
@@ -447,7 +466,8 @@ function MemberEditPanel({
   const [province, setProvince] = useState(member.province ?? "")
   const [li, setLi] = useState(member.currentLi != null ? String(member.currentLi) : "")
   const [rating, setRating] = useState(member.playtomicRating != null ? String(member.playtomicRating) : "")
-  const [playtomicUrl, setPlaytomicUrl] = useState(member.playtomicUrl ?? "")
+  const [playtomicUrl, setPlaytomicUrl] = useState(cleanPlaytomicUrl(member.playtomicUrl) ?? "")
+  const [ratingVerified, setRatingVerified] = useState(member.playtomicRatingVerified)
   const [paid, setPaid] = useState(member.paymentStatus === "paid")
 
   function save() {
@@ -476,7 +496,7 @@ function MemberEditPanel({
         province: province || null,
         currentLi: liVal,
         playtomicRating: ratingVal,
-        playtomicUrl: playtomicUrl.trim() || null,
+        playtomicUrl: cleanPlaytomicUrl(playtomicUrl) || null,
       })
       if (!res.ok) { toast.error(res.error ?? "Could not save"); return }
 
@@ -496,7 +516,7 @@ function MemberEditPanel({
         gender: gender || null,
         city: city.trim() || null,
         playtomicRating: ratingVal,
-        playtomicUrl: playtomicUrl.trim() || null,
+        playtomicUrl: cleanPlaytomicUrl(playtomicUrl) || null,
         paymentStatus: paid ? "paid" : "outstanding",
       })
       onClose()
@@ -642,10 +662,52 @@ function MemberEditPanel({
             </div>
           </div>
 
-          {/* Playtomic URL */}
+          {/* Playtomic URL + Verify rating */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Playtomic Profile URL</label>
-            <Input value={playtomicUrl} onChange={(e) => setPlaytomicUrl(e.target.value)} type="url" className="h-8 text-sm" placeholder="https://playtomic.io/..." />
+            <div className="flex gap-2">
+              <Input
+                value={playtomicUrl}
+                onChange={(e) => setPlaytomicUrl(e.target.value)}
+                type="url"
+                className="h-8 text-sm flex-1"
+                placeholder="https://app.playtomic.com/profile/..."
+              />
+              {cleanPlaytomicUrl(playtomicUrl) && (
+                <a
+                  href={cleanPlaytomicUrl(playtomicUrl)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/50 px-2.5 h-8 text-xs font-medium hover:bg-muted/60 transition-colors shrink-0"
+                  title="Open Playtomic profile"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </a>
+              )}
+            </div>
+            {/* Verify rating toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !ratingVerified
+                setRatingVerified(next)
+                start(async () => {
+                  const res = await verifyMemberRating(member.id, next)
+                  if (res.ok) toast.success(next ? "Rating marked as verified" : "Verification removed")
+                  else toast.error("Could not update verification")
+                })
+              }}
+              className={cn(
+                "mt-1 flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                ratingVerified
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  : "border-border bg-secondary/30 text-muted-foreground hover:bg-muted/50",
+              )}
+            >
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              {ratingVerified ? "Rating verified — click to remove" : "Mark rating as verified"}
+            </button>
           </div>
 
           {/* Paid status */}
@@ -938,7 +1000,17 @@ export function MembersTable({
                       {isAssigned && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title={`On ${m.teamName}`} />}
                       <div className="min-w-0">
                         <div className="font-medium text-foreground leading-tight truncate">
-                          {m.name}
+                          {cleanPlaytomicUrl(m.playtomicUrl) ? (
+                            <a
+                              href={cleanPlaytomicUrl(m.playtomicUrl)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline hover:text-primary transition-colors"
+                              title="Open Playtomic profile"
+                            >
+                              {m.name}
+                            </a>
+                          ) : m.name}
                           {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
                         </div>
                         {m.playerName && m.playerName !== m.name && (
