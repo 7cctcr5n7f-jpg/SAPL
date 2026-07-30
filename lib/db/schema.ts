@@ -27,6 +27,7 @@ export const user = pgTable("user", {
   playtomicUserId: text("playtomicUserId"),
   playtomicUrl: text("playtomicUrl"),
   playtomicRating: doublePrecision("playtomicRating"),
+  playtomicRatingVerified: boolean("playtomicRatingVerified").notNull().default(false),
   currentTpr: doublePrecision("currentTpr"),
   highestTpr: doublePrecision("highestTpr"),
   preferredDivision: text("preferredDivision"),
