@@ -288,20 +288,24 @@ function TeamFlow({
   function submit() {
     startTransition(async () => {
       setError(null)
-      const res = await registerTeam({
-        fullName,
-        email,
-        password,
-        teamName,
-        teamType,
-        paymentModel,
-        homeClubId: Number(homeClubId),
-        captainPlays: captainPlays === "yes",
-        captainGender,
-        playtomicUrl,
-      })
-      if (!res.ok) { setError(res.error); return }
-      window.location.href = res.redirectTo
+      try {
+        const res = await registerTeam({
+          fullName,
+          email,
+          password,
+          teamName,
+          teamType,
+          paymentModel,
+          homeClubId: Number(homeClubId),
+          captainPlays: captainPlays === "yes",
+          captainGender,
+          playtomicUrl,
+        })
+        if (!res.ok) { setError(res.error); return }
+        window.location.href = res.redirectTo
+      } catch {
+        setError("Something went wrong. Please try again or contact support.")
+      }
     })
   }
 
@@ -638,21 +642,25 @@ function PlayerFlow({
   function submit() {
     startTransition(async () => {
       setError(null)
-      const ptRating = playtomicRating.trim() !== "" ? Number(playtomicRating) : undefined
-      const res = await registerPlayer({
-        fullName,
-        email,
-        password,
-        gender,
-        playtomicUrl,
-        playtomicRating: ptRating,
-        joinMarketplace: invite && typeof invite !== "string" ? false : joinMarketplace,
-        inviteToken: invite && typeof invite !== "string" && acceptInvite ? invite.token : undefined,
-      })
-      if (!res.ok) { setError(res.error); return }
-      // Full page navigation so the fresh Better Auth session cookie is sent
-      // with the next request — router.push races with the newly-set cookie.
-      window.location.href = res.redirectTo
+      try {
+        const ptRating = playtomicRating.trim() !== "" ? Number(playtomicRating) : undefined
+        const res = await registerPlayer({
+          fullName,
+          email,
+          password,
+          gender,
+          playtomicUrl,
+          playtomicRating: ptRating,
+          joinMarketplace: invite && typeof invite !== "string" ? false : joinMarketplace,
+          inviteToken: invite && typeof invite !== "string" && acceptInvite ? invite.token : undefined,
+        })
+        if (!res.ok) { setError(res.error); return }
+        // Full page navigation so the fresh Better Auth session cookie is sent
+        // with the next request — router.push races with the newly-set cookie.
+        window.location.href = res.redirectTo
+      } catch {
+        setError("Something went wrong. Please try again or contact support.")
+      }
     })
   }
 
