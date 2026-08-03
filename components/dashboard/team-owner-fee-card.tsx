@@ -19,7 +19,14 @@ export function TeamOwnerFeeCard({ fee }: { fee: TeamOwnerFee }) {
       const res = await createTeamPayment(fee.teamId)
       setLoading(false)
       if (res.ok) {
-        window.location.href = res.url
+        // PayFast blocks being loaded inside an iframe (X-Frame-Options).
+        // Open in a new tab when inside the v0 preview iframe; otherwise
+        // navigate the top-level window so the user stays on the same domain.
+        if (window.self !== window.top) {
+          window.open(res.url, "_blank", "noopener,noreferrer")
+        } else {
+          window.top!.location.href = res.url
+        }
       } else {
         toast.error(res.error ?? "Could not create payment link")
       }
