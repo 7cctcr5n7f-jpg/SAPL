@@ -21,7 +21,7 @@ import {
   clubs,
   players,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
@@ -640,14 +640,24 @@ export type OutstandingFee = {
 export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   const { splitVatInclusive } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
+  const { TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   // Cache the resolved fee per season so we don't re-query for every player.
   const feeBySeason = new Map<number | string, { amount: number; vatAmount: number }>()
+  const teamFeeBySeason = new Map<number | string, { amount: number; vatAmount: number }>()
   async function feeFor(seasonId: number | null) {
     const key = seasonId ?? "current"
     const cached = feeBySeason.get(key)
     if (cached) return cached
     const split = splitVatInclusive(await getPlayerFee(seasonId))
     feeBySeason.set(key, split)
+    return split
+  }
+  async function teamFeeFor(seasonId: number | null) {
+    const key = seasonId ?? "current"
+    const cached = teamFeeBySeason.get(key)
+    if (cached) return cached
+    const split = splitVatInclusive((await getPlayerFee(seasonId)) * TEAM_SQUAD_SIZE)
+    teamFeeBySeason.set(key, split)
     return split
   }
 
@@ -665,9 +675,7 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .innerJoin(user, eq(teamMembers.playerId, user.id))
-    // Only chase fees once a team has actually been placed in a division under
-    // League Control — unplaced teams aren't competing yet, so no fee is due.
-    .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false), isNotNull(teams.divisionId)))
+    .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false)))
 
   const result: OutstandingFee[] = []
   for (const r of rows) {
@@ -703,22 +711,21 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   // league chases the responsible person, not individual players. Each owes for
   // the 8 dedicated squad players (R4000 at R500) unless a paid team payment
   // already exists.
-  const { TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   const fundedTeams = await db
     .select({
       teamId: teams.id,
       teamName: teams.name,
       seasonId: teams.seasonId,
+      captainUserId: teams.captainUserId,
       managerUserId: teams.managerUserId,
+      ownerEmail: teams.ownerEmail,
       organisationId: teams.organisationId,
     })
     .from(teams)
-    // Same rule for team-funded squads: only billable once placed in a division.
     .where(
       and(
         eq(teams.clubPaysFees, true),
         inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
-        isNotNull(teams.divisionId),
       ),
     )
 
@@ -732,7 +739,15 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     if (pay?.status === "paid") continue
 
     // Resolve the responsible person: the team manager, else the org owner.
-    let ownerUserId = t.managerUserId
+    let ownerUserId = t.managerUserId ?? t.captainUserId
+    if (!ownerUserId && t.ownerEmail) {
+      const [owner] = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.email, t.ownerEmail))
+        .limit(1)
+      ownerUserId = owner?.id ?? null
+    }
     if (!ownerUserId && t.organisationId) {
       const [org] = await db
         .select({ ownerUserId: organisations.ownerUserId })
@@ -753,9 +768,7 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
       phone = m?.phone ?? null
     }
 
-    const perPlayer = await feeFor(t.seasonId)
-    const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
-    const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+    const { amount, vatAmount } = await teamFeeFor(t.seasonId)
 
     result.push({
       kind: "team",
@@ -1407,9 +1420,8 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
   const { splitVatInclusive, TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
 
-  const perPlayer = splitVatInclusive(await getPlayerFee(team.seasonId))
-  const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
-  const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+  const totalFee = (await getPlayerFee(team.seasonId)) * TEAM_SQUAD_SIZE
+  const { amount, vatAmount } = splitVatInclusive(totalFee)
 
   // Check for an existing team payment
   const [pay] = await db
@@ -1427,6 +1439,38 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
     status: pay?.status === "paid" ? "paid" : "due",
     paymentId: pay?.id ?? null,
   }
+}
+
+/**
+ * For team owners/captains who are NOT on the squad roster (captainPlays=false
+ * at registration), there is no teamMembers entry, so getPlayerOverviewTeam
+ * returns null and the normal fee-card path never fires.
+ *
+ * This helper finds the first club-pays-fees team the user owns (matched via
+ * captainUserId OR ownerEmail) so the dashboard can show the R4000 fee card even
+ * when the owner isn't a playing member.
+ *
+ * Returns null when the user doesn't own any club-pays-fees team (e.g. regular
+ * players, or owners of players-pay teams).
+ */
+export async function getOwnedTeamForFee(
+  userId: string,
+  email: string,
+): Promise<{ teamId: number; clubPaysFees: boolean } | null> {
+  const [team] = await db
+    .select({ id: teams.id, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(
+      and(
+        eq(teams.clubPaysFees, true),
+        or(eq(teams.captainUserId, userId), eq(teams.ownerEmail, email)),
+      ),
+    )
+    .orderBy(desc(teams.updatedAt))
+    .limit(1)
+
+  if (!team) return null
+  return { teamId: team.id, clubPaysFees: team.clubPaysFees }
 }
 
 // ── Admin: paid payments list ──────────────────────────────────────────────────

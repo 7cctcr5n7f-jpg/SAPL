@@ -18,16 +18,18 @@ export type TeamReadiness = {
   avgRating: number | null
   /** Average League Index across the active roster, or null when empty. */
   avgLi: number | null
-  /** Players whose fee is settled (paid, or covered because the club pays). */
+  /** Players whose fee is settled (paid individual payments). */
   paidCount: number
-  /** Active players who still owe their league fee. */
+  /** Active players who still owe their league fee (always 0 for clubPaysFees teams). */
   unpaidCount: number
   /** True when the roster carries a full squad of 8. */
   rosterComplete: boolean
-  /** True when every active player's fee is settled (or the club covers fees). */
+  /** True when all fees are settled (individual players paid, or team payment confirmed). */
   feesSettled: boolean
   /** Whether the club is paying fees on behalf of the squad. */
   clubPaysFees: boolean
+  /** For clubPaysFees teams: true when the R4,000 team payment has been confirmed paid. */
+  teamPaymentPaid: boolean
   /** A team is League Ready when it fields a full, fully-paid squad. */
   isLeagueReady: boolean
   /** Human-readable list of what still blocks readiness (empty when ready). */
@@ -77,11 +79,20 @@ export async function getTeamReadiness(teamId: number): Promise<TeamReadiness | 
   const lis = roster.map((r) => r.li).filter((v): v is number => v != null && v > 0)
   const avgLi = lis.length > 0 ? Math.round((lis.reduce((s, v) => s + v, 0) / lis.length) * 100) / 100 : null
 
-  // Fee settlement — mirrors getPlayerTeamFees: a club that pays fees covers the
-  // whole squad; otherwise each active player needs a paid individual payment.
+  // Fee settlement — for player-pays teams each active member needs a paid
+  // individual payment; for club-pays teams we check the single team payment.
   let paidCount = 0
+  let teamPaymentPaid = false
+
   if (team.clubPaysFees) {
-    paidCount = playerCount
+    const [teamPay] = await db
+      .select({ status: payments.status })
+      .from(payments)
+      .where(and(eq(payments.teamId, teamId), eq(payments.type, "team"), eq(payments.status, "paid")))
+      .limit(1)
+    teamPaymentPaid = teamPay != null
+    // paidCount reflects covered players only once the team payment is confirmed.
+    paidCount = teamPaymentPaid ? playerCount : 0
   } else {
     for (const r of roster) {
       const [pay] = await db
@@ -101,7 +112,9 @@ export async function getTeamReadiness(teamId: number): Promise<TeamReadiness | 
   const unpaidCount = Math.max(0, playerCount - paidCount)
 
   const rosterComplete = playerCount >= MAX_TEAM_PLAYERS
-  const feesSettled = team.clubPaysFees || unpaidCount === 0
+  const feesSettled = team.clubPaysFees
+    ? teamPaymentPaid
+    : playerCount > 0 && unpaidCount === 0
   const isLeagueReady = rosterComplete && feesSettled
 
   const reasons: string[] = []
@@ -109,7 +122,9 @@ export async function getTeamReadiness(teamId: number): Promise<TeamReadiness | 
     const missing = MAX_TEAM_PLAYERS - playerCount
     reasons.push(`Add ${missing} more player${missing === 1 ? "" : "s"} to complete the squad of ${MAX_TEAM_PLAYERS}.`)
   }
-  if (!feesSettled) {
+  if (team.clubPaysFees && !teamPaymentPaid) {
+    reasons.push("Team owner still needs to pay the R4,000 squad fee.")
+  } else if (!team.clubPaysFees && !feesSettled) {
     reasons.push(`${unpaidCount} player${unpaidCount === 1 ? "" : "s"} still owe their league fee.`)
   }
 
@@ -124,6 +139,7 @@ export async function getTeamReadiness(teamId: number): Promise<TeamReadiness | 
     rosterComplete,
     feesSettled,
     clubPaysFees: team.clubPaysFees,
+    teamPaymentPaid,
     isLeagueReady,
     reasons,
   }
@@ -146,12 +162,19 @@ export type SeasonReadiness = {
  * Uses a handful of grouped queries (no per-team round trips) so it scales to a
  * full league. Powers the admin Payments readiness dashboard and the admin
  * season-readiness overview.
+ *
+ * Pass `seasonId` to restrict to a single season (e.g. for the seasons/placement
+ * pages). Omit it to show ALL active teams regardless of season (billing page).
  */
-export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadiness> {
+export async function getSeasonReadiness(seasonId?: number): Promise<SeasonReadiness> {
   const teamRows = await db
     .select({ id: teams.id, name: teams.name, clubPaysFees: teams.clubPaysFees })
     .from(teams)
-    .where(and(eq(teams.seasonId, seasonId), inArray(teams.status, [...TEAM_VISIBLE_STATUSES])))
+    .where(
+      seasonId != null
+        ? and(eq(teams.seasonId, seasonId), inArray(teams.status, [...TEAM_VISIBLE_STATUSES]))
+        : inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
+    )
 
   const empty: SeasonReadiness = {
     teams: [],
@@ -189,6 +212,19 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
       ),
     )
 
+  // All confirmed team payments (for clubPaysFees=true squads).
+  const teamPayRows = await db
+    .select({ teamId: payments.teamId })
+    .from(payments)
+    .where(
+      and(
+        inArray(payments.teamId, teamIds),
+        eq(payments.type, "team"),
+        eq(payments.status, "paid"),
+      ),
+    )
+  const teamPaidSet = new Set(teamPayRows.map((r) => r.teamId).filter((id): id is number => id != null))
+
   const rosterByTeam = new Map<number, { playerId: string; li: number | null; rating: number | null }[]>()
   for (const r of rosterRows) {
     const list = rosterByTeam.get(r.teamId) ?? []
@@ -215,8 +251,10 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
     const avgLi = lis.length > 0 ? Math.round((lis.reduce((s, v) => s + v, 0) / lis.length) * 100) / 100 : null
 
     let paidCount = 0
+    let teamPaymentPaid = false
     if (team.clubPaysFees) {
-      paidCount = playerCount
+      teamPaymentPaid = teamPaidSet.has(team.id)
+      paidCount = teamPaymentPaid ? playerCount : 0
     } else {
       const paidSet = paidByTeam.get(team.id) ?? new Set<string>()
       paidCount = roster.filter((r) => paidSet.has(r.playerId)).length
@@ -224,7 +262,9 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
     const unpaidCount = Math.max(0, playerCount - paidCount)
 
     const rosterComplete = playerCount >= MAX_TEAM_PLAYERS
-    const feesSettled = team.clubPaysFees || unpaidCount === 0
+    const feesSettled = team.clubPaysFees
+      ? teamPaymentPaid
+      : playerCount > 0 && unpaidCount === 0
     const isLeagueReady = rosterComplete && feesSettled
 
     const reasons: string[] = []
@@ -232,7 +272,9 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
       const missing = MAX_TEAM_PLAYERS - playerCount
       reasons.push(`Add ${missing} more player${missing === 1 ? "" : "s"} to complete the squad of ${MAX_TEAM_PLAYERS}.`)
     }
-    if (!feesSettled) {
+    if (team.clubPaysFees && !teamPaymentPaid) {
+      reasons.push("Team owner still needs to pay the R4,000 squad fee.")
+    } else if (!team.clubPaysFees && !feesSettled) {
       reasons.push(`${unpaidCount} player${unpaidCount === 1 ? "" : "s"} still owe their league fee.`)
     }
 
@@ -248,6 +290,7 @@ export async function getSeasonReadiness(seasonId: number): Promise<SeasonReadin
       rosterComplete,
       feesSettled,
       clubPaysFees: team.clubPaysFees,
+      teamPaymentPaid,
       isLeagueReady,
       reasons,
     }

@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Stat } from "@/components/brand/bits"
-import { CheckCircle2, AlertCircle, Users, Wallet } from "lucide-react"
+import { fmtZAR } from "@/lib/format"
+import { CheckCircle2, AlertCircle, Users, TrendingUp } from "lucide-react"
 
 type StatusFilter = "all" | "ready" | "not_ready"
 
@@ -28,44 +29,38 @@ function ReadyPill({ ready }: { ready: boolean }) {
 
 function TeamRow({ t }: { t: SeasonReadinessTeam }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-border p-4 last:border-0 lg:flex-row lg:items-center lg:gap-6">
+    <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-0">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-semibold text-foreground">{t.teamName}</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-sm font-semibold text-foreground">{t.teamName}</span>
           <ReadyPill ready={t.isLeagueReady} />
         </div>
-        {t.reasons.length > 0 ? (
-          <ul className="mt-1.5 space-y-0.5">
-            {t.reasons.map((r, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                {r}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1.5 text-xs text-muted-foreground">Full squad, all fees settled.</p>
+        {t.reasons.length > 0 && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{t.reasons.join(" · ")}</p>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4 lg:w-80 lg:shrink-0">
+      <div className="flex shrink-0 items-center gap-5 text-right">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Roster</p>
-          <p className={cn("text-sm font-semibold tabular-nums", t.rosterComplete ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Roster</p>
+          <p className={cn("text-xs font-semibold tabular-nums", t.rosterComplete ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
             {t.playerCount}/{t.maxPlayers}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Fees</p>
-          <p className={cn("text-sm font-semibold tabular-nums", t.feesSettled ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
-            {t.clubPaysFees
-              ? <span className="text-muted-foreground font-normal text-xs">Team pays</span>
-              : `${t.paidCount}/${t.playerCount}`}
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Fees</p>
+          <p className={cn("text-xs font-semibold tabular-nums", t.feesSettled ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
+            {t.clubPaysFees ? `${t.teamPaymentPaid ? 1 : 0}/1` : `${t.paidCount}/8`}
           </p>
+          {t.clubPaysFees && (
+            <p className="text-[8px] text-muted-foreground leading-none">Owner</p>
+          )}
         </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Avg PR</p>
-          <p className="text-sm font-semibold tabular-nums text-foreground">{t.avgRating != null ? t.avgRating.toFixed(2) : "—"}</p>
+        <div className="w-12">
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Avg PR</p>
+          <p className="text-xs font-semibold tabular-nums text-foreground">
+            {t.avgRating != null ? t.avgRating.toFixed(2) : "—"}
+          </p>
         </div>
       </div>
     </div>
@@ -105,8 +100,8 @@ export function TeamReadinessBoard({ data, seasonName }: { data: SeasonReadiness
         </Card>
         <Card>
           <CardContent className="flex items-start gap-3 pt-6">
-            <Wallet className="mt-1 h-4 w-4 text-muted-foreground" />
-            <Stat label="Fees settled" value={`${data.feesSettledTeams}/${data.totalTeams}`} />
+            <TrendingUp className="mt-1 h-4 w-4 text-muted-foreground" />
+            <Stat label="Expected income" value={fmtZAR(data.totalTeams * 4000)} />
           </CardContent>
         </Card>
         <Card>

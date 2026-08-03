@@ -38,7 +38,7 @@ function TeamFeeRow({ fee: f }: { fee: PlayerTeamFee }) {
         if (window.self !== window.top) {
           window.open(res.url, "_blank", "noopener,noreferrer")
         } else {
-          window.top!.location.href = res.url
+          window.top?.location.assign(res.url)
         }
       } else {
         toast.error(res.error ?? "Could not create payment link")

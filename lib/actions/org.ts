@@ -380,9 +380,22 @@ export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean)
   const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1)
   if (!team) return { error: "Team not found" }
   await requireCanManageTeam(teamId)
+  if (clubPaysFees) {
+    await db
+      .update(payments)
+      .set({ status: "failed", paidAt: null })
+      .where(and(eq(payments.teamId, teamId), eq(payments.type, "individual"), eq(payments.status, "pending")))
+  } else {
+    await db
+      .update(payments)
+      .set({ status: "failed", paidAt: null })
+      .where(and(eq(payments.teamId, teamId), eq(payments.type, "team"), eq(payments.status, "pending")))
+  }
   await db.update(teams).set({ clubPaysFees, updatedAt: new Date() }).where(eq(teams.id, teamId))
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
+  revalidatePath("/admin/billing")
   return { success: true }
 }
 

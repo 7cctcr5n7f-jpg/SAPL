@@ -107,7 +107,7 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-6">
@@ -158,77 +158,75 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
       </div>
 
       {filtered.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            No outstanding fees match your filters.
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">No outstanding fees match your filters.</p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="rounded-lg border border-border bg-card">
           {filtered.map((f) => {
             const busy = pendingKey === keyId(f)
+            const busyPaid = pendingKey === `paid-${keyId(f)}`
             return (
-              <Card key={keyId(f)}>
-                <CardContent className="flex flex-col gap-4 pt-6 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-foreground">{f.playerName}</span>
-                      {f.kind === "team" ? (
-                        <Badge variant="secondary" className="text-[10px]">
-                          Team owner · funds squad
-                        </Badge>
-                      ) : null}
-                      <Badge variant="destructive">Due</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{f.teamName}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {f.email ?? "No email"}
-                      {f.phone ? ` · ${f.phone}` : ""}
+              <div key={keyId(f)} className="flex items-start gap-3 border-b border-border px-4 py-3 last:border-0">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-semibold text-foreground">{f.playerName}</span>
+                    {f.kind === "team" && (
+                      <Badge variant="secondary" className="text-[10px]">Team owner</Badge>
+                    )}
+                    <Badge variant="destructive" className="text-[10px]">Due</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {f.teamName}
+                    {f.email ? ` · ${f.email}` : ""}
+                    {f.phone ? ` · ${f.phone}` : ""}
+                  </p>
+                  {f.note && (
+                    <p className="mt-1 text-xs text-muted-foreground italic">&ldquo;{f.note}&rdquo;</p>
+                  )}
+                  {f.lastReminderAt && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Last reminder {fmtDate(f.lastReminderAt)} · {f.reminderCount} sent
                     </p>
-                    {f.note ? (
-                      <p className="mt-2 rounded-md bg-secondary px-3 py-2 text-xs text-foreground">
-                        <span className="font-medium">Note:</span> {f.note}
-                      </p>
-                    ) : null}
-                    {f.lastReminderAt ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Last reminder {fmtDate(f.lastReminderAt)} · {f.reminderCount} sent
-                      </p>
-                    ) : null}
-                  </div>
+                  )}
+                </div>
 
-                  <div className="flex shrink-0 flex-col items-stretch gap-2 lg:items-end">
-                    <span className="text-right text-lg font-semibold text-foreground">
-                      {fmtZAR(f.amount + f.vatAmount)}
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setNoteModal(f)}>
-                        <StickyNote className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">{f.note ? "Edit note" : "Add note"}</span>
-                      </Button>
-                      <Button type="button" size="sm" disabled={busy || !f.email} onClick={() => remind(f)}>
-                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        <span className="ml-1.5">Send reminder</span>
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
-                        disabled={pendingKey === `paid-${keyId(f)}`}
-                        onClick={() => markPaid(f)}
-                      >
-                        {pendingKey === `paid-${keyId(f)}` ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        )}
-                        <span className="ml-1.5">Mark as paid</span>
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span className="mr-2 text-sm font-semibold tabular-nums text-foreground">
+                    {fmtZAR(f.amount + f.vatAmount)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    title={f.note ? "Edit note" : "Add note"}
+                    onClick={() => setNoteModal(f)}
+                  >
+                    <StickyNote className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    title="Send reminder"
+                    disabled={busy || !f.email}
+                    onClick={() => remind(f)}
+                  >
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
+                    title="Mark as paid"
+                    disabled={busyPaid}
+                    onClick={() => markPaid(f)}
+                  >
+                    {busyPaid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
             )
           })}
         </div>

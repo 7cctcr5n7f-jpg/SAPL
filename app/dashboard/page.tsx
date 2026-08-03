@@ -3,15 +3,14 @@ import { getCurrentUser } from "@/lib/session"
 import {
   getPlayerByUserId,
   getPlayerMemberships,
-  getPlayerPayments,
   getPlayerTeamFees,
   getPlayerOverviewTeam,
   getFixtureDetails,
   getPendingInvitesForEmail,
   getPairingPartner,
   getTeamOwnerFee,
+  getOwnedTeamForFee,
   type FixtureDetail,
-  type TeamOwnerFee,
 } from "@/lib/queries-dashboard"
 import { getDashboardFixtures } from "@/lib/queries-fixtures"
 import { PageHeader } from "@/components/dashboard/page-header"
@@ -39,15 +38,37 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default async function DashboardOverview() {
+function PaymentStatusNotice({ status }: { status: "submitted" | "cancelled" }) {
+  const submitted = status === "submitted"
+  return (
+    <Card className={submitted ? "border-sky-400/30 bg-sky-500/5" : "border-amber-400/40 bg-amber-500/5"}>
+      <CardContent className="px-4 py-3 text-sm">
+        <p className="font-semibold text-foreground">
+          {submitted ? "Payment submitted" : "Payment cancelled"}
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          {submitted
+            ? "We have sent your payment to PayFast and will mark it as paid as soon as PayFast confirms it."
+            : "No payment was taken. You can try again whenever you are ready."}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+export default async function DashboardOverview({
+  searchParams,
+}: {
+  searchParams: Promise<{ payment?: string }>
+}) {
   const me = await getCurrentUser()
   if (!me) return null
+  const { payment } = await searchParams
   const access = await getAccessContext(me)
   // Load player data for everyone — admins also have LI, ratings, and teams.
   // isPlayer=false only gates the onboarding redirect, not whether data exists.
   const player = await getPlayerByUserId(me.id)
   const memberships = player ? await getPlayerMemberships(me.id) : []
-  const payments = player ? await getPlayerPayments(me.id, me.id) : []
   const teamFees = player ? await getPlayerTeamFees(me.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
@@ -69,17 +90,37 @@ export default async function DashboardOverview() {
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
-  const outstanding =
-    payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
+  // outstanding = only individually-owed fees (no double-count with pending payment rows)
+  const outstanding = feesDue
   const isCaptain = overviewTeam?.role === "captain" || access.isLeagueAdmin
+
+  // Non-playing team owners have no teamMembers entry, so overviewTeam is null
+  // and the normal captain path never fires. Query for owned club-pays-fees teams
+  // so they can still see and pay the consolidated R4000 team fee on their dashboard.
+  const ownedClubPaysFeeTeam =
+    !overviewTeam?.clubPaysFees && !access.isLeagueAdmin && player
+      ? await getOwnedTeamForFee(me.id, me.email)
+      : null
 
   // For captains on club-pays-fees teams, fetch the consolidated team fee entry.
   const teamOwnerFee =
     isCaptain && overviewTeam?.clubPaysFees
       ? await getTeamOwnerFee(overviewTeam.teamId)
+      : ownedClubPaysFeeTeam
+      ? await getTeamOwnerFee(ownedClubPaysFeeTeam.teamId)
       : null
 
-  const feesPaid = outstanding <= 0 && (!teamOwnerFee || teamOwnerFee.status === "paid")
+  const coveredFees = teamFees.filter((f) => f.status === "covered")
+  const coveredTeamFees = coveredFees.length
+    ? await Promise.all(coveredFees.map((fee) => getTeamOwnerFee(fee.teamId)))
+    : []
+  const coveredFeesSettled = coveredTeamFees.every((fee) => fee != null && fee.status === "paid")
+  const feesPaid = outstanding <= 0 && coveredFeesSettled && (!teamOwnerFee || teamOwnerFee.status === "paid")
+  const paymentStatus = payment === "submitted" || payment === "success"
+    ? "submitted"
+    : payment === "cancelled"
+    ? "cancelled"
+    : null
 
   if (!player) {
     return (
@@ -126,19 +167,15 @@ export default async function DashboardOverview() {
         partner={pairingPartner}
       />
 
-      {/* ── League Fees — individual dues ────────────────────────────────── */}
-      {teamFees.some((f) => f.status === "due") && (
+      {/* ── League Fees ───────────────────────────────────────────────────── */}
+      {(paymentStatus || teamFees.length > 0 || teamOwnerFee) && (
         <section id="fees">
           <SectionHeading>League Fees</SectionHeading>
-          <TeamFees fees={teamFees} />
-        </section>
-      )}
-
-      {/* ── League Fees — team owner consolidated fee (club-pays model) ──── */}
-      {teamOwnerFee && (
-        <section id="team-fee">
-          <SectionHeading>League Fees</SectionHeading>
-          <TeamOwnerFeeCard fee={teamOwnerFee} />
+          <div className="space-y-4">
+            {paymentStatus ? <PaymentStatusNotice status={paymentStatus} /> : null}
+            {teamFees.length > 0 ? <TeamFees fees={teamFees} /> : null}
+            {teamOwnerFee ? <TeamOwnerFeeCard fee={teamOwnerFee} /> : null}
+          </div>
         </section>
       )}
 

@@ -23,7 +23,7 @@ export default async function AdminBillingPage() {
   const [fees, paidPayments, readiness] = await Promise.all([
     getOutstandingFees(),
     getPaidPayments(),
-    season ? getSeasonReadiness(season.id) : Promise.resolve(null),
+    getSeasonReadiness(),
   ])
 
   return (
@@ -33,7 +33,7 @@ export default async function AdminBillingPage() {
         subtitle="Track team payment readiness, chase outstanding league fees and keep notes per payer."
       />
 
-      {readiness && <TeamReadinessBoard data={readiness} seasonName={season?.name ?? null} />}
+      {readiness.totalTeams > 0 && <TeamReadinessBoard data={readiness} seasonName={season?.name ?? null} />}
 
       <section className="flex flex-col gap-4">
         <div>
