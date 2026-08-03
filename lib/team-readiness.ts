@@ -112,7 +112,9 @@ export async function getTeamReadiness(teamId: number): Promise<TeamReadiness | 
   const unpaidCount = Math.max(0, playerCount - paidCount)
 
   const rosterComplete = playerCount >= MAX_TEAM_PLAYERS
-  const feesSettled = team.clubPaysFees ? teamPaymentPaid : unpaidCount === 0
+  const feesSettled = team.clubPaysFees
+    ? teamPaymentPaid
+    : playerCount > 0 && unpaidCount === 0
   const isLeagueReady = rosterComplete && feesSettled
 
   const reasons: string[] = []
@@ -260,7 +262,9 @@ export async function getSeasonReadiness(seasonId?: number): Promise<SeasonReadi
     const unpaidCount = Math.max(0, playerCount - paidCount)
 
     const rosterComplete = playerCount >= MAX_TEAM_PLAYERS
-    const feesSettled = team.clubPaysFees ? teamPaymentPaid : unpaidCount === 0
+    const feesSettled = team.clubPaysFees
+      ? teamPaymentPaid
+      : playerCount > 0 && unpaidCount === 0
     const isLeagueReady = rosterComplete && feesSettled
 
     const reasons: string[] = []
