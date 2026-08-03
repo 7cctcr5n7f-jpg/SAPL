@@ -180,7 +180,7 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
                     {f.phone ? ` · ${f.phone}` : ""}
                   </p>
                   {f.note && (
-                    <p className="mt-1 text-xs text-muted-foreground italic">"{f.note}"</p>
+                    <p className="mt-1 text-xs text-muted-foreground italic">&ldquo;{f.note}&rdquo;</p>
                   )}
                   {f.lastReminderAt && (
                     <p className="text-[10px] text-muted-foreground">

@@ -11,7 +11,6 @@ import {
   getTeamOwnerFee,
   getOwnedTeamForFee,
   type FixtureDetail,
-  type TeamOwnerFee,
 } from "@/lib/queries-dashboard"
 import { getDashboardFixtures } from "@/lib/queries-fixtures"
 import { PageHeader } from "@/components/dashboard/page-header"
