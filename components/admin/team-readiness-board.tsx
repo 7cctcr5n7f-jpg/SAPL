@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Stat } from "@/components/brand/bits"
-import { CheckCircle2, AlertCircle, Users, Wallet } from "lucide-react"
+import { fmtZAR } from "@/lib/format"
+import { CheckCircle2, AlertCircle, Users, TrendingUp } from "lucide-react"
 
 type StatusFilter = "all" | "ready" | "not_ready"
 
@@ -99,8 +100,8 @@ export function TeamReadinessBoard({ data, seasonName }: { data: SeasonReadiness
         </Card>
         <Card>
           <CardContent className="flex items-start gap-3 pt-6">
-            <Wallet className="mt-1 h-4 w-4 text-muted-foreground" />
-            <Stat label="Fees settled" value={`${data.feesSettledTeams}/${data.totalTeams}`} />
+            <TrendingUp className="mt-1 h-4 w-4 text-muted-foreground" />
+            <Stat label="Expected income" value={fmtZAR(data.totalTeams * 4000)} />
           </CardContent>
         </Card>
         <Card>
