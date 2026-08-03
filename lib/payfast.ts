@@ -67,7 +67,12 @@ export function buildPayFastUrl(p: PayFastPaymentParams): string {
   const nonEmpty = ordered.filter(([, v]) => v !== "")
 
   // Signature is computed over the PHP-urlencode style encoded param string.
-  const paramStr = buildParamString(nonEmpty)
+  // If a passphrase is configured on the PayFast account it must be appended
+  // as &passphrase=ENCODED_VALUE before hashing — otherwise the signatures
+  // will never match regardless of correct field values.
+  const passphrase = (process.env.PAYFAST_PASSPHRASE ?? "").trim()
+  const baseStr = buildParamString(nonEmpty)
+  const paramStr = passphrase ? `${baseStr}&passphrase=${pfEncode(passphrase)}` : baseStr
   const signature = crypto.createHash("md5").update(paramStr).digest("hex")
 
   // The URL query string uses standard encodeURIComponent (not PHP urlencode)
@@ -88,10 +93,13 @@ export function verifyPayFastSignature(data: Record<string, string>): boolean {
   if (!signature) return false
 
   // Rebuild the param string from what PayFast sent (preserve incoming order).
-  const paramStr = Object.entries(rest)
+  const baseStr = Object.entries(rest)
     .filter(([, v]) => v !== "")
     .map(([k, v]) => `${k}=${pfEncode(v)}`)
     .join("&")
+
+  const passphrase = (process.env.PAYFAST_PASSPHRASE ?? "").trim()
+  const paramStr = passphrase ? `${baseStr}&passphrase=${pfEncode(passphrase)}` : baseStr
 
   const expected = crypto.createHash("md5").update(paramStr).digest("hex")
   return expected === signature
