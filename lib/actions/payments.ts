@@ -70,6 +70,23 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
     .limit(1)
   if (!membership) return { ok: false, error: "You are not an active player on this team" }
 
+  const [alreadyPaid] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.teamId, teamId),
+        eq(payments.playerId, me.id),
+        eq(payments.type, "individual"),
+        eq(payments.status, "paid"),
+      ),
+    )
+    .orderBy(desc(payments.paidAt), desc(payments.createdAt))
+    .limit(1)
+  if (alreadyPaid) {
+    return { ok: false, error: "Your league fee for this team is already paid" }
+  }
+
   const [latest] = await db
     .select({ id: payments.id, reference: payments.reference, status: payments.status })
     .from(payments)
@@ -82,10 +99,6 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
     )
     .orderBy(desc(payments.createdAt))
     .limit(1)
-
-  if (latest?.status === "paid") {
-    return { ok: false, error: "Your league fee for this team is already paid" }
-  }
 
   let reference = latest?.reference ?? ""
 
@@ -169,16 +182,22 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
     (ownerEmail !== "" && ownerEmail === normalizeEmail(me.email))
   if (!isAllowedOwner) return { ok: false, error: "Only the team owner or captain can pay this team fee" }
 
+  const [alreadyPaid] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team"), eq(payments.status, "paid")))
+    .orderBy(desc(payments.paidAt), desc(payments.createdAt))
+    .limit(1)
+  if (alreadyPaid) {
+    return { ok: false, error: "This team fee is already paid" }
+  }
+
   const [latest] = await db
     .select({ id: payments.id, reference: payments.reference, status: payments.status })
     .from(payments)
     .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
     .orderBy(desc(payments.createdAt))
     .limit(1)
-
-  if (latest?.status === "paid") {
-    return { ok: false, error: "This team fee is already paid" }
-  }
 
   let reference = latest?.reference ?? ""
   const totalFee = (await getPlayerFee(team.seasonId)) * TEAM_SQUAD_SIZE

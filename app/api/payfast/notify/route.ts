@@ -74,8 +74,8 @@ export async function POST(req: NextRequest) {
       return new NextResponse("OK", { status: 200 })
     }
 
-    if (payment_status !== "COMPLETE") {
-      const normalizedStatus = payment_status?.toUpperCase()
+    const normalizedStatus = payment_status?.toUpperCase()
+    if (normalizedStatus !== "COMPLETE") {
       if (pay.status !== "paid" && (normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED")) {
         await db
           .update(payments)
