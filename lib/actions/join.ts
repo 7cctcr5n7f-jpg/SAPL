@@ -184,44 +184,50 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
 
   const userId = res.user.id
 
-  // Ensure userMeta
-  await db
-    .insert(userMeta)
-    .values({ userId, role: "player" })
-    .onConflictDoNothing()
+  try {
+    // Ensure userMeta
+    await db
+      .insert(userMeta)
+      .values({ userId, role: "player" })
+      .onConflictDoNothing()
 
-  // Update user profile
-  await db
-    .update(user)
-    .set({
-      firstName,
-      lastName,
-      gender,
-      isPlayer: true,
-      playtomicUrl: playtomicUrl.trim() || null,
-      playtomicRating: playtomicRating ?? null,
-      lookingForTeam: joinMarketplace,
-      onMarketplace: joinMarketplace,
-      availability: joinMarketplace ? "available" : "unavailable",
-      updatedAt: new Date(),
-    })
-    .where(eq(user.id, userId))
+    // Update user profile
+    await db
+      .update(user)
+      .set({
+        firstName,
+        lastName,
+        gender,
+        isPlayer: true,
+        playtomicUrl: playtomicUrl.trim() || null,
+        playtomicRating: playtomicRating ?? null,
+        lookingForTeam: joinMarketplace,
+        onMarketplace: joinMarketplace,
+        availability: joinMarketplace ? "available" : "unavailable",
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, userId))
 
-  revalidatePath("/dashboard")
-  if (inviteToken) {
-    const inviteResult = await processTeamInviteByToken(inviteToken, { userId })
-    if ("joined" in inviteResult || "alreadyOnTeam" in inviteResult) {
-      return { ok: true, redirectTo: "/dashboard" }
+    revalidatePath("/dashboard")
+    if (inviteToken) {
+      const inviteResult = await processTeamInviteByToken(inviteToken, { userId })
+      if ("joined" in inviteResult || "alreadyOnTeam" in inviteResult) {
+        return { ok: true, redirectTo: "/dashboard" }
+      }
+      if ("needsProfile" in inviteResult) {
+        return { ok: true, redirectTo: `/onboarding?inviteToken=${encodeURIComponent(inviteToken)}` }
+      }
+      if ("needsAccount" in inviteResult) {
+        return { ok: false, error: "Could not finalise your invitation. Please try signing in and opening the invite again." }
+      }
+      return { ok: false, error: inviteResult.error }
     }
-    if ("needsProfile" in inviteResult) {
-      return { ok: true, redirectTo: `/onboarding?inviteToken=${encodeURIComponent(inviteToken)}` }
-    }
-    if ("needsAccount" in inviteResult) {
-      return { ok: false, error: "Could not finalise your invitation. Please try signing in and opening the invite again." }
-    }
-    return { ok: false, error: inviteResult.error }
+    return { ok: true, redirectTo: "/dashboard" }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[registerPlayer] DB error after account creation:", msg)
+    return { ok: false, error: "Your account was created but profile setup failed. Please sign in and complete your profile from the dashboard." }
   }
-  return { ok: true, redirectTo: "/dashboard" }
 }
 
 // ---------------------------------------------------------------------------
@@ -307,104 +313,110 @@ export async function registerTeam(input: RegisterTeamInput): Promise<RegisterRe
 
   const userId = res.user.id
 
-  // Ensure userMeta with captain role
-  await db
-    .insert(userMeta)
-    .values({ userId, role: "captain" })
-    .onConflictDoNothing()
+  try {
+    // Ensure userMeta with captain role
+    await db
+      .insert(userMeta)
+      .values({ userId, role: "captain" })
+      .onConflictDoNothing()
 
-  // Update user profile
-  await db
-    .update(user)
-    .set({
-      firstName,
-      lastName,
-      gender: captainPlays ? (captainGender ?? "male") : null,
-      // Everyone who registers is a player — even non-playing captains should
-      // be visible in the squad picker so they can be added to a team later.
-      isPlayer: true,
-      playtomicUrl: captainPlays ? playtomicUrl.trim() || null : null,
-      availability: captainPlays ? "on_team" : "unavailable",
-      updatedAt: new Date(),
-    })
-    .where(eq(user.id, userId))
-
-  // Get or create a default team group row for this captain (legacy FK holder).
-  const [existingOrg] = await db
-    .select({ id: organisations.id })
-    .from(organisations)
-    .where(eq(organisations.ownerUserId, userId))
-    .limit(1)
-
-  let orgId: number
-  if (existingOrg) {
-    orgId = existingOrg.id
-  } else {
-    const slugBase = fullName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-    const [newOrg] = await db
-      .insert(organisations)
-      .values({
-        name: `${fullName.trim()}'s Teams`,
-        slug: `${slugBase}-${Date.now()}`,
-        ownerUserId: userId,
-        type: "Social Group",
+    // Update user profile
+    await db
+      .update(user)
+      .set({
+        firstName,
+        lastName,
+        gender: captainPlays ? (captainGender ?? "male") : null,
+        // Everyone who registers is a player — even non-playing captains should
+        // be visible in the squad picker so they can be added to a team later.
+        isPlayer: true,
+        playtomicUrl: captainPlays ? playtomicUrl.trim() || null : null,
+        availability: captainPlays ? "on_team" : "unavailable",
+        updatedAt: new Date(),
       })
-      .returning({ id: organisations.id })
-    orgId = newOrg.id
+      .where(eq(user.id, userId))
+
+    // Get or create a default team group row for this captain (legacy FK holder).
+    const [existingOrg] = await db
+      .select({ id: organisations.id })
+      .from(organisations)
+      .where(eq(organisations.ownerUserId, userId))
+      .limit(1)
+
+    let orgId: number
+    if (existingOrg) {
+      orgId = existingOrg.id
+    } else {
+      const slugBase = fullName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+      const [newOrg] = await db
+        .insert(organisations)
+        .values({
+          name: `${fullName.trim()}'s Teams`,
+          slug: `${slugBase}-${Date.now()}`,
+          ownerUserId: userId,
+          type: "Social Group",
+        })
+        .returning({ id: organisations.id })
+      orgId = newOrg.id
+    }
+
+    // Get current season
+    const [currentSeason] = await db
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(eq(seasons.isCurrent, true))
+      .limit(1)
+
+    // Get home club region
+    const [homeClub] = await db
+      .select({ regionId: clubs.regionId, saplRegion: clubs.saplRegion })
+      .from(clubs)
+      .where(eq(clubs.id, homeClubId))
+      .limit(1)
+
+    // Create the team — the registrant is automatically the owner.
+    // ownerName and ownerEmail are the single source of truth for the owner
+    // and are written here so the Teams admin page and My Team view both
+    // reflect the owner immediately after sign-up without any manual step.
+    const [newTeam] = await db
+      .insert(teams)
+      .values({
+        name: teamName.trim(),
+        organisationId: orgId,
+        teamType,
+        homeClubId,
+        saplRegion: homeClub?.saplRegion ?? null,
+        regionId: homeClub?.regionId ?? null,
+        seasonId: currentSeason?.id ?? null,
+        captainUserId: userId,
+        ownerEmail: email.trim().toLowerCase(),
+        ownerName: fullName.trim(),
+        clubPaysFees: paymentModel === "club",
+        status: "draft",
+      })
+      .returning({ id: teams.id })
+
+    // If captain plays, add them to the roster
+    if (captainPlays) {
+      await db.insert(teamMembers).values({
+        teamId: newTeam.id,
+        playerId: userId,
+        role: "captain",
+        status: "active",
+        initiatedBy: "self",
+      })
+    }
+    await recomputeTeamStats(newTeam.id)
+
+    // Fire-and-forget admin alert — never blocks the sign-up flow.
+    const { subject, html, text } = adminNewTeamEmail({ teamName: teamName.trim(), ownerName: fullName.trim(), ownerEmail: email.trim().toLowerCase(), adminUrl: `${appBaseUrl()}/admin/teams` })
+    sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
+
+    revalidatePath("/dashboard")
+    return { ok: true, redirectTo: "/dashboard" }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[registerTeam] DB error after account creation:", msg)
+    return { ok: false, error: "Your account was created but we could not set up your team. Please sign in and try registering your team from the dashboard." }
   }
-
-  // Get current season
-  const [currentSeason] = await db
-    .select({ id: seasons.id })
-    .from(seasons)
-    .where(eq(seasons.isCurrent, true))
-    .limit(1)
-
-  // Get home club region
-  const [homeClub] = await db
-    .select({ regionId: clubs.regionId, saplRegion: clubs.saplRegion })
-    .from(clubs)
-    .where(eq(clubs.id, homeClubId))
-    .limit(1)
-
-  // Create the team — the registrant is automatically the owner.
-  // ownerName and ownerEmail are the single source of truth for the owner
-  // and are written here so the Teams admin page and My Team view both
-  // reflect the owner immediately after sign-up without any manual step.
-  const [newTeam] = await db
-    .insert(teams)
-    .values({
-      name: teamName.trim(),
-      organisationId: orgId,
-      teamType,
-      homeClubId,
-      saplRegion: homeClub?.saplRegion ?? null,
-      regionId: homeClub?.regionId ?? null,
-      seasonId: currentSeason?.id ?? null,
-      captainUserId: userId,
-      ownerEmail: email.trim().toLowerCase(),
-      ownerName: fullName.trim(),
-      clubPaysFees: paymentModel === "club",
-      status: "draft",
-    })
-    .returning({ id: teams.id })
-
-  // If captain plays, add them to the roster
-  if (captainPlays) {
-    await db.insert(teamMembers).values({
-      teamId: newTeam.id,
-      playerId: userId,
-      role: "captain",
-      status: "active",
-      initiatedBy: "self",
-    })
-  }
-  await recomputeTeamStats(newTeam.id)
-
-  // Fire-and-forget admin alert — never blocks the sign-up flow.
-  const { subject, html, text } = adminNewTeamEmail({ teamName: teamName.trim(), ownerName: fullName.trim(), ownerEmail: email.trim().toLowerCase(), adminUrl: `${appBaseUrl()}/admin/teams` })
-  sendEmail({ to: ADMIN_EMAIL, subject, html, text }).catch(() => {})
-
-  revalidatePath("/dashboard")
-  return { ok: true, redirectTo: "/dashboard" }
 }
