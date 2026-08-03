@@ -31,7 +31,7 @@ export type TeamType = (typeof TEAM_TYPES)[number]
 
 // Backward compatibility for pre-migration data.
 export function normalizeTeamType(teamType: string): TeamType {
-  if (teamType === "Company Team") return "Business Team"
+  if (teamType === "Business Team" || teamType === "Company Team") return "Business Team"
   if (teamType === "Private Team") return "Private Team"
   return "Club Team"
 }
