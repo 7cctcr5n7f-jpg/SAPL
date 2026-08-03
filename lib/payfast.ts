@@ -4,11 +4,18 @@ const PAYFAST_URL = "https://www.payfast.co.za/eng/process"
 const MERCHANT_ID = "36052667"
 
 /**
- * Encode a PayFast parameter value the same way their signature algorithm
- * expects: standard percent-encoding with spaces as "+" (application/x-www-form-urlencoded).
+ * Encode a PayFast parameter value to match PHP's urlencode() output exactly.
+ * The key differences vs encodeURIComponent: spaces become "+", and the chars
+ * !, ', (, ), ~ are also percent-encoded (encodeURIComponent leaves them raw).
  */
 function pfEncode(value: string): string {
-  return encodeURIComponent(value.trim()).replace(/%20/g, "+")
+  return encodeURIComponent(value.trim())
+    .replace(/%20/g, "+")  // spaces → +  (PHP urlencode behaviour)
+    .replace(/!/g,   "%21")
+    .replace(/'/g,   "%27")
+    .replace(/\(/g,  "%28")
+    .replace(/\)/g,  "%29")
+    .replace(/~/g,   "%7E")
 }
 
 /**
@@ -40,7 +47,7 @@ export interface PayFastPaymentParams {
  * process.env.Key (the SAPL Vercel env var). No passphrase is used.
  */
 export function buildPayFastUrl(p: PayFastPaymentParams): string {
-  const merchantKey = process.env.Key ?? ""
+  const merchantKey = (process.env.Key ?? "").trim()
 
   // PayFast requires fields in this exact order for correct signature generation.
   const ordered: [string, string][] = [
@@ -59,7 +66,9 @@ export function buildPayFastUrl(p: PayFastPaymentParams): string {
 
   const nonEmpty = ordered.filter(([, v]) => v !== "")
   const paramStr = buildParamString(nonEmpty)
+  console.log("[v0] PayFast param string:", paramStr)
   const signature = crypto.createHash("md5").update(paramStr).digest("hex")
+  console.log("[v0] PayFast signature:", signature)
 
   // Build final URL preserving field order (URLSearchParams sorts keys, so we
   // construct the query string manually to keep the signature at the end).
