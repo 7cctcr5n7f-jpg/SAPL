@@ -1429,6 +1429,38 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
   }
 }
 
+/**
+ * For team owners/captains who are NOT on the squad roster (captainPlays=false
+ * at registration), there is no teamMembers entry, so getPlayerOverviewTeam
+ * returns null and the normal fee-card path never fires.
+ *
+ * This helper finds the first club-pays-fees team the user owns (matched via
+ * captainUserId OR ownerEmail) so the dashboard can show the R4000 fee card even
+ * when the owner isn't a playing member.
+ *
+ * Returns null when the user doesn't own any club-pays-fees team (e.g. regular
+ * players, or owners of players-pay teams).
+ */
+export async function getOwnedTeamForFee(
+  userId: string,
+  email: string,
+): Promise<{ teamId: number; clubPaysFees: boolean } | null> {
+  const [team] = await db
+    .select({ id: teams.id, clubPaysFees: teams.clubPaysFees })
+    .from(teams)
+    .where(
+      and(
+        eq(teams.clubPaysFees, true),
+        or(eq(teams.captainUserId, userId), eq(teams.ownerEmail, email)),
+      ),
+    )
+    .orderBy(desc(teams.updatedAt))
+    .limit(1)
+
+  if (!team) return null
+  return { teamId: team.id, clubPaysFees: team.clubPaysFees }
+}
+
 // ── Admin: paid payments list ──────────────────────────────────────────────────
 
 export type PaidPaymentRow = {

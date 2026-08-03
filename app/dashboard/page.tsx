@@ -3,13 +3,13 @@ import { getCurrentUser } from "@/lib/session"
 import {
   getPlayerByUserId,
   getPlayerMemberships,
-  getPlayerPayments,
   getPlayerTeamFees,
   getPlayerOverviewTeam,
   getFixtureDetails,
   getPendingInvitesForEmail,
   getPairingPartner,
   getTeamOwnerFee,
+  getOwnedTeamForFee,
   type FixtureDetail,
   type TeamOwnerFee,
 } from "@/lib/queries-dashboard"
@@ -47,7 +47,6 @@ export default async function DashboardOverview() {
   // isPlayer=false only gates the onboarding redirect, not whether data exists.
   const player = await getPlayerByUserId(me.id)
   const memberships = player ? await getPlayerMemberships(me.id) : []
-  const payments = player ? await getPlayerPayments(me.id, me.id) : []
   const teamFees = player ? await getPlayerTeamFees(me.id) : []
   const overviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
@@ -69,14 +68,24 @@ export default async function DashboardOverview() {
 
   const activeTeams = memberships.filter((m) => m.membership.status === "active")
   const feesDue = teamFees.filter((f) => f.status === "due").reduce((s, f) => s + f.amount + f.vatAmount, 0)
-  const outstanding =
-    payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount + p.vatAmount, 0) + feesDue
+  // outstanding = only individually-owed fees (no double-count with pending payment rows)
+  const outstanding = feesDue
   const isCaptain = overviewTeam?.role === "captain" || access.isLeagueAdmin
+
+  // Non-playing team owners have no teamMembers entry, so overviewTeam is null
+  // and the normal captain path never fires. Query for owned club-pays-fees teams
+  // so they can still see and pay the consolidated R4000 team fee on their dashboard.
+  const ownedClubPaysFeeTeam =
+    !overviewTeam?.clubPaysFees && !access.isLeagueAdmin && player
+      ? await getOwnedTeamForFee(me.id, me.email)
+      : null
 
   // For captains on club-pays-fees teams, fetch the consolidated team fee entry.
   const teamOwnerFee =
     isCaptain && overviewTeam?.clubPaysFees
       ? await getTeamOwnerFee(overviewTeam.teamId)
+      : ownedClubPaysFeeTeam
+      ? await getTeamOwnerFee(ownedClubPaysFeeTeam.teamId)
       : null
 
   const feesPaid = outstanding <= 0 && (!teamOwnerFee || teamOwnerFee.status === "paid")

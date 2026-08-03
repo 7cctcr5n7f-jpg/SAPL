@@ -381,6 +381,7 @@ export async function setTeamClubPaysFees(teamId: number, clubPaysFees: boolean)
   if (!team) return { error: "Team not found" }
   await requireCanManageTeam(teamId)
   await db.update(teams).set({ clubPaysFees, updatedAt: new Date() }).where(eq(teams.id, teamId))
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
   return { success: true }
