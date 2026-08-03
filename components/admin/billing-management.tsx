@@ -19,7 +19,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Loader2, StickyNote, Send } from "lucide-react"
+import { Loader2, StickyNote, Send, CheckCircle2 } from "lucide-react"
+import { markPaymentPaid } from "@/lib/actions/payments"
 
 type PaidFilter = "all" | "unpaid"
 type KindFilter = "all" | "player" | "team"
@@ -83,6 +84,24 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
         router.refresh()
       } else {
         toast.error(res.error ?? "Could not send reminder")
+      }
+    })
+  }
+
+  function markPaid(f: OutstandingFee) {
+    setPendingKey(`paid-${keyId(f)}`)
+    startTransition(async () => {
+      const res = await markPaymentPaid({
+        type: f.kind === "team" ? "team" : "individual",
+        teamId: f.teamId,
+        playerId: f.playerId,
+      })
+      setPendingKey(null)
+      if (res.ok) {
+        toast.success(`${f.playerName} marked as paid`)
+        router.refresh()
+      } else {
+        toast.error(res.error ?? "Could not mark as paid")
       }
     })
   }
@@ -190,6 +209,21 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
                       <Button type="button" size="sm" disabled={busy || !f.email} onClick={() => remind(f)}>
                         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                         <span className="ml-1.5">Send reminder</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                        disabled={pendingKey === `paid-${keyId(f)}`}
+                        onClick={() => markPaid(f)}
+                      >
+                        {pendingKey === `paid-${keyId(f)}` ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        <span className="ml-1.5">Mark as paid</span>
                       </Button>
                     </div>
                   </div>

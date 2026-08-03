@@ -1428,3 +1428,70 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
     paymentId: pay?.id ?? null,
   }
 }
+
+// ── Admin: paid payments list ──────────────────────────────────────────────────
+
+export type PaidPaymentRow = {
+  id: number
+  type: "individual" | "team"
+  payerName: string
+  email: string | null
+  teamId: number
+  teamName: string
+  amount: number
+  vatAmount: number
+  reference: string | null
+  paidAt: string | null
+}
+
+/**
+ * Admin-only: every payment row with status=paid, enriched with payer name,
+ * email, and team name. Used to show the "who has paid" list on the billing page.
+ */
+export async function getPaidPayments(): Promise<PaidPaymentRow[]> {
+  const rows = await db
+    .select({
+      id: payments.id,
+      type: payments.type,
+      payerUserId: payments.payerUserId,
+      teamId: payments.teamId,
+      amount: payments.amount,
+      vatAmount: payments.vatAmount,
+      reference: payments.reference,
+      paidAt: payments.paidAt,
+    })
+    .from(payments)
+    .where(eq(payments.status, "paid"))
+    .orderBy(desc(payments.paidAt))
+
+  if (rows.length === 0) return []
+
+  const teamIds = [...new Set(rows.map((r) => r.teamId).filter((id): id is number => id != null))]
+  const payerIds = [...new Set(rows.map((r) => r.payerUserId).filter((id): id is string => id != null))]
+
+  const teamRows = teamIds.length
+    ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(inArray(teams.id, teamIds))
+    : []
+  const payerRows = payerIds.length
+    ? await db.select({ id: user.id, name: user.name, email: user.email }).from(user).where(inArray(user.id, payerIds))
+    : []
+
+  const teamMap = new Map(teamRows.map((t) => [t.id, t.name]))
+  const payerMap = new Map(payerRows.map((u) => [u.id, { name: u.name, email: u.email }]))
+
+  return rows.map((r) => {
+    const payer = r.payerUserId ? (payerMap.get(r.payerUserId) ?? null) : null
+    return {
+      id: r.id,
+      type: (r.type ?? "individual") as "individual" | "team",
+      payerName: payer?.name ?? "Unknown",
+      email: payer?.email ?? null,
+      teamId: r.teamId ?? 0,
+      teamName: teamMap.get(r.teamId ?? 0) ?? "Unknown Team",
+      amount: r.amount,
+      vatAmount: r.vatAmount,
+      reference: r.reference,
+      paidAt: r.paidAt ? r.paidAt.toISOString() : null,
+    }
+  })
+}
