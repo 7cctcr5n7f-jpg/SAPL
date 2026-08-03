@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { feeNotes } from "@/lib/db/schema"
+import { feeNotes, payments } from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -112,4 +112,15 @@ export async function sendFeeReminder(input: {
 
   revalidatePath("/admin/billing")
   return { ok: true, sent }
+}
+
+/**
+ * Permanently delete a payment record. Admin-only — used to remove orphaned or
+ * incorrectly created records that can't be voided through PayFast.
+ */
+export async function voidPayment(paymentId: number) {
+  await requireLeagueAdmin()
+  await db.delete(payments).where(eq(payments.id, paymentId))
+  revalidatePath("/admin/billing")
+  return { ok: true }
 }

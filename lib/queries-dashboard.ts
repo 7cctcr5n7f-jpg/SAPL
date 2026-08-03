@@ -21,7 +21,7 @@ import {
   clubs,
   players,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne, isNotNull } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
@@ -665,9 +665,7 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     .from(teamMembers)
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .innerJoin(user, eq(teamMembers.playerId, user.id))
-    // Only chase fees once a team has actually been placed in a division under
-    // League Control — unplaced teams aren't competing yet, so no fee is due.
-    .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false), isNotNull(teams.divisionId)))
+    .where(and(eq(teamMembers.status, "active"), eq(teams.clubPaysFees, false)))
 
   const result: OutstandingFee[] = []
   for (const r of rows) {
@@ -713,12 +711,10 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
       organisationId: teams.organisationId,
     })
     .from(teams)
-    // Same rule for team-funded squads: only billable once placed in a division.
     .where(
       and(
         eq(teams.clubPaysFees, true),
         inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
-        isNotNull(teams.divisionId),
       ),
     )
 

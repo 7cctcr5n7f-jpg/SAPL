@@ -59,9 +59,12 @@ function TeamRow({ t }: { t: SeasonReadinessTeam }) {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Fees</p>
           <p className={cn("text-sm font-semibold tabular-nums", t.feesSettled ? "text-foreground" : "text-amber-600 dark:text-amber-400")}>
             {t.clubPaysFees
-              ? <span className="text-muted-foreground font-normal text-xs">Team pays</span>
-              : `${t.paidCount}/${t.playerCount}`}
+              ? `${t.teamPaymentPaid ? 1 : 0}/1`
+              : `${t.paidCount}/8`}
           </p>
+          {t.clubPaysFees && (
+            <p className="text-[9px] text-muted-foreground mt-0.5">Owner pays</p>
+          )}
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Avg PR</p>
