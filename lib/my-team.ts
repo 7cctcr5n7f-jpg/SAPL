@@ -140,10 +140,31 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   let otherTeams: { id: number; name: string }[]
 
   if (memberships.length > 0) {
+    const managedIds = opts?.managedTeamIds ?? []
+    const managedRows = managedIds.length > 0
+      ? await db
+          .select({ teamId: teams.id, name: teams.name })
+          .from(teams)
+          .where(inArray(teams.id, managedIds))
+      : []
+
+    // Team switcher scope is the union of active memberships and managed teams.
+    // This prevents falling back to the first membership when a user switches to
+    // a team they manage but are not an active player on.
+    const byId = new Map<number, { id: number; name: string }>()
+    for (const m of memberships) byId.set(m.teamId, { id: m.teamId, name: m.name })
+    for (const m of managedRows) {
+      if (!byId.has(m.teamId)) byId.set(m.teamId, { id: m.teamId, name: m.name })
+    }
+    const selectableTeams = [...byId.values()]
+    if (selectableTeams.length === 0) return null
+
+    const preferred = opts?.preferredTeamId
     const chosen =
-      (opts?.preferredTeamId && memberships.find((m) => m.teamId === opts.preferredTeamId)) || memberships[0]
-    teamId = chosen.teamId
-    otherTeams = memberships.filter((m) => m.teamId !== teamId).map((m) => ({ id: m.teamId, name: m.name }))
+      (preferred != null && selectableTeams.find((t) => t.id === preferred)) ??
+      selectableTeams[0]
+    teamId = chosen.id
+    otherTeams = selectableTeams.filter((t) => t.id !== teamId)
   } else {
     // No active memberships — check if this user manages any teams by email.
     const managed = opts?.managedTeamIds ?? []
