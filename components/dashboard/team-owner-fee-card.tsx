@@ -1,0 +1,97 @@
+"use client"
+
+import { useState, useTransition } from "react"
+import { fmtZAR } from "@/lib/format"
+import { CheckCircle2, CreditCard, Loader2 } from "lucide-react"
+import type { TeamOwnerFee } from "@/lib/queries-dashboard"
+import { createTeamPayment } from "@/lib/actions/payments"
+import { toast } from "sonner"
+
+export function TeamOwnerFeeCard({ fee: f }: { fee: TeamOwnerFee }) {
+  const isPaid = f.status === "paid"
+  const [, startTransition] = useTransition()
+  const [loading, setLoading] = useState(false)
+
+  function handlePay() {
+    setLoading(true)
+    startTransition(async () => {
+      const res = await createTeamPayment(f.teamId)
+      setLoading(false)
+      if (res.ok) {
+        // PayFast blocks being loaded inside an iframe (X-Frame-Options).
+        // Open in a new tab when inside the v0 preview iframe; otherwise
+        // navigate the top-level window so the user stays on the same domain.
+        if (window.self !== window.top) {
+          window.open(res.url, "_blank", "noopener,noreferrer")
+        } else {
+          window.top!.location.href = res.url
+        }
+      } else {
+        toast.error(res.error ?? "Could not create payment link")
+      }
+    })
+  }
+
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border ${
+        isPaid
+          ? "border-emerald-400/30 bg-emerald-500/5"
+          : "border-amber-400/40 bg-amber-500/5"
+      }`}
+    >
+      <div className="flex items-start gap-4 p-4">
+        {/* Icon */}
+        <div
+          className={`shrink-0 rounded-xl p-2.5 ${
+            isPaid
+              ? "bg-emerald-500/15 text-emerald-600"
+              : "bg-amber-500/15 text-amber-600"
+          }`}
+        >
+          {isPaid ? (
+            <CheckCircle2 className="h-5 w-5" />
+          ) : (
+            <CreditCard className="h-5 w-5" />
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-foreground leading-tight">{f.teamName}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Team league fee — {fmtZAR(f.amount + f.vatAmount)} incl. VAT (full squad)
+          </p>
+          {!isPaid && (
+            <p className="text-xs text-amber-600 font-medium mt-1">
+              You selected &apos;team pays fees&apos; — you are responsible for paying for your entire squad.
+            </p>
+          )}
+        </div>
+
+        {/* Badge / action */}
+        <div className="shrink-0 text-right">
+          {isPaid ? (
+            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-600">
+              Paid
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handlePay}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-60 transition-colors"
+            >
+              {loading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <CreditCard className="h-3 w-3" />
+              )}
+              Pay Now
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
