@@ -65,14 +65,16 @@ export function buildPayFastUrl(p: PayFastPaymentParams): string {
   ]
 
   const nonEmpty = ordered.filter(([, v]) => v !== "")
-  const paramStr = buildParamString(nonEmpty)
-  console.log("[v0] PayFast param string:", paramStr)
-  const signature = crypto.createHash("md5").update(paramStr).digest("hex")
-  console.log("[v0] PayFast signature:", signature)
 
-  // Build final URL preserving field order (URLSearchParams sorts keys, so we
-  // construct the query string manually to keep the signature at the end).
-  const query = nonEmpty.map(([k, v]) => `${k}=${pfEncode(v)}`).join("&")
+  // Signature is computed over the PHP-urlencode style encoded param string.
+  const paramStr = buildParamString(nonEmpty)
+  const signature = crypto.createHash("md5").update(paramStr).digest("hex")
+
+  // The URL query string uses standard encodeURIComponent (not PHP urlencode)
+  // so browsers and the fetch layer do not mangle + signs back into spaces.
+  // URLSearchParams is not used because it sorts keys alphabetically, which
+  // would reorder the fields and confuse some PayFast processing steps.
+  const query = nonEmpty.map(([k, v]) => `${k}=${encodeURIComponent(v.trim())}`).join("&")
   return `${PAYFAST_URL}?${query}&signature=${signature}`
 }
 
