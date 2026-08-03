@@ -1429,6 +1429,133 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
   }
 }
 
+// ── Admin: all-teams billing overview ─────────────────────────────────────────
+
+export type TeamBillingRow = {
+  teamId: number
+  teamName: string
+  clubPaysFees: boolean
+  /** Total active squad members (individual-pay mode) */
+  memberCount: number
+  /** How many individuals have a paid payment row */
+  paidCount: number
+  /** For team-pays mode: has the owner paid? */
+  ownerPaid: boolean
+  /** Owner / manager name for team-pays mode */
+  ownerName: string | null
+  ownerEmail: string | null
+  seasonId: number | null
+  divisionId: number | null
+}
+
+/**
+ * Admin-only: every active team with a billing summary — paid / total headcount
+ * for individual-pay squads, or owner-paid status for club-pay squads.
+ * Shows ALL teams regardless of division placement.
+ */
+export async function getAllTeamsBilling(): Promise<TeamBillingRow[]> {
+  const allTeams = await db
+    .select({
+      id: teams.id,
+      name: teams.name,
+      clubPaysFees: teams.clubPaysFees,
+      managerUserId: teams.managerUserId,
+      organisationId: teams.organisationId,
+      seasonId: teams.seasonId,
+      divisionId: teams.divisionId,
+    })
+    .from(teams)
+    .where(inArray(teams.status, [...TEAM_VISIBLE_STATUSES]))
+    .orderBy(teams.name)
+
+  const results: TeamBillingRow[] = []
+
+  for (const t of allTeams) {
+    if (t.clubPaysFees) {
+      // Team-pays mode: check if the owner has a paid team payment
+      const [pay] = await db
+        .select({ status: payments.status })
+        .from(payments)
+        .where(and(eq(payments.teamId, t.id), eq(payments.type, "team")))
+        .orderBy(desc(payments.createdAt))
+        .limit(1)
+
+      // Resolve owner name/email
+      let ownerUserId = t.managerUserId
+      if (!ownerUserId && t.organisationId) {
+        const [org] = await db
+          .select({ ownerUserId: organisations.ownerUserId })
+          .from(organisations)
+          .where(eq(organisations.id, t.organisationId))
+          .limit(1)
+        ownerUserId = org?.ownerUserId ?? null
+      }
+      let ownerName: string | null = null
+      let ownerEmail: string | null = null
+      if (ownerUserId) {
+        const [u] = await db
+          .select({ name: user.name, email: user.email })
+          .from(user)
+          .where(eq(user.id, ownerUserId))
+          .limit(1)
+        ownerName = u?.name ?? null
+        ownerEmail = u?.email ?? null
+      }
+
+      results.push({
+        teamId: t.id,
+        teamName: t.name,
+        clubPaysFees: true,
+        memberCount: 0,
+        paidCount: 0,
+        ownerPaid: pay?.status === "paid",
+        ownerName,
+        ownerEmail,
+        seasonId: t.seasonId,
+        divisionId: t.divisionId,
+      })
+    } else {
+      // Individual-pays mode: count active members and how many have paid
+      const members = await db
+        .select({ playerId: teamMembers.playerId })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, t.id), eq(teamMembers.status, "active")))
+
+      let paidCount = 0
+      for (const m of members) {
+        const [pay] = await db
+          .select({ status: payments.status })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.teamId, t.id),
+              eq(payments.playerId, m.playerId),
+              eq(payments.type, "individual"),
+            ),
+          )
+          .orderBy(desc(payments.createdAt))
+          .limit(1)
+        if (pay?.status === "paid") paidCount++
+      }
+
+      results.push({
+        teamId: t.id,
+        teamName: t.name,
+        clubPaysFees: false,
+        memberCount: members.length,
+        paidCount,
+        ownerPaid: false,
+        ownerName: null,
+        ownerEmail: null,
+        seasonId: t.seasonId,
+        divisionId: t.divisionId,
+      })
+    }
+  }
+
+  return results
+}
+
 // ── Admin: paid payments list ──────────────────────────────────────────────────
 
 export type PaidPaymentRow = {
@@ -1461,7 +1588,7 @@ export async function getPaidPayments(): Promise<PaidPaymentRow[]> {
       paidAt: payments.paidAt,
     })
     .from(payments)
-    .where(eq(payments.status, "paid"))
+    .where(and(eq(payments.status, "paid"), isNotNull(payments.teamId)))
     .orderBy(desc(payments.paidAt))
 
   if (rows.length === 0) return []

@@ -1,11 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header"
 import { requirePermissionPage } from "@/lib/access"
-import { getOutstandingFees, getPaidPayments } from "@/lib/queries-dashboard"
+import { getOutstandingFees, getPaidPayments, getAllTeamsBilling } from "@/lib/queries-dashboard"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { db } from "@/lib/db"
 import { seasons } from "@/lib/db/schema"
 import { desc } from "drizzle-orm"
 import { BillingManagement } from "@/components/admin/billing-management"
+import { TeamsBillingOverview } from "@/components/admin/teams-billing-overview"
 import { PaidPayments } from "@/components/admin/paid-payments"
 import { TeamReadinessBoard } from "@/components/admin/team-readiness-board"
 
@@ -20,9 +21,10 @@ export default async function AdminBillingPage() {
     .from(seasons)
     .orderBy(desc(seasons.isCurrent), desc(seasons.id))
     .limit(1)
-  const [fees, paidPayments, readiness] = await Promise.all([
+  const [fees, paidPayments, teamsBilling, readiness] = await Promise.all([
     getOutstandingFees(),
     getPaidPayments(),
+    getAllTeamsBilling(),
     season ? getSeasonReadiness(season.id) : Promise.resolve(null),
   ])
 
@@ -34,6 +36,16 @@ export default async function AdminBillingPage() {
       />
 
       {readiness && <TeamReadinessBoard data={readiness} seasonName={season?.name ?? null} />}
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">All teams</h2>
+          <p className="text-sm text-muted-foreground">
+            Payment progress for every team. Individual-pay squads show paid players out of total; club-pay squads show whether the owner has settled the full squad fee.
+          </p>
+        </div>
+        <TeamsBillingOverview teams={teamsBilling} />
+      </section>
 
       <section className="flex flex-col gap-4">
         <div>
