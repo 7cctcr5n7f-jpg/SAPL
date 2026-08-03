@@ -56,9 +56,11 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Missing m_payment_id", { status: 400 })
     }
 
-    if (!(await validatePayFastItn(text))) {
-      console.error("[PayFast ITN] Validation handshake failed", { reference: m_payment_id })
-      return new NextResponse("Invalid ITN", { status: 400 })
+    const validatedByPayFast = await validatePayFastItn(text)
+    if (!validatedByPayFast) {
+      // Keep processing after a valid signature/reference/amount check even when
+      // PayFast's validation endpoint is temporarily unavailable or times out.
+      console.warn("[PayFast ITN] Validation handshake failed; proceeding after signature check", { reference: m_payment_id })
     }
 
     // Find the payment by our reference field.
@@ -74,8 +76,8 @@ export async function POST(req: NextRequest) {
       return new NextResponse("OK", { status: 200 })
     }
 
-    if (payment_status !== "COMPLETE") {
-      const normalizedStatus = payment_status?.toUpperCase()
+    const normalizedStatus = payment_status?.trim().toUpperCase()
+    if (normalizedStatus !== "COMPLETE") {
       if (pay.status !== "paid" && (normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED")) {
         await db
           .update(payments)

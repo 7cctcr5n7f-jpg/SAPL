@@ -361,20 +361,35 @@ export async function getPlayerTeamFees(playerId: string): Promise<PlayerTeamFee
       })
       continue
     }
-    const [pay] = await db
-      .select()
+    const [paid] = await db
+      .select({ id: payments.id })
       .from(payments)
-      .where(and(eq(payments.teamId, team.id), eq(payments.playerId, playerId), eq(payments.type, "individual")))
-      .orderBy(desc(payments.createdAt))
+      .where(
+        and(
+          eq(payments.teamId, team.id),
+          eq(payments.playerId, playerId),
+          eq(payments.type, "individual"),
+          eq(payments.status, "paid"),
+        ),
+      )
+      .orderBy(desc(payments.paidAt), desc(payments.createdAt))
       .limit(1)
+    const [latest] = paid
+      ? [null]
+      : await db
+          .select({ id: payments.id })
+          .from(payments)
+          .where(and(eq(payments.teamId, team.id), eq(payments.playerId, playerId), eq(payments.type, "individual")))
+          .orderBy(desc(payments.createdAt))
+          .limit(1)
     result.push({
       teamId: team.id,
       teamName: team.name,
       clubPaysFees: false,
       amount,
       vatAmount,
-      status: pay?.status === "paid" ? "paid" : "due",
-      paymentId: pay?.id ?? null,
+      status: paid ? "paid" : "due",
+      paymentId: paid?.id ?? latest?.id ?? null,
     })
   }
   return result
@@ -679,13 +694,20 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
 
   const result: OutstandingFee[] = []
   for (const r of rows) {
-    const [pay] = await db
-      .select({ status: payments.status })
+    const [paid] = await db
+      .select({ id: payments.id })
       .from(payments)
-      .where(and(eq(payments.teamId, r.teamId), eq(payments.playerId, r.playerId), eq(payments.type, "individual")))
-      .orderBy(desc(payments.createdAt))
+      .where(
+        and(
+          eq(payments.teamId, r.teamId),
+          eq(payments.playerId, r.playerId),
+          eq(payments.type, "individual"),
+          eq(payments.status, "paid"),
+        ),
+      )
+      .orderBy(desc(payments.paidAt), desc(payments.createdAt))
       .limit(1)
-    if (pay?.status === "paid") continue
+    if (paid) continue
 
     const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, r.userId)).limit(1)
     const [m] = await db.select({ phone: userMeta.phone }).from(userMeta).where(eq(userMeta.userId, r.userId)).limit(1)
@@ -730,13 +752,13 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     )
 
   for (const t of fundedTeams) {
-    const [pay] = await db
-      .select({ status: payments.status })
+    const [paid] = await db
+      .select({ id: payments.id })
       .from(payments)
-      .where(and(eq(payments.teamId, t.teamId), eq(payments.type, "team")))
-      .orderBy(desc(payments.createdAt))
+      .where(and(eq(payments.teamId, t.teamId), eq(payments.type, "team"), eq(payments.status, "paid")))
+      .orderBy(desc(payments.paidAt), desc(payments.createdAt))
       .limit(1)
-    if (pay?.status === "paid") continue
+    if (paid) continue
 
     // Resolve the responsible person: the team manager, else the org owner.
     let ownerUserId = t.managerUserId ?? t.captainUserId
@@ -1424,20 +1446,28 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
   const { amount, vatAmount } = splitVatInclusive(totalFee)
 
   // Check for an existing team payment
-  const [pay] = await db
-    .select({ id: payments.id, status: payments.status })
+  const [paid] = await db
+    .select({ id: payments.id })
     .from(payments)
-    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
-    .orderBy(desc(payments.createdAt))
+    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team"), eq(payments.status, "paid")))
+    .orderBy(desc(payments.paidAt), desc(payments.createdAt))
     .limit(1)
+  const [latest] = paid
+    ? [null]
+    : await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
+        .orderBy(desc(payments.createdAt))
+        .limit(1)
 
   return {
     teamId: team.id,
     teamName: team.name,
     amount,
     vatAmount,
-    status: pay?.status === "paid" ? "paid" : "due",
-    paymentId: pay?.id ?? null,
+    status: paid ? "paid" : "due",
+    paymentId: paid?.id ?? latest?.id ?? null,
   }
 }
 

@@ -8,8 +8,9 @@ const MERCHANT_ID = "36052667"
  * The key differences vs encodeURIComponent: spaces become "+", and the chars
  * !, ', (, ), ~ are also percent-encoded (encodeURIComponent leaves them raw).
  */
-function pfEncode(value: string): string {
-  return encodeURIComponent(value.trim())
+function pfEncode(value: string, trim = true): string {
+  const normalized = trim ? value.trim() : value
+  return encodeURIComponent(normalized)
     .replace(/%20/g, "+")  // spaces → +  (PHP urlencode behaviour)
     .replace(/!/g,   "%21")
     .replace(/'/g,   "%27")
@@ -99,12 +100,12 @@ export function verifyPayFastSignature(data: Record<string, string>): boolean {
   // Rebuild the param string from what PayFast sent (preserve incoming order).
   const baseStr = Object.entries(rest)
     .filter(([, v]) => v !== "")
-    .map(([k, v]) => `${k}=${pfEncode(v)}`)
+    .map(([k, v]) => `${k}=${pfEncode(v, false)}`)
     .join("&")
 
   const passphrase = (process.env.PAYFAST_PASSPHRASE ?? "").trim()
   const paramStr = passphrase ? `${baseStr}&passphrase=${pfEncode(passphrase)}` : baseStr
 
   const expected = crypto.createHash("md5").update(paramStr).digest("hex")
-  return expected === signature
+  return expected.toLowerCase() === signature.toLowerCase()
 }
