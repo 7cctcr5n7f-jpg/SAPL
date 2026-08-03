@@ -1,5 +1,4 @@
 import React from "react"
-import { CheckCircle2, CreditCard } from "lucide-react"
 import { getCurrentUser } from "@/lib/session"
 import {
   getPlayerByUserId,
@@ -26,65 +25,8 @@ import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
+import { TeamOwnerFeeCard } from "@/components/dashboard/team-owner-fee-card"
 import { fmtZAR } from "@/lib/format"
-
-function TeamOwnerFeeCard({ fee }: { fee: TeamOwnerFee }) {
-  const total = fee.amount + fee.vatAmount
-  const isPaid = fee.status === "paid"
-  return (
-    <div
-      className={`overflow-hidden rounded-2xl border ${
-        isPaid ? "border-emerald-400/30 bg-emerald-500/5" : "border-amber-400/40 bg-amber-500/5"
-      }`}
-    >
-      <div className="flex items-start gap-4 p-4">
-        {/* Icon */}
-        <div
-          className={`shrink-0 rounded-xl p-2.5 ${
-            isPaid ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"
-          }`}
-        >
-          {isPaid ? (
-            <CheckCircle2 className="h-5 w-5" />
-          ) : (
-            <CreditCard className="h-5 w-5" />
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="min-w-0 flex-1">
-          <p className="font-bold text-foreground leading-tight">{fee.teamName}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Team league fee — {fmtZAR(total)} incl. VAT (full squad)
-          </p>
-          {!isPaid && (
-            <p className="text-xs text-amber-600 font-medium mt-1">
-              You selected &apos;team pays fees&apos; — you are responsible for paying for your entire squad.
-            </p>
-          )}
-        </div>
-
-        {/* Badge / action */}
-        <div className="shrink-0 text-right">
-          {isPaid ? (
-            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-600">
-              Paid
-            </span>
-          ) : (
-            <div className="flex flex-col items-end gap-2">
-              <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold text-amber-600">
-                Due
-              </span>
-              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                Payment link coming soon
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (

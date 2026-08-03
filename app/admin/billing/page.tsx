@@ -1,11 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header"
 import { requirePermissionPage } from "@/lib/access"
-import { getOutstandingFees } from "@/lib/queries-dashboard"
+import { getOutstandingFees, getPaidPayments } from "@/lib/queries-dashboard"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { db } from "@/lib/db"
 import { seasons } from "@/lib/db/schema"
 import { desc } from "drizzle-orm"
 import { BillingManagement } from "@/components/admin/billing-management"
+import { PaidPayments } from "@/components/admin/paid-payments"
 import { TeamReadinessBoard } from "@/components/admin/team-readiness-board"
 
 export const dynamic = "force-dynamic"
@@ -19,8 +20,9 @@ export default async function AdminBillingPage() {
     .from(seasons)
     .orderBy(desc(seasons.isCurrent), desc(seasons.id))
     .limit(1)
-  const [fees, readiness] = await Promise.all([
+  const [fees, paidPayments, readiness] = await Promise.all([
     getOutstandingFees(),
+    getPaidPayments(),
     season ? getSeasonReadiness(season.id) : Promise.resolve(null),
   ])
 
@@ -37,10 +39,20 @@ export default async function AdminBillingPage() {
         <div>
           <h2 className="text-lg font-bold text-foreground">Outstanding fees</h2>
           <p className="text-sm text-muted-foreground">
-            Individual players with unpaid league fees. Send reminders and record notes as you follow up.
+            Players and team owners with unpaid league fees. Send reminders, add notes, or mark as paid for EFT/cash payments.
           </p>
         </div>
         <BillingManagement fees={fees} />
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Paid</h2>
+          <p className="text-sm text-muted-foreground">
+            All confirmed payments — via PayFast or manually marked by an admin.
+          </p>
+        </div>
+        <PaidPayments payments={paidPayments} />
       </section>
     </div>
   )
