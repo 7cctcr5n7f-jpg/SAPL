@@ -62,6 +62,7 @@ export function buildPayFastUrl(p: PayFastPaymentParams): string {
     ["m_payment_id", p.mPaymentId],
     ["amount", p.amount.toFixed(2)],
     ["item_name", p.itemName],
+    ["currency", "ZAR"],
   ]
 
   const nonEmpty = ordered.filter(([, v]) => v !== "")
