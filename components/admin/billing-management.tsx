@@ -4,8 +4,10 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { OutstandingFee } from "@/lib/queries-dashboard"
+import type { SeasonReadiness } from "@/lib/team-readiness"
 import { saveFeeNote, sendFeeReminder } from "@/lib/actions/billing"
 import { fmtZAR } from "@/lib/format"
+import { DEFAULT_LEAGUE_JOIN_FEE, TEAM_SQUAD_SIZE } from "@/lib/constants"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,7 +36,7 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
+export function BillingManagement({ fees, readiness }: { fees: OutstandingFee[]; readiness: SeasonReadiness }) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   // Outstanding fees are by definition unpaid; the "paid" view is intentionally
@@ -56,9 +58,16 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
     })
   }, [fees, query, paid, kind])
 
-  const total = filtered.reduce((s, f) => s + f.amount + f.vatAmount, 0)
-  const uniquePlayers = new Set(filtered.filter((f) => f.kind === "player").map((f) => f.playerId)).size
-  const fundingTeams = filtered.filter((f) => f.kind === "team").length
+  const expectedTeamFee = TEAM_SQUAD_SIZE * DEFAULT_LEAGUE_JOIN_FEE
+  const expectedIncome = readiness.totalTeams * expectedTeamFee
+  const playerPaysTeams = readiness.teams.filter((t) => !t.clubPaysFees)
+  const fundingTeams = readiness.teams.filter((t) => t.clubPaysFees)
+  const paidPlayersSoFar = playerPaysTeams.reduce((sum, t) => sum + Math.min(Math.max(t.paidCount, 0), TEAM_SQUAD_SIZE), 0)
+  const expectedPlayerSlots = playerPaysTeams.length * TEAM_SQUAD_SIZE
+  const playersOwing = Math.max(expectedPlayerSlots - paidPlayersSoFar, 0)
+  const fundingTeamsPaid = fundingTeams.filter((t) => t.teamPaymentPaid).length
+  const incomePaidSoFar = (paidPlayersSoFar * DEFAULT_LEAGUE_JOIN_FEE) + (fundingTeamsPaid * expectedTeamFee)
+  const totalOutstanding = Math.max(expectedIncome - incomePaidSoFar, 0)
 
   function keyId(f: OutstandingFee) {
     return `${f.kind}-${f.teamId}-${f.playerId}`
@@ -111,17 +120,17 @@ export function BillingManagement({ fees }: { fees: OutstandingFee[] }) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-6">
-            <Stat label="Total outstanding" value={fmtZAR(total)} />
+            <Stat label="Total outstanding" value={fmtZAR(totalOutstanding)} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <Stat label="Players owing" value={uniquePlayers} />
+            <Stat label="Players owing" value={`${playersOwing}/${expectedPlayerSlots}`} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <Stat label="Funding teams owing" value={fundingTeams} />
+            <Stat label="Funding teams" value={`${fundingTeamsPaid}/${fundingTeams.length} paid`} />
           </CardContent>
         </Card>
       </div>

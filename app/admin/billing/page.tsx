@@ -42,7 +42,7 @@ export default async function AdminBillingPage() {
             Players and team owners with unpaid league fees. Send reminders, add notes, or mark as paid for EFT/cash payments.
           </p>
         </div>
-        <BillingManagement fees={fees} />
+        <BillingManagement fees={fees} readiness={readiness} />
       </section>
 
       <section className="flex flex-col gap-4">
