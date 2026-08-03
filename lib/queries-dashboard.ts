@@ -21,7 +21,7 @@ import {
   clubs,
   players,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne, isNull, notLike } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
@@ -1505,7 +1505,12 @@ export async function getPaidPayments(): Promise<PaidPaymentRow[]> {
       paidAt: payments.paidAt,
     })
     .from(payments)
-    .where(eq(payments.status, "paid"))
+    .where(
+      and(
+        eq(payments.status, "paid"),
+        or(isNull(payments.reference), notLike(payments.reference, "REG-%")),
+      ),
+    )
     .orderBy(desc(payments.paidAt))
 
   if (rows.length === 0) return []

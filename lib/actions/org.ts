@@ -189,7 +189,16 @@ export async function updateTeamRegistration(input: {
   ownerPhone?: string | null
   coOwnerEmail?: string | null
 }) {
-  const [team] = await db.select({ id: teams.id, organisationId: teams.organisationId, homeClubId: teams.homeClubId }).from(teams).where(eq(teams.id, input.teamId)).limit(1)
+  const [team] = await db
+    .select({
+      id: teams.id,
+      organisationId: teams.organisationId,
+      homeClubId: teams.homeClubId,
+      clubPaysFees: teams.clubPaysFees,
+    })
+    .from(teams)
+    .where(eq(teams.id, input.teamId))
+    .limit(1)
   if (!team) return { ok: false, error: "Team not found" }
   await requireCanManageTeam(input.teamId)
 
@@ -273,10 +282,27 @@ export async function updateTeamRegistration(input: {
     }
   }
 
+  if (input.clubPaysFees !== undefined && input.clubPaysFees !== team.clubPaysFees) {
+    if (input.clubPaysFees) {
+      await db
+        .update(payments)
+        .set({ status: "failed", paidAt: null })
+        .where(and(eq(payments.teamId, input.teamId), eq(payments.type, "individual"), eq(payments.status, "pending")))
+    } else {
+      await db
+        .update(payments)
+        .set({ status: "failed", paidAt: null })
+        .where(and(eq(payments.teamId, input.teamId), eq(payments.type, "team"), eq(payments.status, "pending")))
+    }
+  }
+
   await db.update(teams).set(patch).where(eq(teams.id, input.teamId))
   await recomputeTeamStats(input.teamId)
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
+  revalidatePath("/admin/billing")
+  revalidatePath("/admin/teams")
   revalidatePath("/admin/placement")
   return { ok: true }
 }
