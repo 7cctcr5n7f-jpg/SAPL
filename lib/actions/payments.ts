@@ -19,6 +19,25 @@ async function getBaseUrl(): Promise<string> {
   return `${proto}://${host}`
 }
 
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "")
+}
+
+function getNotifyBaseUrl(baseUrl: string): string {
+  const isLocalHost = /:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl)
+  if (!isLocalHost) return baseUrl
+
+  const configured = (
+    process.env.PAYFAST_NOTIFY_BASE_URL ??
+    process.env.BETTER_AUTH_URL ??
+    process.env.APP_BASE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    ""
+  ).trim()
+
+  return configured ? trimTrailingSlash(configured) : baseUrl
+}
+
 function makePaymentReference(kind: "IND" | "TEAM") {
   return `SAPL-${kind}-${crypto.randomUUID()}`
 }
@@ -100,6 +119,7 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
   }
 
   const base = await getBaseUrl()
+  const notifyBase = getNotifyBaseUrl(base)
   const [firstName, ...rest] = (me.name ?? "").trim().split(/\s+/)
   const fee = await getPlayerFee(team.seasonId)
 
@@ -112,7 +132,7 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
     emailAddress: me.email,
     returnUrl: `${base}/dashboard?payment=submitted`,
     cancelUrl: `${base}/dashboard?payment=cancelled`,
-    notifyUrl: `${base}/api/payfast/notify`,
+    notifyUrl: `${notifyBase}/api/payfast/notify`,
   })
 
   return { ok: true, url }
@@ -192,6 +212,7 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
   }
 
   const base = await getBaseUrl()
+  const notifyBase = getNotifyBaseUrl(base)
   const [firstName, ...rest] = (me.name ?? "").trim().split(/\s+/)
 
   const url = buildPayFastUrl({
@@ -203,7 +224,7 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
     emailAddress: me.email,
     returnUrl: `${base}/dashboard?payment=submitted`,
     cancelUrl: `${base}/dashboard?payment=cancelled`,
-    notifyUrl: `${base}/api/payfast/notify`,
+    notifyUrl: `${notifyBase}/api/payfast/notify`,
   })
 
   return { ok: true, url }
