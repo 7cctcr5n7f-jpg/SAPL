@@ -640,14 +640,24 @@ export type OutstandingFee = {
 export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   const { splitVatInclusive } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
+  const { TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   // Cache the resolved fee per season so we don't re-query for every player.
   const feeBySeason = new Map<number | string, { amount: number; vatAmount: number }>()
+  const teamFeeBySeason = new Map<number | string, { amount: number; vatAmount: number }>()
   async function feeFor(seasonId: number | null) {
     const key = seasonId ?? "current"
     const cached = feeBySeason.get(key)
     if (cached) return cached
     const split = splitVatInclusive(await getPlayerFee(seasonId))
     feeBySeason.set(key, split)
+    return split
+  }
+  async function teamFeeFor(seasonId: number | null) {
+    const key = seasonId ?? "current"
+    const cached = teamFeeBySeason.get(key)
+    if (cached) return cached
+    const split = splitVatInclusive((await getPlayerFee(seasonId)) * TEAM_SQUAD_SIZE)
+    teamFeeBySeason.set(key, split)
     return split
   }
 
@@ -701,13 +711,14 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
   // league chases the responsible person, not individual players. Each owes for
   // the 8 dedicated squad players (R4000 at R500) unless a paid team payment
   // already exists.
-  const { TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   const fundedTeams = await db
     .select({
       teamId: teams.id,
       teamName: teams.name,
       seasonId: teams.seasonId,
+      captainUserId: teams.captainUserId,
       managerUserId: teams.managerUserId,
+      ownerEmail: teams.ownerEmail,
       organisationId: teams.organisationId,
     })
     .from(teams)
@@ -728,7 +739,15 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
     if (pay?.status === "paid") continue
 
     // Resolve the responsible person: the team manager, else the org owner.
-    let ownerUserId = t.managerUserId
+    let ownerUserId = t.managerUserId ?? t.captainUserId
+    if (!ownerUserId && t.ownerEmail) {
+      const [owner] = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.email, t.ownerEmail))
+        .limit(1)
+      ownerUserId = owner?.id ?? null
+    }
     if (!ownerUserId && t.organisationId) {
       const [org] = await db
         .select({ ownerUserId: organisations.ownerUserId })
@@ -749,9 +768,7 @@ export async function getOutstandingFees(): Promise<OutstandingFee[]> {
       phone = m?.phone ?? null
     }
 
-    const perPlayer = await feeFor(t.seasonId)
-    const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
-    const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+    const { amount, vatAmount } = await teamFeeFor(t.seasonId)
 
     result.push({
       kind: "team",
@@ -1403,9 +1420,8 @@ export async function getTeamOwnerFee(teamId: number): Promise<TeamOwnerFee | nu
   const { splitVatInclusive, TEAM_SQUAD_SIZE } = await import("@/lib/constants")
   const { getPlayerFee } = await import("@/lib/queries")
 
-  const perPlayer = splitVatInclusive(await getPlayerFee(team.seasonId))
-  const amount = Math.round(perPlayer.amount * TEAM_SQUAD_SIZE * 100) / 100
-  const vatAmount = Math.round(perPlayer.vatAmount * TEAM_SQUAD_SIZE * 100) / 100
+  const totalFee = (await getPlayerFee(team.seasonId)) * TEAM_SQUAD_SIZE
+  const { amount, vatAmount } = splitVatInclusive(totalFee)
 
   // Check for an existing team payment
   const [pay] = await db

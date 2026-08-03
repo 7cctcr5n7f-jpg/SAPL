@@ -48,6 +48,9 @@ export interface PayFastPaymentParams {
  */
 export function buildPayFastUrl(p: PayFastPaymentParams): string {
   const merchantKey = (process.env.Key ?? "").trim()
+  if (!merchantKey) {
+    throw new Error("PayFast merchant key is not configured")
+  }
 
   // PayFast requires fields in this exact order for correct signature generation.
   const ordered: [string, string][] = [

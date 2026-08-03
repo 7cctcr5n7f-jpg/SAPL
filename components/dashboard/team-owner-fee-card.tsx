@@ -25,7 +25,7 @@ export function TeamOwnerFeeCard({ fee }: { fee: TeamOwnerFee }) {
         if (window.self !== window.top) {
           window.open(res.url, "_blank", "noopener,noreferrer")
         } else {
-          window.top!.location.href = res.url
+          window.top?.location.assign(res.url)
         }
       } else {
         toast.error(res.error ?? "Could not create payment link")
@@ -80,7 +80,7 @@ export function TeamOwnerFeeCard({ fee }: { fee: TeamOwnerFee }) {
               className="flex items-center gap-1.5 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-60 transition-colors"
             >
               {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
-              Pay R4,000
+              Pay {fmtZAR(total)}
             </button>
           )}
         </div>

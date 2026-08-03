@@ -1,10 +1,12 @@
 "use server"
 
+import crypto from "crypto"
 import { db } from "@/lib/db"
-import { payments, teams, user as userTable } from "@/lib/db/schema"
+import { payments, teamMembers, teams } from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
 import { buildPayFastUrl } from "@/lib/payfast"
-import { splitVatInclusive, DEFAULT_LEAGUE_JOIN_FEE, TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { splitVatInclusive, TEAM_SQUAD_SIZE } from "@/lib/constants"
+import { getPlayerFee } from "@/lib/queries"
 import { and, eq, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
@@ -17,6 +19,14 @@ async function getBaseUrl(): Promise<string> {
   return `${proto}://${host}`
 }
 
+function makePaymentReference(kind: "IND" | "TEAM") {
+  return `SAPL-${kind}-${crypto.randomUUID()}`
+}
+
+function normalizeEmail(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? ""
+}
+
 /**
  * Create (or reuse an existing pending) individual player payment and return
  * a signed PayFast redirect URL. Called when a player (clubPaysFees=false)
@@ -27,36 +37,48 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
   if (!me) return { ok: false, error: "Not authenticated" }
 
   const [team] = await db
-    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId })
+    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId, clubPaysFees: teams.clubPaysFees })
     .from(teams)
     .where(eq(teams.id, teamId))
     .limit(1)
   if (!team) return { ok: false, error: "Team not found" }
+  if (team.clubPaysFees) return { ok: false, error: "This team's fees are paid by the team owner" }
 
-  // Check for an existing pending payment — reuse if it exists.
-  const [existing] = await db
-    .select({ id: payments.id, reference: payments.reference })
+  const [membership] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.playerId, me.id), eq(teamMembers.status, "active")))
+    .limit(1)
+  if (!membership) return { ok: false, error: "You are not an active player on this team" }
+
+  const [latest] = await db
+    .select({ id: payments.id, reference: payments.reference, status: payments.status })
     .from(payments)
     .where(
       and(
         eq(payments.teamId, teamId),
         eq(payments.playerId, me.id),
         eq(payments.type, "individual"),
-        eq(payments.status, "pending"),
       ),
     )
     .orderBy(desc(payments.createdAt))
     .limit(1)
 
-  let paymentId: number
-  let reference: string
+  if (latest?.status === "paid") {
+    return { ok: false, error: "Your league fee for this team is already paid" }
+  }
 
-  if (existing) {
-    paymentId = existing.id
-    reference = existing.reference ?? `SAPL-IND-${existing.id}`
+  let reference = latest?.reference ?? ""
+
+  if (latest?.status === "pending") {
+    if (!reference) {
+      reference = makePaymentReference("IND")
+      await db.update(payments).set({ reference }).where(eq(payments.id, latest.id))
+    }
   } else {
-    const fee = DEFAULT_LEAGUE_JOIN_FEE
+    const fee = await getPlayerFee(team.seasonId)
     const { amount, vatAmount } = splitVatInclusive(fee)
+    reference = makePaymentReference("IND")
     const [inserted] = await db
       .insert(payments)
       .values({
@@ -70,25 +92,25 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
         currency: "ZAR",
         status: "pending",
         provider: "payfast",
+        reference,
         description: `SAPL league fee — ${team.name}`,
       })
       .returning({ id: payments.id })
-    paymentId = inserted.id
-    reference = `SAPL-IND-${paymentId}`
-    await db.update(payments).set({ reference }).where(eq(payments.id, paymentId))
+    if (!inserted?.id) return { ok: false, error: "Could not create payment link" }
   }
 
   const base = await getBaseUrl()
   const [firstName, ...rest] = (me.name ?? "").trim().split(/\s+/)
+  const fee = await getPlayerFee(team.seasonId)
 
   const url = buildPayFastUrl({
-    amount: DEFAULT_LEAGUE_JOIN_FEE, // R500 VAT inclusive
+    amount: fee,
     itemName: `SAPL League Fee — ${team.name}`,
     mPaymentId: reference,
     nameFirst: firstName,
     nameLast: rest.join(" "),
     emailAddress: me.email,
-    returnUrl: `${base}/dashboard?payment=success`,
+    returnUrl: `${base}/dashboard?payment=submitted`,
     cancelUrl: `${base}/dashboard?payment=cancelled`,
     notifyUrl: `${base}/api/payfast/notify`,
   })
@@ -106,31 +128,49 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
   if (!me) return { ok: false, error: "Not authenticated" }
 
   const [team] = await db
-    .select({ id: teams.id, name: teams.name, seasonId: teams.seasonId, clubPaysFees: teams.clubPaysFees })
+    .select({
+      id: teams.id,
+      name: teams.name,
+      seasonId: teams.seasonId,
+      clubPaysFees: teams.clubPaysFees,
+      captainUserId: teams.captainUserId,
+      managerUserId: teams.managerUserId,
+      ownerEmail: teams.ownerEmail,
+    })
     .from(teams)
     .where(eq(teams.id, teamId))
     .limit(1)
   if (!team) return { ok: false, error: "Team not found" }
   if (!team.clubPaysFees) return { ok: false, error: "Team is not on club-pays-fees model" }
+  const ownerEmail = normalizeEmail(team.ownerEmail)
+  const isAllowedOwner =
+    team.captainUserId === me.id ||
+    team.managerUserId === me.id ||
+    (ownerEmail !== "" && ownerEmail === normalizeEmail(me.email))
+  if (!isAllowedOwner) return { ok: false, error: "Only the team owner or captain can pay this team fee" }
 
-  // Check for an existing pending team payment.
-  const [existing] = await db
-    .select({ id: payments.id, reference: payments.reference })
+  const [latest] = await db
+    .select({ id: payments.id, reference: payments.reference, status: payments.status })
     .from(payments)
-    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team"), eq(payments.status, "pending")))
+    .where(and(eq(payments.teamId, teamId), eq(payments.type, "team")))
     .orderBy(desc(payments.createdAt))
     .limit(1)
 
-  let paymentId: number
-  let reference: string
+  if (latest?.status === "paid") {
+    return { ok: false, error: "This team fee is already paid" }
+  }
 
-  const totalFee = DEFAULT_LEAGUE_JOIN_FEE * TEAM_SQUAD_SIZE // 500 × 8 = 4000
+  let reference = latest?.reference ?? ""
+  const totalFee = (await getPlayerFee(team.seasonId)) * TEAM_SQUAD_SIZE
   const { amount, vatAmount } = splitVatInclusive(totalFee)
 
-  if (existing) {
-    paymentId = existing.id
-    reference = existing.reference ?? `SAPL-TEAM-${existing.id}`
+  if (latest?.status === "pending") {
+    if (!reference) {
+      reference = makePaymentReference("TEAM")
+      await db.update(payments).set({ reference }).where(eq(payments.id, latest.id))
+    }
   } else {
+    reference = makePaymentReference("TEAM")
     const [inserted] = await db
       .insert(payments)
       .values({
@@ -144,12 +184,11 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
         currency: "ZAR",
         status: "pending",
         provider: "payfast",
+        reference,
         description: `SAPL team league fee — ${team.name} (full squad)`,
       })
       .returning({ id: payments.id })
-    paymentId = inserted.id
-    reference = `SAPL-TEAM-${paymentId}`
-    await db.update(payments).set({ reference }).where(eq(payments.id, paymentId))
+    if (!inserted?.id) return { ok: false, error: "Could not create payment link" }
   }
 
   const base = await getBaseUrl()
@@ -162,7 +201,7 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
     nameFirst: firstName,
     nameLast: rest.join(" "),
     emailAddress: me.email,
-    returnUrl: `${base}/dashboard?payment=success`,
+    returnUrl: `${base}/dashboard?payment=submitted`,
     cancelUrl: `${base}/dashboard?payment=cancelled`,
     notifyUrl: `${base}/api/payfast/notify`,
   })
@@ -193,20 +232,54 @@ export async function markPaymentPaid(input: {
   if (!team) return { ok: false, error: "Team not found" }
 
   // Find the most recent payment of this type for this team+player.
-  const [existing] = await db
-    .select({ id: payments.id, status: payments.status })
-    .from(payments)
-    .where(
-      and(
-        eq(payments.teamId, input.teamId),
-        eq(payments.playerId, input.playerId),
-        eq(payments.type, input.type),
-      ),
-    )
-    .orderBy(desc(payments.createdAt))
-    .limit(1)
+  const [existing] =
+    input.type === "team"
+      ? team.seasonId == null
+        ? await db
+            .select({ id: payments.id, status: payments.status })
+            .from(payments)
+            .where(and(eq(payments.teamId, input.teamId), eq(payments.type, "team")))
+            .orderBy(desc(payments.createdAt))
+            .limit(1)
+        : await db
+            .select({ id: payments.id, status: payments.status })
+            .from(payments)
+            .where(and(eq(payments.teamId, input.teamId), eq(payments.seasonId, team.seasonId), eq(payments.type, "team")))
+            .orderBy(desc(payments.createdAt))
+            .limit(1)
+      : team.seasonId == null
+        ? await db
+            .select({ id: payments.id, status: payments.status })
+            .from(payments)
+            .where(
+              and(
+                eq(payments.teamId, input.teamId),
+                eq(payments.playerId, input.playerId),
+                eq(payments.type, "individual"),
+              ),
+            )
+            .orderBy(desc(payments.createdAt))
+            .limit(1)
+        : await db
+            .select({ id: payments.id, status: payments.status })
+            .from(payments)
+            .where(
+              and(
+                eq(payments.teamId, input.teamId),
+                eq(payments.seasonId, team.seasonId),
+                eq(payments.playerId, input.playerId),
+                eq(payments.type, "individual"),
+              ),
+            )
+            .orderBy(desc(payments.createdAt))
+            .limit(1)
 
   if (existing) {
+    if (existing.status === "paid") {
+      revalidatePath("/admin/billing")
+      revalidatePath("/dashboard")
+      return { ok: true }
+    }
     await db
       .update(payments)
       .set({ status: "paid", paidAt: new Date() })
@@ -214,20 +287,21 @@ export async function markPaymentPaid(input: {
   } else {
     // No payment row yet — create a paid one directly.
     const totalFee = input.type === "team"
-      ? DEFAULT_LEAGUE_JOIN_FEE * TEAM_SQUAD_SIZE
-      : DEFAULT_LEAGUE_JOIN_FEE
+      ? (await getPlayerFee(team.seasonId)) * TEAM_SQUAD_SIZE
+      : await getPlayerFee(team.seasonId)
     const { amount, vatAmount } = splitVatInclusive(totalFee)
     await db.insert(payments).values({
       type: input.type,
-      payerUserId: input.playerId,
-      playerId: input.playerId,
+      payerUserId: input.type === "team" ? null : input.playerId,
+      playerId: input.type === "team" ? null : input.playerId,
       teamId: input.teamId,
       seasonId: team.seasonId,
       amount,
       vatAmount,
       currency: "ZAR",
       status: "paid",
-      provider: "payfast",
+      provider: null,
+      reference: makePaymentReference(input.type === "team" ? "TEAM" : "IND"),
       description: `Manually marked as paid by admin`,
       paidAt: new Date(),
     })
