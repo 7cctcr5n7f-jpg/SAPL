@@ -280,10 +280,34 @@ export function planSeason(args: {
       return current.total < venueNightCapacity(club)
     }
 
+    // Count how many teams share each venue so we can prioritise pairs from
+    // busier venues. A venue with more teams fills up faster, so scheduling
+    // those pairs first minimises TBD (venue-less) fixtures.
+    const venueTeamCount = new Map<number, number>()
+    for (const team of division.teamSlots) {
+      if (team.homeClubId != null) {
+        venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
+      }
+    }
+    const teamVenuePriority = (teamId: number): number => {
+      const team = teamById.get(teamId)
+      return team?.homeClubId != null ? (venueTeamCount.get(team.homeClubId) ?? 0) : 0
+    }
+
     for (let weekIndex = 0; weekIndex < rounds.length; weekIndex++) {
       const week = weekIndex + 1
 
-      for (const pair of rounds[weekIndex]) {
+      // Sort pairs within this round so those involving teams from high-occupancy
+      // venues (most teams sharing that club) are scheduled first. This ensures
+      // WRC 4-team pairs lock in their venue slots before lower-priority pairs
+      // compete for the same night capacity.
+      const sortedPairs = [...rounds[weekIndex]].sort((a, b) => {
+        const pa = Math.max(teamVenuePriority(a.a), teamVenuePriority(a.b))
+        const pb = Math.max(teamVenuePriority(b.a), teamVenuePriority(b.b))
+        return pb - pa
+      })
+
+      for (const pair of sortedPairs) {
         const aCanHost = teamCanHostWeek(pair.a, week)
         const bCanHost = teamCanHostWeek(pair.b, week)
 
