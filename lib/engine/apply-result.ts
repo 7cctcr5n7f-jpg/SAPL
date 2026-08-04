@@ -236,12 +236,23 @@ async function bumpStanding(args: {
 }
 
 async function recomputeRanks(divisionId: number) {
-  const rows = await db.select({ id: standings.id }).from(standings).where(eq(standings.divisionId, divisionId))
+  const rows = await db
+    .select({
+      id: standings.id,
+      points: standings.points,
+      pointsDiff: standings.pointsDiff,
+      wins: standings.wins,
+      setsWon: standings.setsWon,
+      teamId: standings.teamId,
+    })
+    .from(standings)
+    .where(eq(standings.divisionId, divisionId))
   const sorted = [...rows].sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points
+    if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
     if (b.wins !== a.wins) return b.wins - a.wins
     if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
-    return b.pointsDiff - a.pointsDiff
+    return a.teamId - b.teamId
   })
   for (let i = 0; i < sorted.length; i++) {
     await db.update(standings).set({ rank: i + 1 }).where(eq(standings.id, sorted[i].id))
