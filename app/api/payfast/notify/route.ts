@@ -43,24 +43,33 @@ export async function POST(req: NextRequest) {
     const text = await req.text()
     const params = Object.fromEntries(new URLSearchParams(text))
 
-    // Verify the MD5 signature.
-    if (!verifyPayFastSignature(params)) {
-      console.error("[PayFast ITN] Invalid signature", { params })
-      return new NextResponse("Invalid signature", { status: 400 })
+    const validatedByPayFast = await validatePayFastItn(text)
+    const signatureValid = verifyPayFastSignature(params)
+
+    // Prefer PayFast's own server-side validation when available. Some genuine
+    // payments appear to reach us with payload encoding differences that make a
+    // local signature comparison fail even though PayFast confirms the payload.
+    if (!signatureValid && !validatedByPayFast) {
+      console.error("[PayFast ITN] Signature and validation both failed", {
+        reference: params.m_payment_id,
+        paymentStatus: params.payment_status,
+      })
+      return new NextResponse("Invalid ITN", { status: 400 })
     }
 
-    const { payment_status, m_payment_id, amount_gross } = params
+    const { payment_status, m_payment_id, amount_gross, pf_payment_id } = params
 
     if (!m_payment_id) {
       console.error("[PayFast ITN] Missing m_payment_id")
       return new NextResponse("Missing m_payment_id", { status: 400 })
     }
-
-    const validatedByPayFast = await validatePayFastItn(text)
     if (!validatedByPayFast) {
       // Keep processing after a valid signature/reference/amount check even when
       // PayFast's validation endpoint is temporarily unavailable or times out.
-      console.warn("[PayFast ITN] Validation handshake failed; proceeding after signature check", { reference: m_payment_id })
+      console.warn("[PayFast ITN] Validation handshake failed; proceeding after signature check", {
+        reference: m_payment_id,
+        pfPaymentId: pf_payment_id ?? null,
+      })
     }
 
     // Find the payment by our reference field.
@@ -103,13 +112,23 @@ export async function POST(req: NextRequest) {
 
       await db
         .update(payments)
-        .set({ status: "paid", paidAt: new Date() })
+        .set({
+          status: "paid",
+          paidAt: new Date(),
+        })
+        .where(eq(payments.id, pay.id))
+    } else if (pf_payment_id?.trim()) {
+      await db
+        .update(payments)
+        .set({ invoiceNumber: pf_payment_id.trim() })
         .where(eq(payments.id, pay.id))
     }
 
     // Revalidate the dashboard and admin billing so UI updates on next load.
     revalidatePath("/dashboard")
+    revalidatePath("/dashboard/my-team")
     revalidatePath("/admin/billing")
+    revalidatePath("/admin/teams")
 
     console.log("[PayFast ITN] Payment marked paid:", m_payment_id)
     return new NextResponse("OK", { status: 200 })
