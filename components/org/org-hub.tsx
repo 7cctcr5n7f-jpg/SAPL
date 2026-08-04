@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
+import { TeamLogoUploader } from "@/components/team/team-logo-uploader"
 import { createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
 import { resendAllPendingInvites } from "@/lib/actions/pairings"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
@@ -33,6 +35,7 @@ import {
   Lock,
   CircleCheck,
   CircleAlert,
+  X,
 } from "lucide-react"
 import { TEAM_TYPES, TEAM_SQUAD_SIZE, SAPL_REGIONS, normalizeTeamType } from "@/lib/constants"
 import { fmtZAR } from "@/lib/format"
@@ -43,6 +46,7 @@ type Team = {
   id: number
   name: string
   teamType: string
+  logoUrl: string | null
   homeClubId: number | null
   homeClubName: string | null
   homeClubLogoUrl: string | null
@@ -154,10 +158,10 @@ export function OrgHub({
   canResendAllInvites?: boolean
 }) {
   const [pending, start] = useTransition()
+  const [teamOverrides, setTeamOverrides] = useState<Record<number, Partial<Team>>>({})
+  const displayTeams = teams.map((team) => ({ ...team, ...(teamOverrides[team.id] ?? {}) }))
   const [squadForId, setSquadForId] = useState<number | null>(null)
-  // Always derive from the live `teams` prop so router.refresh() inside the
-  // modal immediately reflects the updated pairings/roster data.
-  const squadFor = squadForId != null ? (teams.find((t) => t.id === squadForId) ?? null) : null
+  const squadFor = squadForId != null ? (displayTeams.find((t) => t.id === squadForId) ?? null) : null
   const [editFor, setEditFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
   // List filters
@@ -167,10 +171,10 @@ export function OrgHub({
   const [fClub, setFClub] = useState<string>("all")
 
   const clubFilterOptions = Array.from(
-    new Map(teams.filter((t) => t.homeClubName).map((t) => [t.homeClubName as string, t.homeClubName as string])).keys(),
+    new Map(displayTeams.filter((t) => t.homeClubName).map((t) => [t.homeClubName as string, t.homeClubName as string])).keys(),
   ).sort()
 
-  const visibleTeams = teams.filter((t) => {
+  const visibleTeams = displayTeams.filter((t) => {
     if (fType !== "all" && normalizeTeamType(t.teamType) !== fType) return false
     if (fDivision === "assigned" && t.divisionId == null) return false
     if (fDivision === "unassigned" && t.divisionId != null) return false
@@ -193,10 +197,10 @@ export function OrgHub({
   }
 
   // Player count is derived from filled pairing slots, not the separate roster table.
-  const totalPlayers = teams.reduce((s, t) => s + t.pairingRoster.length, 0)
-  const withOwner = teams.filter((t) => t.ownerEmail).length
-  const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
-  const pendingInviteCount = teams.reduce((sum, t) => sum + t.pairingInvites.length, 0)
+  const totalPlayers = displayTeams.reduce((s, t) => s + t.pairingRoster.length, 0)
+  const withOwner = displayTeams.filter((t) => t.ownerEmail).length
+  const avgTpr = displayTeams.length ? Math.round(displayTeams.reduce((s, t) => s + t.tpr, 0) / displayTeams.length) : 0
+  const pendingInviteCount = displayTeams.reduce((sum, t) => sum + t.pairingInvites.length, 0)
 
   return (
     <div className="space-y-6">
@@ -206,15 +210,15 @@ export function OrgHub({
         </p>
         <div className="flex items-center gap-2">
           <CreateTeamDialog venues={venues} pending={pending} start={start} />
-          <AddPlayerDialog teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+          <AddPlayerDialog teams={displayTeams.map((t) => ({ id: t.id, name: t.name }))} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Teams" value={teams.length} />
+        <Stat label="Teams" value={displayTeams.length} />
         <Stat label="Total Players" value={totalPlayers} />
         <Stat label="Avg TPR" value={avgTpr} />
-        <Stat label="Owners Assigned" value={`${withOwner}/${teams.length}`} />
+        <Stat label="Owners Assigned" value={`${withOwner}/${displayTeams.length}`} />
       </div>
 
       <Card>
@@ -281,7 +285,7 @@ export function OrgHub({
               ]}
             />
             <span className="ml-auto text-xs text-muted-foreground">
-              {visibleTeams.length} of {teams.length} teams
+              {visibleTeams.length} of {displayTeams.length} teams
             </span>
           </div>
 
@@ -295,8 +299,8 @@ export function OrgHub({
             ))}
           </div>
 
-          {teams.length === 0 && <p className="text-sm text-muted-foreground">No teams yet.</p>}
-          {teams.length > 0 && visibleTeams.length === 0 && (
+          {displayTeams.length === 0 && <p className="text-sm text-muted-foreground">No teams yet.</p>}
+          {displayTeams.length > 0 && visibleTeams.length === 0 && (
             <p className="text-sm text-muted-foreground">No teams match the current filters.</p>
           )}
 
@@ -335,11 +339,11 @@ export function OrgHub({
                     {/* ── Top row: identity + action buttons ── */}
                     <div className="flex items-center gap-3 px-3.5 py-2.5">
                       {/* Club logo / placeholder */}
-                      {t.homeClubLogoUrl ? (
+                      {t.logoUrl ?? t.homeClubLogoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={t.homeClubLogoUrl || "/placeholder.svg"}
-                          alt={`${t.homeClubName ?? "Club"} logo`}
+                          src={t.logoUrl ?? t.homeClubLogoUrl ?? "/placeholder.svg"}
+                          alt={`${t.name} logo`}
                           className="h-8 w-8 shrink-0 rounded-md border border-border object-contain"
                         />
                       ) : (
@@ -498,9 +502,19 @@ export function OrgHub({
 
       <Dialog open={!!squadFor} onOpenChange={(o) => !o && setSquadForId(null)}>
         <DialogContent className="max-h-[95vh] w-[97vw] max-w-[97vw] overflow-y-auto bg-white p-4 sm:max-w-5xl sm:p-6 lg:max-w-6xl">
-          <DialogHeader className="mb-2">
+          <DialogHeader className="mb-2 pr-10">
             <DialogTitle className="text-slate-800">{squadFor?.name} — Squad &amp; Pairings</DialogTitle>
           </DialogHeader>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-9 w-9 rounded-full"
+            onClick={() => setSquadForId(null)}
+            aria-label="Close squad popup"
+          >
+            <X className="h-4 w-4" />
+          </Button>
           {squadFor && (
             <PairingsBoard
               teamId={squadFor.id}
@@ -522,6 +536,10 @@ export function OrgHub({
           start={start}
           locked={locked}
           registeredEmails={registeredEmails}
+          onSaved={(patch) => {
+            setTeamOverrides((prev) => ({ ...prev, [editFor.id]: { ...(prev[editFor.id] ?? {}), ...patch } }))
+            setEditFor((current) => (current ? { ...current, ...patch } : current))
+          }}
           onClose={() => setEditFor(null)}
         />
       )}
@@ -705,6 +723,7 @@ function EditTeamDialog({
   start,
   locked = false,
   registeredEmails = [],
+  onSaved,
   onClose,
 }: {
   team: Team
@@ -714,10 +733,13 @@ function EditTeamDialog({
   locked?: boolean
   /** Lowercase emails of all registered (account-linked) members. Used to warn when ownerEmail has no account yet. */
   registeredEmails?: string[]
+  onSaved: (patch: Partial<Team>) => void
   onClose: () => void
 }) {
+  const router = useRouter()
   const [name, setName] = useState(team.name)
   const [teamType, setTeamType] = useState<string>(normalizeTeamType(team.teamType))
+  const [logoUrl, setLogoUrl] = useState(team.logoUrl ?? "")
   const [homeClubId, setHomeClubId] = useState<string>(team.homeClubId ? String(team.homeClubId) : "")
   const [saplRegion, setSaplRegion] = useState<string>(team.saplRegion ?? "")
   const [clubPaysFees, setClubPaysFees] = useState(team.clubPaysFees)
@@ -757,6 +779,7 @@ function EditTeamDialog({
         teamId: team.id,
         name,
         teamType,
+        logoUrl: logoUrl.trim() || null,
         homeClubId: homeClubId ? Number(homeClubId) : null,
         saplRegion: homeClubId ? undefined : saplRegion || null,
         clubPaysFees,
@@ -766,18 +789,41 @@ function EditTeamDialog({
         coOwnerEmail: coOwnerEmail.trim() || null,
       })
       if (res.ok) {
+        onSaved({
+          name,
+          teamType,
+          logoUrl: logoUrl.trim() || null,
+          homeClubId: homeClubId ? Number(homeClubId) : null,
+          saplRegion: homeClubId ? team.saplRegion : saplRegion || null,
+          clubPaysFees,
+          ownerEmail: ownerEmail.trim() || null,
+          ownerName: ownerName.trim() || null,
+          ownerPhone: ownerPhone.trim() || null,
+          coOwnerEmail: coOwnerEmail.trim() || null,
+        })
         toast.success("Team updated")
         onClose()
+        router.refresh()
       } else toast.error(res.error ?? "Failed")
     })
   }
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="max-h-[95vh] overflow-y-auto">
+        <DialogHeader className="pr-10">
           <DialogTitle>Edit team</DialogTitle>
         </DialogHeader>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3 h-9 w-9 rounded-full"
+          onClick={onClose}
+          aria-label="Close edit team popup"
+        >
+          <X className="h-4 w-4" />
+        </Button>
         <div className="space-y-4">
           {locked && (
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
@@ -806,6 +852,14 @@ function EditTeamDialog({
             <p className="text-xs text-muted-foreground">
               Club Teams are entered by a venue, Business Teams represent a business, and Private Teams are independent
               groups.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Team logo</Label>
+            <TeamLogoUploader value={logoUrl} fallbackUrl={team.homeClubLogoUrl ?? ""} onChange={setLogoUrl} />
+            <p className="text-xs text-muted-foreground">
+              By default the home venue logo is used. Upload a custom team logo to override it, or remove it to fall
+              back to the venue logo again.
             </p>
           </div>
           <div className="space-y-2">

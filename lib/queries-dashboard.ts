@@ -1237,6 +1237,7 @@ const teamRowFields = {
   team: {
     id: teams.id,
     name: teams.name,
+    logoUrl: teams.logoUrl,
     divisionId: teams.divisionId,
     seasonId: teams.seasonId,
     organisationId: teams.organisationId,

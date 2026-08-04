@@ -105,6 +105,7 @@ export default async function AdminTeamsPage() {
       id: row.team.id,
       name: row.team.name,
       teamType: row.team.teamType,
+      logoUrl: row.team.logoUrl ?? null,
       homeClubId: row.team.homeClubId ?? null,
       homeClubName: club?.name ?? null,
       homeClubLogoUrl: club?.logoUrl ?? null,
