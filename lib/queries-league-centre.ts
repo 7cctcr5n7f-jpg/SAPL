@@ -309,34 +309,53 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   }
   const regionsOut = Array.from(regionMap.values()).sort((a, b) => a.name.localeCompare(b.name))
 
-  // Standings — filtered to used divisions in SQL (no JS post-filter needed).
+  // Standings — base on teamEntries so ALL teams in the division appear even
+  // when no games have been played yet. stats come from a LEFT JOIN to standings.
   const standingsOut: LCStanding[] = usedDivisionIds.length
     ? await db
         .select({
-          divisionId: standings.divisionId,
-          teamId: standings.teamId,
+          divisionId: teamEntries.divisionId,
+          teamId: teamEntries.teamId,
           teamName: teams.name,
           teamLogo: teams.logoUrl,
           orgName: organisations.name,
           orgSlug: organisations.slug,
           orgLogo: organisations.logoUrl,
-          played: standings.played,
-          wins: standings.wins,
-          losses: standings.losses,
-          setsWon: standings.setsWon,
-          setsLost: standings.setsLost,
-          gamesFor: standings.gamesFor,
-          gamesAgainst: standings.gamesAgainst,
-          points: standings.points,
-          pointsDiff: standings.pointsDiff,
-          rank: standings.rank,
+          played: sql<number>`COALESCE(${standings.played}, 0)`,
+          wins: sql<number>`COALESCE(${standings.wins}, 0)`,
+          losses: sql<number>`COALESCE(${standings.losses}, 0)`,
+          setsWon: sql<number>`COALESCE(${standings.setsWon}, 0)`,
+          setsLost: sql<number>`COALESCE(${standings.setsLost}, 0)`,
+          gamesFor: sql<number>`COALESCE(${standings.gamesFor}, 0)`,
+          gamesAgainst: sql<number>`COALESCE(${standings.gamesAgainst}, 0)`,
+          points: sql<number>`COALESCE(${standings.points}, 0)`,
+          pointsDiff: sql<number>`COALESCE(${standings.pointsDiff}, 0)`,
+          rank: sql<number | null>`${standings.rank}`,
           tpr: teams.tpr,
         })
-        .from(standings)
-        .leftJoin(teams, eq(standings.teamId, teams.id))
+        .from(teamEntries)
+        .innerJoin(teams, eq(teamEntries.teamId, teams.id))
         .leftJoin(organisations, eq(teams.organisationId, organisations.id))
-        .where(and(eq(standings.seasonId, season.id), inArray(standings.divisionId, usedDivisionIds)))
-        .orderBy(asc(standings.divisionId), asc(standings.rank))
+        .leftJoin(
+          standings,
+          and(
+            eq(standings.teamId, teamEntries.teamId),
+            eq(standings.seasonId, teamEntries.seasonId),
+            eq(standings.divisionId, teamEntries.divisionId),
+          ),
+        )
+        .where(
+          and(
+            eq(teamEntries.seasonId, season.id),
+            inArray(teamEntries.divisionId, usedDivisionIds),
+            eq(teamEntries.status, "assigned"),
+          ),
+        )
+        .orderBy(
+          asc(teamEntries.divisionId),
+          sql`${standings.rank} NULLS LAST`,
+          asc(teams.name),
+        )
     : []
 
   // Fixtures — filtered to used divisions in SQL (no JS post-filter needed).

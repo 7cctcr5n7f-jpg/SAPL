@@ -202,13 +202,16 @@ function chooseKickoffForVenue(
   return null
 }
 
-/** Roll a date forward to the next Thursday (incl. the same day if already Thu). */
+/** Roll a date forward to the next Thursday (incl. the same day if already Thu).
+ *  Works entirely in UTC so DST / server-timezone differences don't shift the date. */
 export function nextThursday(from: Date): Date {
-  const d = new Date(from)
-  d.setHours(19, 0, 0, 0)
-  const day = d.getDay()
-  const delta = (4 - day + 7) % 7
-  d.setDate(d.getDate() + delta)
+  // Work with the UTC date components to avoid timezone day-shifts.
+  const utcYear = from.getUTCFullYear()
+  const utcMonth = from.getUTCMonth()
+  const utcDay = from.getUTCDate()
+  const baseDay = from.getUTCDay() // 0=Sun … 4=Thu … 6=Sat
+  const delta = (4 - baseDay + 7) % 7
+  const d = new Date(Date.UTC(utcYear, utcMonth, utcDay + delta, 17, 0, 0, 0))
   return d
 }
 

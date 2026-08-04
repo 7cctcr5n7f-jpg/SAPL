@@ -746,7 +746,7 @@ export async function createSeason(formData: FormData) {
   const maxTeams = Number.isFinite(maxRaw) && maxRaw >= 2 ? Math.min(16, Math.round(maxRaw)) : TEAMS_PER_DIVISION
   if (!name) return { ok: false, error: "Season name required" }
 
-  const startDate = startStr ? new Date(startStr) : null
+  const startDate = startStr ? new Date(`${startStr}T12:00:00.000Z`) : null
   // weeks will be auto-calculated when fixtures are generated; store 0 as placeholder
   const endDate = null
   const existingRegions = await db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.id))
@@ -971,6 +971,21 @@ export async function deleteAllSeasonFixturesAction(formData: FormData) {
   revalidatePath("/league-centre")
   revalidatePath("/dashboard/fixtures")
   return { ok: true, deleted: fixtureIds.length }
+}
+
+/** Update the start date of a season without touching other fields. */
+export async function updateSeasonStartDateAction(formData: FormData) {
+  await requireAdmin()
+  const seasonId = Number(formData.get("seasonId"))
+  const startStr = String(formData.get("startDate") ?? "").trim()
+  if (!seasonId) return { ok: false, error: "Season id required" }
+  if (!startStr) return { ok: false, error: "Start date required" }
+  // Parse as UTC noon to avoid DST/timezone edge-cases on the date boundary.
+  const startDate = new Date(`${startStr}T12:00:00.000Z`)
+  if (isNaN(startDate.getTime())) return { ok: false, error: "Invalid date" }
+  await db.update(seasons).set({ startDate }).where(eq(seasons.id, seasonId))
+  revalidatePath("/admin/seasons")
+  return { ok: true }
 }
 
 /** Move a season back to draft for further editing. */

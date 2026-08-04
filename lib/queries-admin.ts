@@ -57,6 +57,7 @@ export async function getSeasonsWithDivisions() {
       status: seasons.status,
       isCurrent: seasons.isCurrent,
       weeks: seasons.weeks,
+      startDate: seasons.startDate,
     })
     .from(seasons)
     .orderBy(desc(seasons.id))

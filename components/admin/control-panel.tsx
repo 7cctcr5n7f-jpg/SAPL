@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import React, { useState, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import {
   publishSeasonAction,
   unlockSeasonAction,
   deleteAllSeasonFixturesAction,
+  updateSeasonStartDateAction,
 } from "@/lib/actions/admin"
 import type { SeasonValidation } from "@/lib/engine/validation"
 import { DIVISIONS } from "@/lib/constants"
@@ -55,6 +56,7 @@ type Season = {
   status: string
   isCurrent: boolean
   weeks: number
+  startDate: Date | string | null
   regions: Region[]
   divisions: Division[]
 }
@@ -94,6 +96,17 @@ export function ControlPanel({
         )}
         {seasons.map((s) => {
           const groups = groupDivisions(s)
+          const startDt = s.startDate ? new Date(s.startDate) : null
+          const hasFixtures = ["fixtures_generated", "league_locked"].includes(normalizeSeasonStatus(s.status))
+          // Calculate last pool game and playoff weekend from start date + weeks.
+          const lastPoolGameDate = startDt && s.weeks > 0
+            ? new Date(Date.UTC(startDt.getUTCFullYear(), startDt.getUTCMonth(), startDt.getUTCDate() + (s.weeks - 1) * 7))
+            : null
+          const playoffSaturday = lastPoolGameDate
+            ? new Date(Date.UTC(lastPoolGameDate.getUTCFullYear(), lastPoolGameDate.getUTCMonth(), lastPoolGameDate.getUTCDate() + 9))
+            : null
+          const fmtDate = (d: Date) =>
+            d.toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
           return (
             <div key={s.id} className="rounded-xl border border-border p-5">
               {/* Title + status + primary actions */}
@@ -113,7 +126,25 @@ export function ControlPanel({
                       <CalendarRange className="h-3.5 w-3.5" />
                       {s.weeks > 0 ? `${s.weeks} week${s.weeks === 1 ? "" : "s"}` : "Weeks TBD"}
                     </span>
+                    {startDt ? (
+                      <span className="inline-flex items-center gap-1.5 text-foreground/80">
+                        Start: <strong>{fmtDate(startDt)}</strong>
+                      </span>
+                    ) : (
+                      <span className="text-amber-600">⚠ No start date set</span>
+                    )}
+                    {hasFixtures && lastPoolGameDate && (
+                      <span className="inline-flex items-center gap-1.5">
+                        Last pool game: <strong>{fmtDate(lastPoolGameDate)}</strong>
+                      </span>
+                    )}
+                    {hasFixtures && playoffSaturday && (
+                      <span className="inline-flex items-center gap-1.5">
+                        Playoff weekend: <strong>{fmtDate(playoffSaturday)}</strong>
+                      </span>
+                    )}
                   </div>
+                  <StartDateEditor seasonId={s.id} currentDate={startDt} pending={pending} start={start} />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {!s.isCurrent && (
@@ -169,6 +200,69 @@ export function ControlPanel({
         })}
       </CardContent>
     </Card>
+  )
+}
+
+function StartDateEditor({
+  seasonId,
+  currentDate,
+  pending,
+  start,
+}: {
+  seasonId: number
+  currentDate: Date | null
+  pending: boolean
+  start: React.TransitionStartFunction
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(
+    currentDate
+      ? `${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, "0")}-${String(currentDate.getUTCDate()).padStart(2, "0")}`
+      : "",
+  )
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="text-xs text-primary underline-offset-2 hover:underline"
+        onClick={() => setEditing(true)}
+      >
+        {currentDate ? "Change start date" : "Set start date"}
+      </button>
+    )
+  }
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="h-8 rounded border border-border bg-background px-2 text-sm"
+      />
+      <Button
+        size="sm"
+        disabled={pending || !value}
+        onClick={() => {
+          const fd = new FormData()
+          fd.set("seasonId", String(seasonId))
+          fd.set("startDate", value)
+          start(async () => {
+            const res = await updateSeasonStartDateAction(fd)
+            if (res.ok) {
+              toast.success("Start date saved")
+              setEditing(false)
+            } else {
+              toast.error(res.error ?? "Failed to save")
+            }
+          })
+        }}
+      >
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+    </div>
   )
 }
 
