@@ -133,7 +133,11 @@ export async function setPlayerAvailability(
   if (!(await canManageTeam(me, teamId))) return { error: "You do not manage this team." }
 
   // The team must actually be in this fixture.
-  const [fx] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fx] = await db
+    .select({ id: fixtures.id, homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
   if (!fx || (fx.homeTeamId !== teamId && fx.awayTeamId !== teamId)) {
     return { error: "This team is not in that fixture." }
   }

@@ -24,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { invitePlayerByEmail, setPairingSlot, cancelInvite } from "@/lib/actions/pairings"
+import { invitePlayerByEmail, setPairingSlot, cancelInvite, resendPendingInvite } from "@/lib/actions/pairings"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -180,6 +180,7 @@ function DroppableSlot({
   onInviteCreated,
   pendingInvite,
   onCancelInvite,
+  onResendInvite,
   pending,
   activePlayerId,
   canManage,
@@ -196,6 +197,7 @@ function DroppableSlot({
   onInviteCreated?: (invite: Invite) => void
   pendingInvite: Invite | null
   onCancelInvite: (inviteId: number) => void
+  onResendInvite: (inviteId: number) => void
   pending: boolean
   activePlayerId: string | null
   canManage: boolean
@@ -231,14 +233,26 @@ function DroppableSlot({
             <p className="text-xs text-amber-700">Pending invitation</p>
           </div>
           {canManage && (
-            <button
-              onClick={() => onCancelInvite(pendingInvite.id)}
-              disabled={pending}
-              className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:text-red-500"
-              aria-label="Cancel invite"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                onClick={() => onResendInvite(pendingInvite.id)}
+                disabled={pending}
+                className="rounded p-0.5 text-slate-400 transition-colors hover:text-primary"
+                aria-label="Resend invite"
+                title="Resend invite"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => onCancelInvite(pendingInvite.id)}
+                disabled={pending}
+                className="rounded p-0.5 text-slate-400 transition-colors hover:text-red-500"
+                aria-label="Cancel invite"
+                title="Cancel invite"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
       ) : (
@@ -619,13 +633,20 @@ export function PairingsBoard({
               }
               onCancelInvite={(inviteId) =>
                 start(async () => {
-                  const res = await cancelInvite(inviteId)
+                  const res = await cancelInvite(inviteId, teamId)
                   if (res?.error) toast.error(res.error)
                   else {
                     toast.success(res?.success ?? "Cancelled")
                     removeInviteLocally(inviteId)
                     router.refresh()
                   }
+                })
+              }
+              onResendInvite={(inviteId) =>
+                start(async () => {
+                  const res = await resendPendingInvite(inviteId, teamId)
+                  if (res?.error) toast.error(res.error)
+                  else toast.success(res?.success ?? "Invite resent")
                 })
               }
               pending={pending}
@@ -708,24 +729,42 @@ export function PairingsBoard({
                     <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <span className="truncate text-slate-600">{inv.email}</span>
                   </div>
-                  <button
-                    onClick={() =>
-                      start(async () => {
-                        const res = await cancelInvite(inv.id)
-                        if (res?.error) toast.error(res.error)
-                        else {
-                          toast.success(res?.success ?? "Cancelled")
-                          removeCancelledInvite(inv.id)
-                          router.refresh()
-                        }
-                      })
-                    }
-                    disabled={pending}
-                    className="shrink-0 text-slate-400 transition-colors hover:text-red-500"
-                    aria-label="Cancel invite"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() =>
+                        start(async () => {
+                          const res = await resendPendingInvite(inv.id, teamId)
+                          if (res?.error) toast.error(res.error)
+                          else toast.success(res?.success ?? "Invite resent")
+                        })
+                      }
+                      disabled={pending}
+                      className="text-slate-400 transition-colors hover:text-primary"
+                      aria-label="Resend invite"
+                      title="Resend invite"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() =>
+                        start(async () => {
+                          const res = await cancelInvite(inv.id, teamId)
+                          if (res?.error) toast.error(res.error)
+                          else {
+                            toast.success(res?.success ?? "Cancelled")
+                            removeCancelledInvite(inv.id)
+                            router.refresh()
+                          }
+                        })
+                      }
+                      disabled={pending}
+                      className="text-slate-400 transition-colors hover:text-red-500"
+                      aria-label="Cancel invite"
+                      title="Cancel invite"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

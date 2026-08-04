@@ -41,6 +41,56 @@ async function canManageTeam(me: CurrentUser, teamId: number) {
   return access.canManageTeam(teamId) ? team : null
 }
 
+async function sendPendingInviteEmail(inviteId: number, fallbackCaptainName?: string | null) {
+  const [invite] = await db
+    .select({
+      id: teamInvites.id,
+      teamId: teamInvites.teamId,
+      email: teamInvites.email,
+      category: teamInvites.category,
+      pairIndex: teamInvites.pairIndex,
+      slotIndex: teamInvites.slotIndex,
+      token: teamInvites.token,
+      invitedByUserId: teamInvites.invitedByUserId,
+    })
+    .from(teamInvites)
+    .where(and(eq(teamInvites.id, inviteId), eq(teamInvites.status, "pending")))
+    .limit(1)
+  if (!invite) return { ok: false as const, error: "Pending invite not found." }
+
+  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+  const [invitingUser] = invite.invitedByUserId
+    ? await db.select({ name: user.name }).from(user).where(eq(user.id, invite.invitedByUserId)).limit(1)
+    : [{ name: null }]
+
+  const base = appBaseUrl()
+  const acceptUrl = `${base}/invite/${invite.token}`
+  const declineUrl = `${base}/invite/${invite.token}/decline`
+  const { subject, html, text } = teamInviteEmail({
+    teamName: team?.name ?? "your team",
+    captainName: fallbackCaptainName ?? invitingUser?.name ?? "Your captain",
+    acceptUrl,
+    declineUrl,
+  })
+  const { sent } = await sendEmail({ to: invite.email, subject, html, text })
+  if (!sent) {
+    console.log(`[v0] Team invite resend for ${invite.email} — Accept: ${acceptUrl} | Decline: ${declineUrl}`)
+  }
+
+  return {
+    ok: true as const,
+    teamId: invite.teamId,
+    email: invite.email,
+    invite: {
+      id: invite.id,
+      email: invite.email,
+      category: invite.category,
+      pairIndex: invite.pairIndex,
+      slotIndex: invite.slotIndex,
+    },
+  }
+}
+
 // Assign a roster player to a specific pairing slot (or clear it with playerId=null).
 export async function setPairingSlot(input: {
   teamId: number
@@ -194,7 +244,6 @@ export async function setPairingSlot(input: {
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/teams")
-  revalidatePath("/admin/teams")
   return { success: "Lineup updated." }
 }
 
@@ -344,23 +393,13 @@ export async function invitePlayerByEmail(input: {
     .orderBy(desc(teamInvites.createdAt))
     .limit(1)
 
-  const base = appBaseUrl()
-  const acceptUrl = `${base}/invite/${storedInvite?.token}`
-  const declineUrl = `${base}/invite/${storedInvite?.token}/decline`
-
-  const { subject, html, text } = teamInviteEmail({
-    teamName: team.name,
-    captainName: me.name,
-    acceptUrl,
-    declineUrl,
-  })
-  const { sent } = await sendEmail({ to: email, subject, html, text })
-  if (!sent) {
-    console.log(`[v0] Team invite for ${email} — Accept: ${acceptUrl} | Decline: ${declineUrl}`)
+  if (storedInvite) {
+    await sendPendingInviteEmail(storedInvite.id, me.name)
   }
 
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
   return {
     success: `Invite sent to ${email}. They are shown as pending in your squad until they accept.`,
     invite: storedInvite
@@ -373,6 +412,59 @@ export async function invitePlayerByEmail(input: {
         }
       : null,
   }
+}
+
+export async function resendPendingInvite(inviteId: number, teamId?: number) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const [invite] = await db.select({ teamId: teamInvites.teamId }).from(teamInvites).where(eq(teamInvites.id, inviteId)).limit(1)
+  if (!invite) return { error: "Invite not found." }
+  // If the caller supplied a teamId, verify the invite belongs to that team.
+  if (teamId != null && invite.teamId !== teamId) return { error: "Invite not found." }
+  const team = await canManageTeam(me, invite.teamId)
+  if (!team) return { error: "You cannot manage this team." }
+
+  const res = await sendPendingInviteEmail(inviteId, me.name)
+  if (!res.ok) return { error: res.error }
+
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
+  return { success: `Invite resent to ${res.email}.`, invite: res.invite }
+}
+
+export async function resendAllPendingInvites(teamId?: number | null) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const access = await getAccessContext(me)
+
+  if (teamId != null) {
+    const team = await canManageTeam(me, teamId)
+    if (!team) return { error: "You cannot manage this team." }
+  } else if (!access.isLeagueAdmin) {
+    return { error: "League admin access required." }
+  }
+
+  const invites = await db
+    .select({ id: teamInvites.id })
+    .from(teamInvites)
+    .where(teamId != null ? and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")) : eq(teamInvites.status, "pending"))
+    .orderBy(desc(teamInvites.createdAt))
+
+  if (invites.length === 0) return { error: "No pending invites found." }
+
+  let resent = 0
+  for (const invite of invites) {
+    const res = await sendPendingInviteEmail(invite.id, me.name)
+    if (res.ok) resent++
+  }
+
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
+  return { success: `Resent ${resent} invite${resent === 1 ? "" : "s"}.`, count: resent }
 }
 
 /**
@@ -550,7 +642,7 @@ export async function lookupPlayerByEmail(email: string): Promise<{
   })
   }
 
-export async function cancelInvite(inviteId: number) {
+export async function cancelInvite(inviteId: number, teamId?: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
   const [invite] = await db
@@ -559,9 +651,13 @@ export async function cancelInvite(inviteId: number) {
     .where(eq(teamInvites.id, inviteId))
     .limit(1)
   if (!invite) return { error: "Invite not found." }
+  // If the caller supplied a teamId, verify the invite belongs to that team.
+  // This prevents a stale invite ID from one team from being cancelled while
+  // the owner is managing a different team.
+  if (teamId != null && invite.teamId !== teamId) return { error: "Invite not found." }
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
-  await db.update(teamInvites).set({ status: "cancelled" }).where(eq(teamInvites.id, inviteId))
+  await db.update(teamInvites).set({ status: "cancelled" }).where(and(eq(teamInvites.id, inviteId), eq(teamInvites.teamId, invite.teamId)))
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/captain")
   revalidatePath("/dashboard/my-team")
