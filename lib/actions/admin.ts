@@ -21,18 +21,45 @@ import { reconcileClubTeams } from "@/lib/club-teams"
 import {
   generateRoundRobin,
   generateRegionalFinals,
-  buildRegionalFinalTemplates,
-  buildMastersTemplates,
+  buildDivisionPlayoffTemplates,
+  computeDivisionPlayoffQualifiers,
 } from "@/lib/engine/playoffs"
 import { nextThursday, balanceTimeslots } from "@/lib/engine/season"
 import { syncDivisionFixtures } from "@/lib/fixtures-sync"
 import { validateSeason } from "@/lib/engine/validation"
-import { REGIONAL_FINALS_GAP_DAYS, TSHWANE_MASTERS_GAP_DAYS, DIVISIONS, TEAMS_PER_DIVISION } from "@/lib/constants"
+import {
+  REGIONAL_FINALS_GAP_DAYS,
+  DIVISIONS,
+  TEAMS_PER_DIVISION,
+  TSHWANE_REGIONS,
+} from "@/lib/constants"
 import { notify } from "@/lib/notify"
 import { isSeasonLocked, seasonLockedResult } from "@/lib/season-lock"
 import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+function slugifyRegion(input: string) {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+function parseRegionNames(raw: string) {
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const part of raw.split(/[\n,]+/)) {
+    const name = part.trim().replace(/\s+/g, " ")
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names
+}
 
 async function requireAdmin() {
   const user = await getCurrentUser()
@@ -109,7 +136,18 @@ export async function generateSeason(formData: FormData) {
   await requireAdmin()
   if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
-  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db
+    .select({
+      id: seasons.id,
+      startDate: seasons.startDate,
+      regionalFinalsDate: seasons.regionalFinalsDate,
+      regionalFinalsVenueClubId: seasons.regionalFinalsVenueClubId,
+      mastersDate: seasons.mastersDate,
+      mastersVenueClubId: seasons.mastersVenueClubId,
+    })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1)
   if (!season) return { ok: false, error: "Season not found" }
   const [existingSeasonFixture] = await db
     .select({ id: fixtures.id })
@@ -175,6 +213,7 @@ export async function generateSeason(formData: FormData) {
   const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
 
   let total = 0
+  let maxWeek = 0
   let lastRoundDate = firstNight
   for (const d of divs) {
     const maxTeams = d.maxTeams ?? 8
@@ -188,6 +227,8 @@ export async function generateSeason(formData: FormData) {
     const slots = Array.from({ length: slotCount }, (_, i) => i + 1)
     const rr = generateRoundRobin(slots)
     if (rr.length === 0) continue
+    // Track the highest week across all divisions so we can store it back.
+    for (const g of rr) if (g.week > maxWeek) maxWeek = g.week
     // Balance 17:00 / 18:30 fairly across each division slot for the season.
     const timeslots = balanceTimeslots(rr.map((g) => ({ homeSlot: g.homeTeamId, awaySlot: g.awayTeamId })))
     await db.insert(fixtures).values(
@@ -214,26 +255,31 @@ export async function generateSeason(formData: FormData) {
   for (const d of divs) await syncDivisionFixtures(d.id)
   await syncSeasonTeamLifecycle(seasonId)
 
-  // ---- Playoff + Tshwane Masters placeholders -----------------------------
+  // ---- Playoff placeholders -----------------------------------------------
   // Wipe any previously generated (un-played) playoff rows for this season.
   await db.delete(playoffs).where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.status, "scheduled")))
 
-  const allRegions = await db.select({ id: regions.id }).from(regions)
-  const regionNameById = new Map(allRegions.map((r) => [r.id, r.name]))
-  const regionIdByName = new Map(allRegions.map((r) => [r.name, r.id]))
-
   // Regional Finals: 9 days after the last league round (or the chosen date).
-  const regionalFinalsDate = season.regionalFinalsDate
+  const quarterFinalsDate = season.regionalFinalsDate
     ? new Date(season.regionalFinalsDate)
     : new Date(lastRoundDate.getTime() + REGIONAL_FINALS_GAP_DAYS * MS_PER_DAY)
+  const finalsSunday = new Date(
+    (season.mastersDate ? new Date(season.mastersDate) : new Date(quarterFinalsDate.getTime() + MS_PER_DAY)).getTime(),
+  )
+  finalsSunday.setHours(quarterFinalsDate.getHours(), quarterFinalsDate.getMinutes(), 0, 0)
 
-  for (const d of divs) {
-    const regionLabel = d.regionId ? (regionNameById.get(d.regionId)?.replace("Tshwane ", "") ?? null) : null
-    const templates = buildRegionalFinalTemplates({
-      divisionId: d.id,
-      divisionName: d.name,
-      regionId: d.regionId ?? null,
-      regionLabel,
+  const divisionsByLevel = new Map<number, typeof divs>()
+  for (const division of divs) {
+    const bucket = divisionsByLevel.get(division.level) ?? []
+    bucket.push(division)
+    divisionsByLevel.set(division.level, bucket)
+  }
+  for (const levelDivisions of divisionsByLevel.values()) {
+    const ordered = [...levelDivisions].sort((a, b) => a.id - b.id)
+    const anchor = ordered[0]
+    const templates = buildDivisionPlayoffTemplates({
+      divisionId: anchor.id,
+      divisionName: anchor.name,
     })
     await db.insert(playoffs).values(
       templates.map((t) => ({
@@ -249,38 +295,19 @@ export async function generateSeason(formData: FormData) {
         awaySourceBracket: t.awaySourceBracket,
         homeLabel: t.homeLabel,
         awayLabel: t.awayLabel,
-        matchDate: regionalFinalsDate,
-        venueClubId: season.regionalFinalsVenueClubId ?? null,
+        matchDate: t.round === "quarter_final" ? quarterFinalsDate : finalsSunday,
+        venueClubId: season.regionalFinalsVenueClubId ?? season.mastersVenueClubId ?? null,
         status: "scheduled" as const,
       })),
     )
   }
 
-  // Tshwane Masters: 7 days after the Regional Finals (or the chosen date).
-  const mastersDate = season.mastersDate
-    ? new Date(season.mastersDate)
-    : new Date(regionalFinalsDate.getTime() + TSHWANE_MASTERS_GAP_DAYS * MS_PER_DAY)
-  const mastersTemplates = buildMastersTemplates(regionIdByName)
-  await db.insert(playoffs).values(
-    mastersTemplates.map((t) => ({
-      seasonId,
-      type: t.type,
-      round: t.round,
-      bracketPosition: t.bracketPosition,
-      homeRegionId: t.homeRegionId,
-      awayRegionId: t.awayRegionId,
-      homeSourceBracket: t.homeSourceBracket,
-      awaySourceBracket: t.awaySourceBracket,
-      homeLabel: t.homeLabel,
-      awayLabel: t.awayLabel,
-      matchDate: mastersDate,
-      venueClubId: season.mastersVenueClubId ?? null,
-      status: "scheduled" as const,
-    })),
-  )
-
   // Fixture generation is a one-time phase transition.
-  await db.update(seasons).set({ status: "fixtures_generated" }).where(eq(seasons.id, seasonId))
+  // Store the auto-calculated week count so the UI can display it correctly.
+  await db
+    .update(seasons)
+    .set({ status: "fixtures_generated", weeks: maxWeek > 0 ? maxWeek : undefined })
+    .where(eq(seasons.id, seasonId))
   await syncSeasonTeamLifecycle(seasonId)
 
   revalidatePath("/admin")
@@ -399,11 +426,9 @@ export async function generatePlayoffs(formData: FormData) {
 /**
  * Resolve every placeholder playoff slot for a season into a real team using the
  * current league standings:
- *  - Regional final semis: seed N -> the team ranked N in that division.
- *  - Tshwane Masters semis: region -> that region's champion (rank 1 of its
- *    Premier/level-1 division).
- *  - Finals: filled from the winners of their source-bracket semis once those
- *    are completed.
+ *  - Division playoff quarter-finals: seed N -> the qualifier seeded N across
+ *    all regions of that division level.
+ *  - Semi-finals / final: fed by completed prior rounds using source brackets.
  * Re-runnable: it overwrites slots so brackets stay in sync as results land.
  */
 export async function pullPlayoffTeams(formData: FormData) {
@@ -411,43 +436,92 @@ export async function pullPlayoffTeams(formData: FormData) {
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
 
-  const rows = await db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId))
+  const rows = await db
+    .select({
+      id: playoffs.id,
+      type: playoffs.type,
+      round: playoffs.round,
+      divisionId: playoffs.divisionId,
+      homeTeamId: playoffs.homeTeamId,
+      awayTeamId: playoffs.awayTeamId,
+      homeSeed: playoffs.homeSeed,
+      awaySeed: playoffs.awaySeed,
+      homeRegionId: playoffs.homeRegionId,
+      awayRegionId: playoffs.awayRegionId,
+      homeSourceBracket: playoffs.homeSourceBracket,
+      awaySourceBracket: playoffs.awaySourceBracket,
+      bracketPosition: playoffs.bracketPosition,
+      winnerTeamId: playoffs.winnerTeamId,
+    })
+    .from(playoffs)
+    .where(eq(playoffs.seasonId, seasonId))
   if (rows.length === 0) return { ok: false, error: "No playoff fixtures to populate. Generate the season first." }
 
   // Standings by division, ranked.
-  const seasonDivisions = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
+  const seasonDivisions = await db
+    .select({ id: divisions.id, name: divisions.name, level: divisions.level, regionId: divisions.regionId })
+    .from(divisions)
+    .where(eq(divisions.seasonId, seasonId))
   const divIds = seasonDivisions.map((d) => d.id)
   const allStandings = divIds.length
-    ? await db.select({ id: standings.id }).from(standings).where(inArray(standings.divisionId, divIds)).orderBy(asc(standings.rank))
+    ? await db
+        .select({
+          divisionId: standings.divisionId,
+          teamId: standings.teamId,
+          rank: standings.rank,
+          points: standings.points,
+          wins: standings.wins,
+          setsWon: standings.setsWon,
+          pointsDiff: standings.pointsDiff,
+        })
+        .from(standings)
+        .where(inArray(standings.divisionId, divIds))
+        .orderBy(asc(standings.divisionId), asc(standings.rank))
     : []
-  const rankInDivision = (divisionId: number, rank: number) =>
-    allStandings.find((s) => s.divisionId === divisionId && s.rank === rank)?.teamId ?? null
-
-  // Region champion = rank 1 of that region's Premier (lowest level) division.
-  const premierByRegion = new Map<number, number>() // regionId -> divisionId
-  for (const d of seasonDivisions) {
-    if (d.regionId == null) continue
-    const cur = premierByRegion.get(d.regionId)
-    const curLevel = cur ? (seasonDivisions.find((x) => x.id === cur)?.level ?? 99) : 99
-    if (d.level < curLevel) premierByRegion.set(d.regionId, d.id)
+  const divisionById = new Map(seasonDivisions.map((d) => [d.id, d]))
+  const qualifiersByAnchorDivision = new Map<number, Map<number, number>>()
+  const levelGroups = new Map<number, typeof seasonDivisions>()
+  for (const division of seasonDivisions) {
+    const bucket = levelGroups.get(division.level) ?? []
+    bucket.push(division)
+    levelGroups.set(division.level, bucket)
   }
-  const regionChampion = (regionId: number) => {
-    const divId = premierByRegion.get(regionId)
-    return divId ? rankInDivision(divId, 1) : null
+  for (const levelDivisions of levelGroups.values()) {
+    const ordered = [...levelDivisions].sort((a, b) => a.id - b.id)
+    const anchor = ordered[0]
+    const qualifiers = computeDivisionPlayoffQualifiers(
+      allStandings
+        .filter((row) => ordered.some((division) => division.id === row.divisionId))
+        .map((row) => {
+          const division = divisionById.get(row.divisionId)
+          return {
+            divisionId: row.divisionId,
+            divisionLevel: division?.level ?? 0,
+            divisionName: division?.name ?? "Division",
+            regionId: division?.regionId ?? null,
+            regionName: null,
+            teamId: row.teamId,
+            rank: row.rank,
+            points: row.points,
+            wins: row.wins,
+            setsWon: row.setsWon,
+            pointsDiff: row.pointsDiff,
+          }
+        }),
+    )
+    qualifiersByAnchorDivision.set(anchor.id, new Map(qualifiers.map((q) => [q.seed, q.teamId])))
   }
 
   let filled = 0
-  // First pass: semis (seeds / regions resolve directly).
+  // First pass: quarter-finals resolve directly from live qualification seeds.
   for (const p of rows) {
-    if (p.round !== "semi_final") continue
+    if (p.round !== "quarter_final") continue
     let home = p.homeTeamId
     let away = p.awayTeamId
     if (p.type === "regional_final" && p.divisionId != null) {
-      if (p.homeSeed != null) home = rankInDivision(p.divisionId, p.homeSeed)
-      if (p.awaySeed != null) away = rankInDivision(p.divisionId, p.awaySeed)
-    } else if (p.type === "tshwane_masters") {
-      if (p.homeRegionId != null) home = regionChampion(p.homeRegionId)
-      if (p.awayRegionId != null) away = regionChampion(p.awayRegionId)
+      const qualifiers = qualifiersByAnchorDivision.get(p.divisionId) ?? new Map<number, number>()
+      if (p.homeSeed != null) home = qualifiers.get(p.homeSeed) ?? null
+      if (p.awaySeed != null) away = qualifiers.get(p.awaySeed) ?? null
     }
     if (home !== p.homeTeamId || away !== p.awayTeamId) {
       await db.update(playoffs).set({ homeTeamId: home, awayTeamId: away }).where(eq(playoffs.id, p.id))
@@ -456,21 +530,30 @@ export async function pullPlayoffTeams(formData: FormData) {
   }
 
   // Refresh after the semi update so finals can read semi winners.
-  const refreshed = await db.select({ id: playoffs.id }).from(playoffs).where(eq(playoffs.seasonId, seasonId))
+  const refreshed = await db
+    .select({
+      id: playoffs.id,
+      type: playoffs.type,
+      round: playoffs.round,
+      divisionId: playoffs.divisionId,
+      bracketPosition: playoffs.bracketPosition,
+      winnerTeamId: playoffs.winnerTeamId,
+    })
+    .from(playoffs)
+    .where(eq(playoffs.seasonId, seasonId))
   const winnerByBracket = (type: string, divisionId: number | null, bracket: number) => {
-    const semi = refreshed.find(
+    const match = refreshed.find(
       (x) =>
         x.type === type &&
-        x.round === "semi_final" &&
         x.bracketPosition === bracket &&
         (divisionId == null || x.divisionId === divisionId),
     )
-    return semi?.winnerTeamId ?? null
+    return match?.winnerTeamId ?? null
   }
 
-  // Second pass: finals fed by completed semis.
+  // Second pass: semis and finals fed by completed prior rounds.
   for (const p of rows) {
-    if (p.round !== "final") continue
+    if (p.round === "quarter_final") continue
     let home = p.homeTeamId
     let away = p.awayTeamId
     if (p.homeSourceBracket != null) home = winnerByBracket(p.type, p.divisionId, p.homeSourceBracket)
@@ -566,8 +649,8 @@ export async function resolveDispute(formData: FormData) {
 export async function createSeason(formData: FormData) {
   await requireAdmin()
   const name = String(formData.get("name") ?? "").trim()
-  const weeks = Number(formData.get("weeks") ?? 7)
   const startStr = String(formData.get("startDate") ?? "").trim()
+  const regionNamesRaw = String(formData.get("regionNames") ?? "").trim()
   const makeCurrent = formData.get("makeCurrent") === "on" || formData.get("makeCurrent") === "true"
   const feeRaw = Number(formData.get("playerFee") ?? 500)
   const playerFee = Number.isFinite(feeRaw) && feeRaw >= 0 ? Math.round(feeRaw) : 500
@@ -579,7 +662,12 @@ export async function createSeason(formData: FormData) {
   if (!name) return { ok: false, error: "Season name required" }
 
   const startDate = startStr ? new Date(startStr) : null
-  const endDate = startDate ? new Date(startDate.getTime() + weeks * 7 * 24 * 60 * 60 * 1000) : null
+  // weeks will be auto-calculated when fixtures are generated; store 0 as placeholder
+  const endDate = null
+  const existingRegions = await db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.id))
+  const fallbackRegionNames = existingRegions.length > 0 ? existingRegions.map((r) => r.name) : [...TSHWANE_REGIONS]
+  const regionNames = parseRegionNames(regionNamesRaw || fallbackRegionNames.join("\n"))
+  if (regionNames.length === 0) return { ok: false, error: "Add at least one region" }
 
   // Optional playoff scheduling captured at creation (used by Generate Season).
   const num = (k: string) => {
@@ -598,7 +686,7 @@ export async function createSeason(formData: FormData) {
     .insert(seasons)
     .values({
       name,
-      weeks,
+      weeks: 0, // will be auto-calculated when fixtures are generated
       startDate,
       endDate,
       status: "registration_open",
@@ -611,11 +699,30 @@ export async function createSeason(formData: FormData) {
     })
     .returning({ id: seasons.id })
 
-  // Seed the standard grid: every region x every division level, at the chosen
-  // max-teams. This gives the Placement Board all 4 regions x 4 divisions to
-  // drag teams into immediately. Empty ones are removed when fixtures generate.
-  const allRegions = await db.select({ id: regions.id }).from(regions)
-  const divisionRows = allRegions.flatMap((r) =>
+  const existingRegionByName = new Map(existingRegions.map((r) => [r.name.trim().toLowerCase(), r]))
+  const seasonRegions: { id: number; name: string }[] = []
+  for (const regionName of regionNames) {
+    const existing = existingRegionByName.get(regionName.toLowerCase())
+    if (existing) {
+      seasonRegions.push(existing)
+      continue
+    }
+    const [inserted] = await db
+      .insert(regions)
+      .values({
+        name: regionName,
+        slug: slugifyRegion(regionName),
+        province: "Gauteng",
+        level: "region",
+      })
+      .returning({ id: regions.id, name: regions.name })
+    existingRegionByName.set(regionName.toLowerCase(), inserted)
+    seasonRegions.push(inserted)
+  }
+
+  // Seed only the chosen season regions so admins can run 3-region or custom
+  // conference setups without inheriting the full legacy region list.
+  const divisionRows = seasonRegions.flatMap((r) =>
     DIVISIONS.map((d) => ({
       seasonId: created.id,
       name: d.name,
@@ -808,7 +915,10 @@ export async function setSeasonDivisions(input: {
   await requireAdmin()
   if (await isSeasonLocked()) return seasonLockedResult()
   const { seasonId } = input
-  const existing = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
+  const existing = await db
+    .select({ id: divisions.id, regionId: divisions.regionId, level: divisions.level, maxTeams: divisions.maxTeams })
+    .from(divisions)
+    .where(eq(divisions.seasonId, seasonId))
   const keyOf = (regionId: number | null, level: number) => `${regionId ?? "none"}:${level}`
   const existingByKey = new Map(existing.map((d) => [keyOf(d.regionId, d.level), d]))
 

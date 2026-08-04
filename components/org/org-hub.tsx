@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
 import { createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
+import { resendAllPendingInvites } from "@/lib/actions/pairings"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { toast } from "sonner"
 import {
@@ -143,12 +144,14 @@ export function OrgHub({
   venues,
   locked = false,
   registeredEmails = [],
+  canResendAllInvites = false,
 }: {
   teams: Team[]
   venues: Venue[]
   locked?: boolean
   /** Lowercase emails of all registered members — used to warn when ownerEmail has no account. */
   registeredEmails?: string[]
+  canResendAllInvites?: boolean
 }) {
   const [pending, start] = useTransition()
   const [squadForId, setSquadForId] = useState<number | null>(null)
@@ -193,6 +196,7 @@ export function OrgHub({
   const totalPlayers = teams.reduce((s, t) => s + t.pairingRoster.length, 0)
   const withOwner = teams.filter((t) => t.ownerEmail).length
   const avgTpr = teams.length ? Math.round(teams.reduce((s, t) => s + t.tpr, 0) / teams.length) : 0
+  const pendingInviteCount = teams.reduce((sum, t) => sum + t.pairingInvites.length, 0)
 
   return (
     <div className="space-y-6">
@@ -218,6 +222,22 @@ export function OrgHub({
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" /> Teams
           </CardTitle>
+          {canResendAllInvites && pendingInviteCount > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await resendAllPendingInvites()
+                  if (res?.error) toast.error(res.error)
+                  else toast.success(res?.success ?? "Invites resent")
+                })
+              }
+            >
+              Resend all pending invites ({pendingInviteCount})
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Filters */}
@@ -484,7 +504,6 @@ export function OrgHub({
           {squadFor && (
             <PairingsBoard
               teamId={squadFor.id}
-              teamName={squadFor.name}
               categories={squadFor.pairingCategories}
               roster={squadFor.pairingRoster}
               invites={squadFor.pairingInvites}

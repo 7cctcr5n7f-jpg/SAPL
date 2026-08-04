@@ -61,7 +61,7 @@ export function PlayoffsManager({
     })
   }
 
-  // Regional finals grouped by division; Tshwane Masters as its own bracket.
+  // Division playoffs grouped by division; legacy masters omitted when unused.
   const regional = playoffs.filter((p) => p.type === "regional_final")
   const masters = playoffs.filter((p) => p.type === "tshwane_masters")
   const regionalByDivision = useMemo(() => {
@@ -83,8 +83,8 @@ export function PlayoffsManager({
               <Swords className="h-5 w-5 text-primary" /> Playoff brackets — {seasonName}
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Brackets are pre-seeded with placeholders (e.g. Premier 1st vs 4th). Pull teams to fill them from the live
-              standings, then set each game&apos;s date, slot and court.
+              Brackets are pre-seeded for an 8-team playoff weekend. Pull teams to fill quarter-finals from the live
+              standings, then set each match&apos;s date, slot and court.
             </p>
           </div>
           <Button onClick={pull} disabled={pending}>
@@ -101,7 +101,7 @@ export function PlayoffsManager({
               {regionalByDivision.map(([divId, ps]) => (
                 <Bracket
                   key={`div-${divId}`}
-                  title={ps[0]?.homeName?.split(" ")[0] ? `${bracketDivisionName(ps)} — Regional Final` : "Regional Final"}
+                  title={ps[0]?.homeName?.split(" ")[0] ? `${bracketDivisionName(ps)} — Playoffs` : "Playoffs"}
                   playoffs={ps}
                   venues={venues}
                   pending={pending}
@@ -127,9 +127,9 @@ export function PlayoffsManager({
 }
 
 function bracketDivisionName(ps: Playoff[]) {
-  // Labels look like "Premier 1st (East)" — take the leading division word(s).
-  const label = ps.find((p) => p.round === "semi_final")?.homeName ?? ""
-  const m = label.match(/^([A-Za-z0-9 ]+?)\s+\d/)
+  // Labels look like "Premier Seed 1" — take the leading division word(s).
+  const label = ps.find((p) => p.round !== "final")?.homeName ?? ""
+  const m = label.match(/^([A-Za-z0-9 ]+?)\s+Seed\s+\d/i)
   return m ? m[1].trim() : "Division"
 }
 
@@ -148,6 +148,7 @@ function Bracket({
   start: (cb: () => Promise<void>) => void
   crown?: boolean
 }) {
+  const quarters = playoffs.filter((p) => p.round === "quarter_final").sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0))
   const semis = playoffs.filter((p) => p.round === "semi_final").sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0))
   const finals = playoffs.filter((p) => p.round === "final")
   return (
@@ -156,7 +157,13 @@ function Bracket({
         {crown ? <Trophy className="h-4 w-4 text-primary" /> : <Swords className="h-4 w-4 text-primary" />}
         {title}
       </p>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quarter Finals</p>
+          {quarters.map((p) => (
+            <BracketRow key={p.id} p={p} venues={venues} pending={pending} start={start} />
+          ))}
+        </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Semi Finals</p>
           {semis.map((p) => (

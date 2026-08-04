@@ -294,6 +294,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
       <div>
         <SectionHeading>Squad</SectionHeading>
         <PairingsBoard
+          key={team.id}
           teamId={team.id}
           categories={boardCategories}
           roster={boardRoster}

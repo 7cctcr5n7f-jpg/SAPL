@@ -160,7 +160,7 @@ export default async function AdminTeamsPage() {
         title="Team Admin"
         subtitle={isAdminWide ? "All teams across the league" : "Create and manage your teams, captains, squads and fees"}
       />
-      <OrgHub teams={teamData} venues={orgClubs} locked={locked} registeredEmails={registeredEmails} />
+      <OrgHub teams={teamData} venues={orgClubs} locked={locked} registeredEmails={registeredEmails} canResendAllInvites={isAdminWide} />
     </div>
   )
 }

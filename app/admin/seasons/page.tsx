@@ -41,7 +41,13 @@ export default async function AdminSeasonsPage() {
           status: s.status,
           isCurrent: s.isCurrent,
           weeks: s.weeks,
-          regions: regions.map((r) => ({ id: r.id, name: r.name })),
+          regions: s.divisions
+            .filter((d) => d.regionId != null && d.regionName)
+            .reduce<Array<{ id: number; name: string }>>((acc, d) => {
+              if (acc.some((r) => r.id === d.regionId)) return acc
+              acc.push({ id: d.regionId as number, name: d.regionName as string })
+              return acc
+            }, []),
           divisions: s.divisions.map((d) => ({
             id: d.id,
             name: d.name,
@@ -50,6 +56,7 @@ export default async function AdminSeasonsPage() {
             regionId: d.regionId,
           })),
         }))}
+        defaultRegionNames={regions.map((r) => r.name)}
       />
     </div>
   )

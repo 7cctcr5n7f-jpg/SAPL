@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache"
 import { db } from "@/lib/db"
 import {
   fixtures,
@@ -173,6 +174,32 @@ function normaliseStatus(status: string | null): LCStatus {
 
 const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
 
+// ---------------------------------------------------------------------------
+// Internal types for the shared cache layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixture data that is identical for every visitor.
+ * Excludes user-specific fields (mine, assignedToFixture, joinUrl,
+ * joinUrlByCategory) which are applied as a thin per-request overlay.
+ * Also carries _categoryLinks — raw court booking URLs used during the
+ * overlay to derive joinUrl / joinUrlByCategory for assigned players.
+ * Not exported or surfaced on the public LCFixture type.
+ */
+type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory"> & {
+  _categoryLinks: Record<string, string>
+}
+
+type SharedLeagueCentreData = {
+  season: LeagueCentreData["season"]
+  stats: LeagueCentreData["stats"]
+  regions: LCRegion[]
+  divisions: LCDivision[]
+  standings: LCStanding[]
+  sharedFixtures: SharedFixture[]
+  rankings: LCRanking[]
+}
+
 /** Team ids the user is eligible to play for (captain or active roster member). */
 async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
   const ids = new Set<number>()
@@ -188,7 +215,13 @@ async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
   return ids
 }
 
-export async function getLeagueCentreData(user: CurrentUser | null): Promise<LeagueCentreData> {
+// ---------------------------------------------------------------------------
+// Shared data builder — all data identical for every visitor.
+// Wrapped with unstable_cache so it runs at most once every 60 seconds
+// across all concurrent requests, regardless of how many users visit.
+// ---------------------------------------------------------------------------
+
+async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   const season = await getCurrentSeason()
   if (!season) {
     return {
@@ -197,15 +230,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       regions: [],
       divisions: [],
       standings: [],
-      fixtures: [],
+      sharedFixtures: [],
       rankings: [],
-      myMatches: [],
-      authed: !!user,
-      currentPlayerId: user?.playerId ?? null,
     }
   }
 
-  // Divisions in this season, with their region.
+  // Divisions in this season with their region.
   const seasonDivisions = await db
     .select({
       id: divisions.id,
@@ -222,7 +252,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
 
   const divisionIds = seasonDivisions.map((d) => d.id)
 
-  // Assigned team counts per division (Placement Board entries).
+  // Assigned team counts per division to determine which divisions are active.
   const entryCounts = divisionIds.length
     ? await db
         .select({
@@ -238,8 +268,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     if (r.divisionId != null) entryByDivision.set(r.divisionId, r.count)
   })
 
-  // Only surface divisions that are actually used this season (assigned teams).
+  // Only surface divisions that have at least one assigned team.
   const usedDivisions = seasonDivisions.filter((d) => (entryByDivision.get(d.id) ?? 0) > 0)
+  const usedDivisionIds = usedDivisions.map((d) => d.id)
 
   const divisionsOut: LCDivision[] = usedDivisions.map((d) => ({
     id: d.id,
@@ -249,7 +280,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     teamCount: entryByDivision.get(d.id) ?? 0,
   }))
 
-  // Clubs per region (used for region cards).
+  // Clubs per region for region cards.
   const clubCounts = await db
     .select({ regionId: clubs.regionId, count: sql<number>`count(*)::int` })
     .from(clubs)
@@ -259,7 +290,6 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     if (r.regionId != null) clubByRegion.set(r.regionId, r.count)
   })
 
-  // Build region cards from regions that have at least one used division.
   const regionMap = new Map<number, LCRegion>()
   for (const d of usedDivisions) {
     if (d.regionId == null) continue
@@ -279,90 +309,87 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   }
   const regionsOut = Array.from(regionMap.values()).sort((a, b) => a.name.localeCompare(b.name))
 
-  // Standings for all used divisions.
-  const standingsOut: LCStanding[] = divisionIds.length
-    ? (
-        await db
-          .select({
-            divisionId: standings.divisionId,
-            teamId: standings.teamId,
-            teamName: teams.name,
-            teamLogo: teams.logoUrl,
-            orgName: organisations.name,
-            orgSlug: organisations.slug,
-            orgLogo: organisations.logoUrl,
-            played: standings.played,
-            wins: standings.wins,
-            losses: standings.losses,
-            setsWon: standings.setsWon,
-            setsLost: standings.setsLost,
-            gamesFor: standings.gamesFor,
-            gamesAgainst: standings.gamesAgainst,
-            points: standings.points,
-            pointsDiff: standings.pointsDiff,
-            rank: standings.rank,
-            tpr: teams.tpr,
-          })
-          .from(standings)
-          .leftJoin(teams, eq(standings.teamId, teams.id))
-          .leftJoin(organisations, eq(teams.organisationId, organisations.id))
-          .where(eq(standings.seasonId, season.id))
-          .orderBy(asc(standings.divisionId), asc(standings.rank))
-      ).filter((s) => entryByDivision.has(s.divisionId))
+  // Standings — filtered to used divisions in SQL (no JS post-filter needed).
+  const standingsOut: LCStanding[] = usedDivisionIds.length
+    ? await db
+        .select({
+          divisionId: standings.divisionId,
+          teamId: standings.teamId,
+          teamName: teams.name,
+          teamLogo: teams.logoUrl,
+          orgName: organisations.name,
+          orgSlug: organisations.slug,
+          orgLogo: organisations.logoUrl,
+          played: standings.played,
+          wins: standings.wins,
+          losses: standings.losses,
+          setsWon: standings.setsWon,
+          setsLost: standings.setsLost,
+          gamesFor: standings.gamesFor,
+          gamesAgainst: standings.gamesAgainst,
+          points: standings.points,
+          pointsDiff: standings.pointsDiff,
+          rank: standings.rank,
+          tpr: teams.tpr,
+        })
+        .from(standings)
+        .leftJoin(teams, eq(standings.teamId, teams.id))
+        .leftJoin(organisations, eq(teams.organisationId, organisations.id))
+        .where(and(eq(standings.seasonId, season.id), inArray(standings.divisionId, usedDivisionIds)))
+        .orderBy(asc(standings.divisionId), asc(standings.rank))
     : []
 
-  // Fixtures (timeline). Join both teams + their orgs for logos.
+  // Fixtures — filtered to used divisions in SQL (no JS post-filter needed).
   const home = alias(teams, "home")
   const away = alias(teams, "away")
   const homeOrg = alias(organisations, "homeOrg")
   const awayOrg = alias(organisations, "awayOrg")
-  const fixtureRows = await db
-    .select({
-      id: fixtures.id,
-      week: fixtures.week,
-      matchDate: fixtures.matchDate,
-      timeslot: fixtures.timeslot,
-      status: fixtures.status,
-      divisionId: fixtures.divisionId,
-      divisionName: divisions.name,
-      divisionLevel: divisions.level,
-      regionId: divisions.regionId,
-      regionName: regions.name,
-      homeTeamId: fixtures.homeTeamId,
-      awayTeamId: fixtures.awayTeamId,
-      homeName: home.name,
-      awayName: away.name,
-      homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeOrg.logoUrl})`,
-      awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayOrg.logoUrl})`,
-      venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
-      // Fall back to the host club's booking link when the fixture has none.
-      playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
-      published: fixtures.published,
-      courtLinks: fixtures.courtLinks,
-      courtAssignments: fixtures.courtAssignments,
-      homePoints: fixtures.homePoints,
-      awayPoints: fixtures.awayPoints,
-      homeSetsWon: fixtures.homeSetsWon,
-      awaySetsWon: fixtures.awaySetsWon,
-      winnerTeamId: fixtures.winnerTeamId,
-      homeAvgLi: home.avgLi,
-      awayAvgLi: away.avgLi,
-    })
-    .from(fixtures)
-    .leftJoin(home, eq(fixtures.homeTeamId, home.id))
-    .leftJoin(away, eq(fixtures.awayTeamId, away.id))
-    .leftJoin(homeOrg, eq(home.organisationId, homeOrg.id))
-    .leftJoin(awayOrg, eq(away.organisationId, awayOrg.id))
-    .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
-    .leftJoin(regions, eq(divisions.regionId, regions.id))
-    .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
-    .where(eq(fixtures.seasonId, season.id))
-    .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
 
-  const myTeamIds = user ? await getMyTeamIds(user) : new Set<number>()
+  const fixtureRows = usedDivisionIds.length
+    ? await db
+        .select({
+          id: fixtures.id,
+          week: fixtures.week,
+          matchDate: fixtures.matchDate,
+          timeslot: fixtures.timeslot,
+          status: fixtures.status,
+          divisionId: fixtures.divisionId,
+          divisionName: divisions.name,
+          divisionLevel: divisions.level,
+          regionId: divisions.regionId,
+          regionName: regions.name,
+          homeTeamId: fixtures.homeTeamId,
+          awayTeamId: fixtures.awayTeamId,
+          homeName: home.name,
+          awayName: away.name,
+          homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeOrg.logoUrl})`,
+          awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayOrg.logoUrl})`,
+          venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
+          playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
+          published: fixtures.published,
+          courtLinks: fixtures.courtLinks,
+          courtAssignments: fixtures.courtAssignments,
+          homePoints: fixtures.homePoints,
+          awayPoints: fixtures.awayPoints,
+          homeSetsWon: fixtures.homeSetsWon,
+          awaySetsWon: fixtures.awaySetsWon,
+          winnerTeamId: fixtures.winnerTeamId,
+          homeAvgLi: home.avgLi,
+          awayAvgLi: away.avgLi,
+        })
+        .from(fixtures)
+        .leftJoin(home, eq(fixtures.homeTeamId, home.id))
+        .leftJoin(away, eq(fixtures.awayTeamId, away.id))
+        .leftJoin(homeOrg, eq(home.organisationId, homeOrg.id))
+        .leftJoin(awayOrg, eq(away.organisationId, awayOrg.id))
+        .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
+        .leftJoin(regions, eq(divisions.regionId, regions.id))
+        .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
+        .where(and(eq(fixtures.seasonId, season.id), inArray(fixtures.divisionId, usedDivisionIds)))
+        .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
+    : []
 
-  // Fetch team pairings with player names for all teams in these fixtures so
-  // cards can display "Player 1 / Player 2" per category inline.
+  // Pairings — player names + LI for all teams in these fixtures.
   const allTeamIds = Array.from(
     new Set(
       fixtureRows.flatMap((f) => [f.homeTeamId, f.awayTeamId].filter((id): id is number => id != null)),
@@ -391,14 +418,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
 
-  const currentUserId = user?.id ?? null
-
-  // Build maps:
-  //   teamPlayerMap: teamId → category → ["First Last", ...]
-  //   pairLiMap:     "teamId:category" → average LI of the pair
   const teamPlayerMap = new Map<number, Record<string, string[]>>()
   const pairLiMap = new Map<string, { sum: number; count: number }>()
-  const currentPlayerCategoriesByTeam = new Map<number, Set<string>>()
   for (const row of pairingRows) {
     let catMap = teamPlayerMap.get(row.teamId)
     if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
@@ -412,15 +433,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     entry.sum += row.currentLi ?? 0
     entry.count += 1
     pairLiMap.set(key, entry)
-
-    if (currentUserId && row.playerId === currentUserId) {
-      const cats = currentPlayerCategoriesByTeam.get(row.teamId) ?? new Set<string>()
-      cats.add(row.category)
-      currentPlayerCategoriesByTeam.set(row.teamId, cats)
-    }
   }
 
-  // Fetch rubbers (individual category matches) for all fixtures this season
+  // Rubbers for all fixtures in scope.
   const allFixtureIds = fixtureRows.map((f) => f.id)
   type RubberRow = {
     id: number
@@ -455,7 +470,6 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         .orderBy(asc(matches.session), asc(matches.category))
     : []
 
-  // Build a map: fixtureId → LCRubber[]
   const rubbersByFixture = new Map<number, LCRubber[]>()
   for (const r of rubberRows) {
     const arr = rubbersByFixture.get(r.fixtureId) ?? []
@@ -474,137 +488,102 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     rubbersByFixture.set(r.fixtureId, arr)
   }
 
-  // Build per-team rich form items from completed fixtures in week order (oldest→newest, keep last 6).
+  // Form items per team from completed fixtures (oldest to newest, keep last 6).
   const teamFormItemsMap = new Map<number, FormItem[]>()
   const completedByWeek = [...fixtureRows]
     .filter((f) => normaliseStatus(f.status) === "completed" && f.winnerTeamId != null)
     .sort((a, b) => (a.week ?? 0) - (b.week ?? 0))
   for (const f of completedByWeek) {
     if (f.homeTeamId != null) {
-      const isWin = f.winnerTeamId === f.homeTeamId
       const item: FormItem = {
-        result: isWin ? "W" : "L",
+        result: f.winnerTeamId === f.homeTeamId ? "W" : "L",
         opponentName: f.awayName ?? "Unknown",
         homeScore: f.homePoints ?? 0,
         awayScore: f.awayPoints ?? 0,
         isHome: true,
       }
-      const prev = teamFormItemsMap.get(f.homeTeamId) ?? []
-      teamFormItemsMap.set(f.homeTeamId, [...prev, item].slice(-6))
+      teamFormItemsMap.set(f.homeTeamId, [...(teamFormItemsMap.get(f.homeTeamId) ?? []), item].slice(-6))
     }
     if (f.awayTeamId != null) {
-      const isWin = f.winnerTeamId === f.awayTeamId
       const item: FormItem = {
-        result: isWin ? "W" : "L",
+        result: f.winnerTeamId === f.awayTeamId ? "W" : "L",
         opponentName: f.homeName ?? "Unknown",
         homeScore: f.homePoints ?? 0,
         awayScore: f.awayPoints ?? 0,
         isHome: false,
       }
-      const prev = teamFormItemsMap.get(f.awayTeamId) ?? []
-      teamFormItemsMap.set(f.awayTeamId, [...prev, item].slice(-6))
+      teamFormItemsMap.set(f.awayTeamId, [...(teamFormItemsMap.get(f.awayTeamId) ?? []), item].slice(-6))
     }
   }
 
-  const fixturesOut: LCFixture[] = fixtureRows
-    .filter((f) => entryByDivision.has(f.divisionId))
-    .map((f) => {
-      const mine =
-        !!user &&
-        ((f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) ||
-          (f.awayTeamId != null && myTeamIds.has(f.awayTeamId)))
-
-      const allowedCategories = new Set<string>()
+  // Build shared fixtures — identical structure for every visitor.
+  // _categoryLinks stores raw per-category booking links for published,
+  // non-completed fixtures so the personal overlay can derive joinUrl
+  // and joinUrlByCategory without an extra DB query.
+  const sharedFixtures: SharedFixture[] = fixtureRows.map((f) => ({
+    id: f.id,
+    week: f.week,
+    matchDate: f.matchDate ? new Date(f.matchDate as unknown as string).toISOString() : null,
+    timeslot: f.timeslot,
+    status: normaliseStatus(f.status),
+    divisionId: f.divisionId,
+    divisionName: f.divisionName,
+    divisionLevel: f.divisionLevel,
+    regionId: f.regionId,
+    regionName: f.regionName,
+    homeTeamId: f.homeTeamId,
+    awayTeamId: f.awayTeamId,
+    homeName: f.homeName,
+    awayName: f.awayName,
+    homeLogo: f.homeLogo,
+    awayLogo: f.awayLogo,
+    venue: f.venue,
+    homePoints: f.homePoints,
+    awayPoints: f.awayPoints,
+    homeSetsWon: f.homeSetsWon,
+    awaySetsWon: f.awaySetsWon,
+    winnerTeamId: f.winnerTeamId,
+    homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
+    awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
+    homePairLi: (() => {
+      const out: Record<string, number | null> = {}
       if (f.homeTeamId != null) {
-        for (const cat of currentPlayerCategoriesByTeam.get(f.homeTeamId) ?? []) allowedCategories.add(cat)
-      }
-      if (f.awayTeamId != null) {
-        for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
-      }
-      const assignedToFixture = allowedCategories.size > 0
-      const visibleCategoryLinks = (() => {
-        const allLinks = (f.courtLinks ?? {}) as Record<string, string>
-        if (!(mine && f.published && f.status !== "completed")) return {}
-        const next: Record<string, string> = {}
-        for (const cat of allowedCategories) {
-          const url = allLinks[cat]
-          if (url) next[cat] = url
+        for (const [key, entry] of pairLiMap.entries()) {
+          if (key.startsWith(`${f.homeTeamId}:`)) {
+            const cat = key.slice(String(f.homeTeamId).length + 1)
+            out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+          }
         }
-        return next
-      })()
-
-      return {
-        id: f.id,
-        week: f.week,
-        matchDate: f.matchDate ? new Date(f.matchDate as unknown as string).toISOString() : null,
-        timeslot: f.timeslot,
-        status: normaliseStatus(f.status),
-        divisionId: f.divisionId,
-        divisionName: f.divisionName,
-        divisionLevel: f.divisionLevel,
-        regionId: f.regionId,
-        regionName: f.regionName,
-        homeTeamId: f.homeTeamId,
-        awayTeamId: f.awayTeamId,
-        homeName: f.homeName,
-        awayName: f.awayName,
-        homeLogo: f.homeLogo,
-        awayLogo: f.awayLogo,
-        venue: f.venue,
-        homePoints: f.homePoints,
-        awayPoints: f.awayPoints,
-        homeSetsWon: f.homeSetsWon,
-        awaySetsWon: f.awaySetsWon,
-        winnerTeamId: f.winnerTeamId,
-        homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
-        awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
-        homePairLi: (() => {
-          const out: Record<string, number | null> = {}
-          if (f.homeTeamId != null) {
-            for (const [key, entry] of pairLiMap.entries()) {
-              if (key.startsWith(`${f.homeTeamId}:`)) {
-                const cat = key.slice(String(f.homeTeamId).length + 1)
-                out[cat] = entry.count > 0 ? entry.sum / entry.count : null
-              }
-            }
-          }
-          return out
-        })(),
-        awayPairLi: (() => {
-          const out: Record<string, number | null> = {}
-          if (f.awayTeamId != null) {
-            for (const [key, entry] of pairLiMap.entries()) {
-              if (key.startsWith(`${f.awayTeamId}:`)) {
-                const cat = key.slice(String(f.awayTeamId).length + 1)
-                out[cat] = entry.count > 0 ? entry.sum / entry.count : null
-              }
-            }
-          }
-          return out
-        })(),
-        homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
-        awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
-        // Only expose booking links for categories where the current player is
-        // explicitly assigned.
-        joinUrl:
-          mine && f.published && f.status !== "completed"
-            ? Object.values(visibleCategoryLinks)[0] ?? null
-            : null,
-        joinUrlByCategory: visibleCategoryLinks,
-        courtInfoByCategory: f.published
-          ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
-          : {},
-        published: !!f.published,
-        mine,
-        assignedToFixture,
-        homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
-        awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
-        rubbers: rubbersByFixture.get(f.id) ?? [],
       }
-    })
+      return out
+    })(),
+    awayPairLi: (() => {
+      const out: Record<string, number | null> = {}
+      if (f.awayTeamId != null) {
+        for (const [key, entry] of pairLiMap.entries()) {
+          if (key.startsWith(`${f.awayTeamId}:`)) {
+            const cat = key.slice(String(f.awayTeamId).length + 1)
+            out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+          }
+        }
+      }
+      return out
+    })(),
+    homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
+    awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
+    _categoryLinks: f.published && normaliseStatus(f.status) !== "completed"
+      ? (f.courtLinks ?? {}) as Record<string, string>
+      : {},
+    courtInfoByCategory: f.published
+      ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
+      : {},
+    published: !!f.published,
+    homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
+    awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
+    rubbers: rubbersByFixture.get(f.id) ?? [],
+  }))
 
-  // Team rankings (TPR leaderboard) scoped to teams used this season.
-  const usedDivisionIds = divisionsOut.map((d) => d.id)
+  // Rankings (TPR leaderboard) scoped to teams in used divisions.
   const rankingRows = usedDivisionIds.length
     ? await db
         .select({
@@ -641,20 +620,10 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     divisionLevel: r.divisionLevel,
   }))
 
-  // My upcoming matches (logged-in players only) — soonest first.
-  const myMatches = fixturesOut
-    .filter((f) => f.mine && f.status !== "completed")
-    .sort((a, b) => {
-      const da = a.matchDate ? Date.parse(a.matchDate) : Number.MAX_SAFE_INTEGER
-      const db_ = b.matchDate ? Date.parse(b.matchDate) : Number.MAX_SAFE_INTEGER
-      return da - db_
-    })
-
-  // Header stats.
   const teamCount = regionsOut.reduce((sum, r) => sum + r.teamCount, 0)
   const clubCount = regionsOut.reduce((sum, r) => sum + r.clubCount, 0)
-  const matchesPlayed = fixturesOut.filter((f) => f.status === "completed").length
-  const matchesRemaining = fixturesOut.length - matchesPlayed
+  const matchesPlayed = sharedFixtures.filter((f) => f.status === "completed").length
+  const matchesRemaining = sharedFixtures.length - matchesPlayed
 
   return {
     season: { id: season.id, name: season.name, weeks: season.weeks, status: season.status },
@@ -662,10 +631,137 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     regions: regionsOut,
     divisions: divisionsOut,
     standings: standingsOut,
-    fixtures: fixturesOut,
+    sharedFixtures,
     rankings: rankingsOut,
+  }
+}
+
+/**
+ * Shared League Centre payload cached for 60 seconds.
+ * Runs at most once per minute across all requests — user-specific fields
+ * (mine, joinUrl, assignedToFixture) are computed separately per request.
+ */
+const getSharedLeagueCentreData = unstable_cache(
+  _buildSharedLeagueCentreData,
+  ["league-centre-shared"],
+  { revalidate: 60 },
+)
+
+// ---------------------------------------------------------------------------
+// Public entry point — merges cached shared data with the user's personal
+// overlay using two small targeted queries.
+// ---------------------------------------------------------------------------
+
+export async function getLeagueCentreData(user: CurrentUser | null): Promise<LeagueCentreData> {
+  const shared = await getSharedLeagueCentreData()
+
+  if (!shared.season) {
+    return {
+      season: null,
+      stats: { seasonName: null, teamCount: 0, clubCount: 0, matchesPlayed: 0, matchesRemaining: 0 },
+      regions: [],
+      divisions: [],
+      standings: [],
+      fixtures: [],
+      rankings: [],
+      myMatches: [],
+      authed: !!user,
+      currentPlayerId: null,
+    }
+  }
+
+  // Anonymous visitors: strip the internal _categoryLinks field and return
+  // shared data with empty personal fields — no additional DB work needed.
+  if (!user) {
+    const fixtures: LCFixture[] = shared.sharedFixtures.map(({ _categoryLinks: _cl, ...f }) => ({
+      ...f,
+      mine: false,
+      assignedToFixture: false,
+      joinUrl: null,
+      joinUrlByCategory: {},
+    }))
+    return {
+      season: shared.season,
+      stats: shared.stats,
+      regions: shared.regions,
+      divisions: shared.divisions,
+      standings: shared.standings,
+      fixtures,
+      rankings: shared.rankings,
+      myMatches: [],
+      authed: false,
+      currentPlayerId: null,
+    }
+  }
+
+  // Authenticated users: two small targeted queries for personal fixture flags.
+  const myTeamIds = await getMyTeamIds(user)
+  const myTeamIdsArr = [...myTeamIds]
+
+  // Only the current user's assigned pairing categories for their own teams — typically < 10 rows.
+  const myPairings = myTeamIdsArr.length
+    ? await db
+        .select({ teamId: teamPairings.teamId, category: teamPairings.category })
+        .from(teamPairings)
+        .where(and(eq(teamPairings.playerId, user.id), inArray(teamPairings.teamId, myTeamIdsArr)))
+    : []
+
+  const currentPlayerCategoriesByTeam = new Map<number, Set<string>>()
+  for (const p of myPairings) {
+    const cats = currentPlayerCategoriesByTeam.get(p.teamId) ?? new Set<string>()
+    cats.add(p.category)
+    currentPlayerCategoriesByTeam.set(p.teamId, cats)
+  }
+
+  const fixtures: LCFixture[] = shared.sharedFixtures.map(({ _categoryLinks, ...f }) => {
+    const mine =
+      (f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) ||
+      (f.awayTeamId != null && myTeamIds.has(f.awayTeamId))
+
+    const allowedCategories = new Set<string>()
+    if (f.homeTeamId != null) {
+      for (const cat of currentPlayerCategoriesByTeam.get(f.homeTeamId) ?? []) allowedCategories.add(cat)
+    }
+    if (f.awayTeamId != null) {
+      for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
+    }
+    const assignedToFixture = allowedCategories.size > 0
+
+    const joinUrlByCategory: Record<string, string> = {}
+    if (mine) {
+      for (const cat of allowedCategories) {
+        const url = _categoryLinks[cat]
+        if (url) joinUrlByCategory[cat] = url
+      }
+    }
+
+    return {
+      ...f,
+      mine,
+      assignedToFixture,
+      joinUrl: Object.values(joinUrlByCategory)[0] ?? null,
+      joinUrlByCategory,
+    }
+  })
+
+  const myMatches = fixtures
+    .filter((f) => f.mine && f.status !== "completed")
+    .sort((a, b) => {
+      const da = a.matchDate ? Date.parse(a.matchDate) : Number.MAX_SAFE_INTEGER
+      const db_ = b.matchDate ? Date.parse(b.matchDate) : Number.MAX_SAFE_INTEGER
+      return da - db_
+    })
+
+  return {
+    season: shared.season,
+    stats: shared.stats,
+    regions: shared.regions,
+    divisions: shared.divisions,
+    standings: shared.standings,
+    fixtures,
+    rankings: shared.rankings,
     myMatches,
-    authed: !!user,
+    authed: true,
     currentPlayerId: user?.playerId ?? null,
   }
 }

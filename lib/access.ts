@@ -1,4 +1,5 @@
 import "server-only"
+import { cache } from "react"
 import { db } from "@/lib/db"
 import { clubs, teamMembers, teams } from "@/lib/db/schema"
 import { and, eq, inArray, sql } from "drizzle-orm"
@@ -55,7 +56,7 @@ export type AccessContext = {
  *    active captain memberships.
  *  - Team-member scope: active team memberships (non-captain) for visibility.
  */
-export async function getAccessContext(user: CurrentUser): Promise<AccessContext> {
+async function _getAccessContext(user: CurrentUser): Promise<AccessContext> {
   const isLeagueAdmin = user.role === "super_admin"
   const permissions = isLeagueAdmin ? new Set<Permission>(PERMISSIONS) : new Set<Permission>()
 
@@ -169,6 +170,16 @@ export async function getAccessContext(user: CurrentUser): Promise<AccessContext
 function inArrayInts(column: Parameters<typeof inArray>[0], ids: number[]) {
   return inArray(column, ids)
 }
+
+/**
+ * Request-scoped memoised version of _getAccessContext.
+ * React.cache() ensures that within a single server request the club/team DB
+ * lookups run at most once per user — layouts and pages that both call
+ * getAccessContext(me) get the same result without extra round-trips.
+ * Safe because React.cache() is isolated per request and keyed by the user
+ * object reference returned by the also-cached getCurrentUser().
+ */
+export const getAccessContext = cache(_getAccessContext)
 
 /**
  * Resolve the access context for the currently signed-in user, redirecting to

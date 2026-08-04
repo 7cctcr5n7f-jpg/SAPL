@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,7 @@ function groupDivisions(season: Season) {
   return [...map.values()].sort((a, b) => a.region.localeCompare(b.region))
 }
 
-export function ControlPanel({ seasons }: { seasons: Season[] }) {
+export function ControlPanel({ seasons, defaultRegionNames }: { seasons: Season[]; defaultRegionNames: string[] }) {
   const [pending, start] = useTransition()
 
   return (
@@ -77,7 +78,7 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
         <CardTitle className="flex items-center gap-2">
           <CalendarRange className="h-5 w-5 text-primary" /> Seasons &amp; Divisions
         </CardTitle>
-        <NewSeasonDialog pending={pending} start={start} />
+        <NewSeasonDialog pending={pending} start={start} defaultRegionNames={defaultRegionNames} />
       </CardHeader>
       <CardContent className="space-y-4">
         {seasons.length === 0 && (
@@ -102,7 +103,7 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <CalendarRange className="h-3.5 w-3.5" />
-                      {s.weeks} week{s.weeks === 1 ? "" : "s"}
+                      {s.weeks > 0 ? `${s.weeks} week${s.weeks === 1 ? "" : "s"}` : "Weeks TBD"}
                     </span>
                   </div>
                 </div>
@@ -370,9 +371,11 @@ function DeleteSeasonDialog({
 function NewSeasonDialog({
   pending,
   start,
+  defaultRegionNames,
 }: {
   pending: boolean
   start: (cb: () => Promise<void>) => void
+  defaultRegionNames: string[]
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -406,20 +409,29 @@ function NewSeasonDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="weeks">Weeks</Label>
-              <Input id="weeks" name="weeks" type="number" defaultValue={7} min={1} max={30} />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="startDate">Start date</Label>
               <Input id="startDate" name="startDate" type="date" />
             </div>
           </div>
           <div className="space-y-2">
+            <Label htmlFor="regionNames">Regions</Label>
+            <Textarea
+              id="regionNames"
+              name="regionNames"
+              rows={4}
+              defaultValue={defaultRegionNames.join("\n")}
+              placeholder={"Southern Conference\nEastern Conference\nNorthern Conference"}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter one region per line. Only these regions will be created for the season.
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="maxTeams">Max teams per division</Label>
             <Input id="maxTeams" name="maxTeams" type="number" defaultValue={8} min={2} max={16} />
             <p className="text-xs text-muted-foreground">
-              All four regions and all four divisions are created automatically so you can drag teams straight in.
-              Empty divisions are removed when you generate fixtures.
+              Each selected region gets all four divisions so you can drag teams straight in. Empty divisions are
+              removed when you generate fixtures.
             </p>
           </div>
           <div className="space-y-2">
@@ -446,7 +458,7 @@ function NewSeasonDialog({
 }
 
 function regionName(regions: Region[], id: number) {
-  return regions.find((r) => r.id === id)?.name.replace("Tshwane ", "") ?? `Region ${id}`
+  return regions.find((r) => r.id === id)?.name ?? `Region ${id}`
 }
 
 // A region (rows) x division-level (columns) matrix. Tick the cells that should
@@ -578,7 +590,7 @@ function ConfigureDivisionsDialog({
                       className="font-medium text-foreground hover:text-primary"
                       title="Toggle all divisions in this region"
                     >
-                      {(row.name ?? "No region").replace("Tshwane ", "")}
+                      {row.name ?? "No region"}
                     </button>
                   </td>
                   {DIVISIONS.map((d) => {
