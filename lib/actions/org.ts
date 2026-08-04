@@ -180,6 +180,7 @@ export async function updateTeamRegistration(input: {
   teamId: number
   name?: string
   teamType?: string
+  logoUrl?: string | null
   homeClubId?: number | null
   saplRegion?: string | null
   managerPlayerId?: string | null
@@ -216,6 +217,9 @@ export async function updateTeamRegistration(input: {
     const teamType = normalizeTeamType(input.teamType)
     if (!TEAM_TYPES.includes(teamType)) return { ok: false, error: "Invalid team type" }
     patch.teamType = teamType
+  }
+  if (input.logoUrl !== undefined) {
+    patch.logoUrl = (input.logoUrl ?? "").trim() || null
   }
   if (input.clubPaysFees !== undefined) patch.clubPaysFees = input.clubPaysFees
   if (input.ownerEmail !== undefined) {
@@ -301,9 +305,11 @@ export async function updateTeamRegistration(input: {
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/my-team")
   revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/league-centre")
   revalidatePath("/admin/billing")
   revalidatePath("/admin/teams")
   revalidatePath("/admin/placement")
+  revalidatePath("/league-centre")
   return { ok: true }
 }
 
