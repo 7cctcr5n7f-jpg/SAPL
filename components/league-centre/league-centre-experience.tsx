@@ -358,7 +358,7 @@ function FixturesByCategory({
 }) {
   // Group by divisionName (the category for this division)
   // We use CATEGORY_RULES order but also capture any divisionName not in the list
-  const categoryOrder = CATEGORY_RULES.map((r) => r.name)
+  const categoryOrder = useMemo(() => CATEGORY_RULES.map((r) => r.name), [])
 
   const byCategory = useMemo(() => {
     const map = new Map<string, LCFixture[]>()
@@ -377,7 +377,7 @@ function FixturesByCategory({
       if (bi === -1) return -1
       return ai - bi
     })
-  }, [fixtures])
+  }, [fixtures, categoryOrder])
 
   if (fixtures.length === 0) {
     return (

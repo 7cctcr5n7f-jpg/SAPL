@@ -694,13 +694,17 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   // Anonymous visitors: strip the internal _categoryLinks field and return
   // shared data with empty personal fields — no additional DB work needed.
   if (!user) {
-    const fixtures: LCFixture[] = shared.sharedFixtures.map(({ _categoryLinks: _cl, ...f }) => ({
-      ...f,
-      mine: false,
-      assignedToFixture: false,
-      joinUrl: null,
-      joinUrlByCategory: {},
-    }))
+    const fixtures: LCFixture[] = shared.sharedFixtures.map((fixture) => {
+      const { _categoryLinks, ...f } = fixture
+      void _categoryLinks
+      return {
+        ...f,
+        mine: false,
+        assignedToFixture: false,
+        joinUrl: null,
+        joinUrlByCategory: {},
+      }
+    })
     return {
       season: shared.season,
       stats: shared.stats,

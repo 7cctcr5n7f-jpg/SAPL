@@ -369,7 +369,7 @@ export function planSeason(args: {
           return true
         }
 
-        tryTeamVenue(homeTeamId) || tryTeamVenue(awayTeamId)
+        if (!tryTeamVenue(homeTeamId)) tryTeamVenue(awayTeamId)
 
         if (venuePick.club && venuePick.kickoff) markVenueUsage(usage, week, venuePick.club, venuePick.kickoff)
 
