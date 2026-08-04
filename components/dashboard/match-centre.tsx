@@ -58,7 +58,7 @@ function courtLinksOf(f: DashboardFixture): Record<string, string> {
 function primaryJoinLink(f: DashboardFixture, detail?: FixtureDetail): string | null {
   const links = courtLinksOf(f)
   if (!detail?.myCategory) return null
-  return links[detail.myCategory] ?? null
+  return links[detail.myCategory] ?? (f.mine ? Object.values(links)[0] ?? null : null)
 }
 
 function teamLabel(name: string | null, slot: number | null) {
@@ -305,13 +305,15 @@ export function MatchCentre({
                             Not assigned
                           </span>
                         )}
-                        <button
-                          onClick={() => setScoreFixture(f)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
-                        >
-                          <ClipboardEdit className="h-3 w-3" />
-                          Enter Score
-                        </button>
+                        {f.mine && (
+                          <button
+                            onClick={() => setScoreFixture(f)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
+                          >
+                            <ClipboardEdit className="h-3 w-3" />
+                            Enter Score
+                          </button>
+                        )}
                       </div>
                     }
                   />

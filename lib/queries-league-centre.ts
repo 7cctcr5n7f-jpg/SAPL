@@ -202,9 +202,11 @@ type SharedLeagueCentreData = {
 
 /** Team ids the user is eligible to play for (captain or active roster member). */
 async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
+  const access = await getAccessContext(user)
   const ids = new Set<number>()
   const captainTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, user.id))
   captainTeams.forEach((t) => ids.add(t.id))
+  access.ownedTeamIds.forEach((teamId) => ids.add(teamId))
   if (user.playerId) {
     const memberships = await db
       .select({ teamId: teamMembers.teamId })
@@ -744,11 +746,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     if (f.awayTeamId != null) {
       for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
     }
-    const assignedToFixture = allowedCategories.size > 0
+    const assignedToFixture = mine || allowedCategories.size > 0
 
     const joinUrlByCategory: Record<string, string> = {}
     if (mine) {
-      for (const cat of allowedCategories) {
+      const sourceLinks = allowedCategories.size > 0 ? [...allowedCategories] : Object.keys(_categoryLinks)
+      for (const cat of sourceLinks) {
         const url = _categoryLinks[cat]
         if (url) joinUrlByCategory[cat] = url
       }
