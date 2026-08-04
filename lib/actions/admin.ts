@@ -937,6 +937,42 @@ export async function unlockSeasonAction(formData: FormData) {
   return { ok: true }
 }
 
+/**
+ * Permanently delete ALL fixtures for a season (published, draft, or otherwise)
+ * so the admin can start fixture generation fresh. Also clears playoff placeholders
+ * and resets the season status back to divisions_finalised.
+ * Only allowed for super admins — NOT blocked by season-lock.
+ */
+export async function deleteAllSeasonFixturesAction(formData: FormData) {
+  await requireAdmin()
+  const seasonId = Number(formData.get("seasonId"))
+  if (!seasonId) return { ok: false, error: "Season id required" }
+
+  // Disputes hang off fixtures — clear them first.
+  const fxRows = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.seasonId, seasonId))
+  const fixtureIds = fxRows.map((f) => f.id)
+  if (fixtureIds.length > 0) {
+    await db.delete(disputes).where(inArray(disputes.fixtureId, fixtureIds))
+  }
+
+  await db.delete(fixtures).where(eq(fixtures.seasonId, seasonId))
+  await db.delete(playoffs).where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.status, "scheduled")))
+
+  // Roll season status back so fixture generation is available again.
+  await db
+    .update(seasons)
+    .set({ status: "divisions_finalised" })
+    .where(eq(seasons.id, seasonId))
+
+  await syncSeasonTeamLifecycle(seasonId)
+  revalidatePath("/admin")
+  revalidatePath("/admin/seasons")
+  revalidatePath("/fixtures")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/fixtures")
+  return { ok: true, deleted: fixtureIds.length }
+}
+
 /** Move a season back to draft for further editing. */
 export async function revertSeasonToDraftAction(formData: FormData) {
   await requireAdmin()

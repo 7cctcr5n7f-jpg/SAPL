@@ -24,6 +24,7 @@ import {
   validateSeasonAction,
   publishSeasonAction,
   unlockSeasonAction,
+  deleteAllSeasonFixturesAction,
 } from "@/lib/actions/admin"
 import type { SeasonValidation } from "@/lib/engine/validation"
 import { DIVISIONS } from "@/lib/constants"
@@ -203,6 +204,7 @@ function SeasonLifecycle({
 }) {
   const [pending, start] = useTransition()
   const [report, setReport] = useState<SeasonValidation | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const status = normalizeSeasonStatus(season.status)
   const isActive = status === "league_locked"
   const hasFixtures = status === "fixtures_generated" || isActive
@@ -287,6 +289,43 @@ function SeasonLifecycle({
           >
             <Rocket className="mr-1 h-4 w-4" /> Publish Fixtures
           </Button>
+        )}
+
+        {hasFixtures && (
+          confirmDelete ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-destructive font-medium">Delete all fixtures?</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmDelete(false)
+                  run(async (fd) => {
+                    const res = await deleteAllSeasonFixturesAction(fd)
+                    return res.ok
+                      ? { ok: true, deleted: res.deleted }
+                      : { ok: false, error: res.error ?? "Failed to delete fixtures" }
+                  }, "All fixtures deleted — season reset to divisions ready")
+                }}
+              >
+                Yes, delete all
+              </Button>
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </Button>
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              disabled={pending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="mr-1 h-4 w-4" /> Delete all fixtures
+            </Button>
+          )
         )}
       </div>
 
