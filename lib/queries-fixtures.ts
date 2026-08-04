@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
-import { fixtures, teams, divisions, clubs, regions, user, results, matches, seasons } from "@/lib/db/schema"
+import { fixtures, teams, divisions, clubs, regions, user, results, matches, seasons, teamPairings, teamInvites } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
-import { asc, eq, inArray } from "drizzle-orm"
+import { asc, eq, inArray, and, isNotNull } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
 import type { CurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -56,6 +56,8 @@ export type DashboardFixture = {
   canEditLink: boolean
   /** The four category rubbers with any entered scores, in display order. */
   matches: FixtureCategoryMatch[]
+  homePlayers: Record<string, string[]>
+  awayPlayers: Record<string, string[]>
 }
 
 export type FixtureScope = "all" | "club" | "team" | "none"
@@ -64,10 +66,10 @@ export type HostClub = { id: number; name: string; courts: number | null }
 
 export type FixtureHealth = {
   total: number
+  draft: number
   completed: number
   awaitingResults: number
   missingLinks: number
-  readyToPublish: number
   published: number
 }
 
@@ -77,6 +79,7 @@ export type DashboardFixturesResult = {
   canManageVenue: boolean
   fixtures: DashboardFixture[]
   clubs: HostClub[]
+  divisionTeams: Record<number, { id: number; name: string }[]>
   health: FixtureHealth
 }
 
@@ -166,27 +169,114 @@ async function matchesByFixture(fixtureIds: number[]): Promise<Map<number, Fixtu
   return map
 }
 
+async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<string, string[]>>> {
+  const map = new Map<number, Record<string, string[]>>()
+  if (teamIds.length === 0) return map
+
+  const playerUser = alias(user, "playerUser")
+
+  // 1. Confirmed players (invite accepted / directly assigned)
+  const pairingRows = await db
+    .select({
+      teamId: teamPairings.teamId,
+      category: teamPairings.category,
+      pairIndex: teamPairings.pairIndex,
+      slotIndex: teamPairings.slotIndex,
+      playerName: playerUser.name,
+    })
+    .from(teamPairings)
+    .leftJoin(playerUser, eq(teamPairings.playerId, playerUser.id))
+    .where(inArray(teamPairings.teamId, teamIds))
+    .orderBy(asc(teamPairings.teamId), asc(teamPairings.category), asc(teamPairings.pairIndex), asc(teamPairings.slotIndex))
+
+  // 2. Pending invites that have a captured name and target a specific slot
+  const inviteRows = await db
+    .select({
+      teamId: teamInvites.teamId,
+      category: teamInvites.category,
+      pairIndex: teamInvites.pairIndex,
+      slotIndex: teamInvites.slotIndex,
+      invitedName: teamInvites.invitedName,
+    })
+    .from(teamInvites)
+    .where(
+      and(
+        inArray(teamInvites.teamId, teamIds),
+        eq(teamInvites.status, "pending"),
+        isNotNull(teamInvites.invitedName),
+        isNotNull(teamInvites.category),
+      ),
+    )
+
+  // Build a slot map: "teamId:category:pairIndex:slotIndex" → name
+  // Confirmed players take precedence over pending invites for the same slot.
+  const slotMap = new Map<string, string>()
+
+  for (const row of inviteRows) {
+    if (!row.invitedName || !row.category || row.pairIndex == null || row.slotIndex == null) continue
+    const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
+    if (!slotMap.has(key)) slotMap.set(key, row.invitedName)
+  }
+
+  for (const row of pairingRows) {
+    if (!row.playerName) continue
+    const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
+    slotMap.set(key, row.playerName) // overwrites invite name when player has joined
+  }
+
+  // Collect names per (teamId, category) in slot order: (1,1), (1,2), (2,1), (2,2)
+  const seen = new Set<string>()
+  for (const row of [...pairingRows, ...inviteRows]) {
+    const category = row.category
+    if (!category) continue
+    const tcKey = `${row.teamId}:${category}`
+    seen.add(tcKey)
+  }
+
+  for (const tcKey of seen) {
+    const colonIdx = tcKey.indexOf(":")
+    const teamId = Number(tcKey.slice(0, colonIdx))
+    const category = tcKey.slice(colonIdx + 1)
+
+    const names: string[] = []
+    for (const pairIndex of [1, 2]) {
+      for (const slotIndex of [1, 2]) {
+        const name = slotMap.get(`${teamId}:${category}:${pairIndex}:${slotIndex}`)
+        if (name) names.push(name)
+      }
+    }
+
+    if (names.length > 0) {
+      const teamMap = map.get(teamId) ?? {}
+      teamMap[category] = names
+      map.set(teamId, teamMap)
+    }
+  }
+
+  return map
+}
+
 export function computeFixtureHealth(list: DashboardFixture[]): FixtureHealth {
   const health: FixtureHealth = {
     total: list.length,
+    draft: 0,
     completed: 0,
     awaitingResults: 0,
     missingLinks: 0,
-    readyToPublish: 0,
     published: 0,
   }
   for (const f of list) {
     const info = deriveOpsStatus(f)
     if (f.published) health.published++
     switch (info.status) {
+      case "draft":
+        health.draft++
+        break
       case "completed":
         health.completed++
         break
       case "awaiting_result":
         health.awaitingResults++
-        break
-      case "ready_to_publish":
-        health.readyToPublish++
         break
       case "missing_links":
       case "planned":
@@ -212,6 +302,7 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     canManageVenue: false,
     fixtures: [],
     clubs: [],
+    divisionTeams: {},
     health: computeFixtureHealth([]),
   }
   const season = await getCurrentSeason()
@@ -225,6 +316,9 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
 
   const rows = await baseFixtures(season.id)
   const mMap = await matchesByFixture(rows.map((r) => r.id))
+  const teamPairingMap = await pairingsByTeam(
+    [...new Set(rows.flatMap((row) => [row.homeTeamId, row.awayTeamId]).filter((id): id is number => id != null))],
+  )
   const withMatches = (
     f: (typeof rows)[number],
     extra: { mine: boolean; canEditLink: boolean },
@@ -233,6 +327,8 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     courtLinks: (f.courtLinks ?? {}) as CourtLinks,
     courtAssignments: (f.courtAssignments ?? {}) as CourtAssignments,
     matches: mMap.get(f.id) ?? [],
+    homePlayers: (f.homeTeamId != null ? teamPairingMap.get(f.homeTeamId) : null) ?? {},
+    awayPlayers: (f.awayTeamId != null ? teamPairingMap.get(f.awayTeamId) : null) ?? {},
     ...extra,
   })
 
@@ -241,12 +337,27 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
       .select({ id: clubs.id, name: clubs.name, courts: clubs.courts })
       .from(clubs)
       .orderBy(asc(clubs.name))
+    const divisionIds = [...new Set(rows.map((row) => row.divisionId))].filter((id): id is number => id != null)
+    const teamRows = divisionIds.length
+      ? await db
+          .select({ id: teams.id, name: teams.name, divisionId: teams.divisionId })
+          .from(teams)
+          .where(inArray(teams.divisionId, divisionIds))
+      : []
+    const divisionTeams = teamRows.reduce<Record<number, { id: number; name: string }[]>>((acc, team) => {
+      if (team.divisionId == null) return acc
+      acc[team.divisionId] ??= []
+      acc[team.divisionId].push({ id: team.id, name: team.name })
+      acc[team.divisionId].sort((a, b) => a.name.localeCompare(b.name))
+      return acc
+    }, {})
     const list = rows.map((f) => withMatches(f, { mine: true, canEditLink: true }))
     return {
       seasonName,
       scope: "all",
       canManageVenue: true,
       clubs: hostClubs,
+      divisionTeams,
       fixtures: list,
       health: computeFixtureHealth(list),
     }
@@ -257,9 +368,12 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
   const teamIds = new Set<number>(access.manageableTeamIds)
   const visible = rows.filter(
     (f) =>
-      (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
-      (f.homeTeamId != null && teamIds.has(f.homeTeamId)) ||
-      (f.awayTeamId != null && teamIds.has(f.awayTeamId)),
+      f.published &&
+      (
+        (f.venueClubId != null && clubIds.has(f.venueClubId)) ||
+        (f.homeTeamId != null && teamIds.has(f.homeTeamId)) ||
+        (f.awayTeamId != null && teamIds.has(f.awayTeamId))
+      ),
   )
   const list = visible.map((f) =>
     withMatches(f, {
@@ -277,6 +391,7 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
     scope: clubIds.size > 0 ? "club" : "team",
     canManageVenue: false,
     clubs: [],
+    divisionTeams: {},
     fixtures: list,
     health: computeFixtureHealth(list),
   }

@@ -91,6 +91,7 @@ export function DashboardNav({
     items = [
       { href: "/dashboard", label: "Home", icon: ICONS.dashboard },
       { href: "/dashboard/my-team", label: "My Team", icon: ICONS.org },
+      ...(has("fixture_management") ? [{ href: "/dashboard/fixtures", label: "Fixtures", icon: ICONS.fixtures }] : []),
       { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.rankings },
     ]
   }

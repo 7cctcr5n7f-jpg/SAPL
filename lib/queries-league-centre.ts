@@ -202,9 +202,11 @@ type SharedLeagueCentreData = {
 
 /** Team ids the user is eligible to play for (captain or active roster member). */
 async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
+  const access = await getAccessContext(user)
   const ids = new Set<number>()
   const captainTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, user.id))
   captainTeams.forEach((t) => ids.add(t.id))
+  access.ownedTeamIds.forEach((teamId) => ids.add(teamId))
   if (user.playerId) {
     const memberships = await db
       .select({ teamId: teamMembers.teamId })
@@ -309,34 +311,53 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   }
   const regionsOut = Array.from(regionMap.values()).sort((a, b) => a.name.localeCompare(b.name))
 
-  // Standings — filtered to used divisions in SQL (no JS post-filter needed).
+  // Standings — base on teamEntries so ALL teams in the division appear even
+  // when no games have been played yet. stats come from a LEFT JOIN to standings.
   const standingsOut: LCStanding[] = usedDivisionIds.length
     ? await db
         .select({
-          divisionId: standings.divisionId,
-          teamId: standings.teamId,
+          divisionId: teamEntries.divisionId,
+          teamId: teamEntries.teamId,
           teamName: teams.name,
           teamLogo: teams.logoUrl,
           orgName: organisations.name,
           orgSlug: organisations.slug,
           orgLogo: organisations.logoUrl,
-          played: standings.played,
-          wins: standings.wins,
-          losses: standings.losses,
-          setsWon: standings.setsWon,
-          setsLost: standings.setsLost,
-          gamesFor: standings.gamesFor,
-          gamesAgainst: standings.gamesAgainst,
-          points: standings.points,
-          pointsDiff: standings.pointsDiff,
-          rank: standings.rank,
+          played: sql<number>`COALESCE(${standings.played}, 0)`,
+          wins: sql<number>`COALESCE(${standings.wins}, 0)`,
+          losses: sql<number>`COALESCE(${standings.losses}, 0)`,
+          setsWon: sql<number>`COALESCE(${standings.setsWon}, 0)`,
+          setsLost: sql<number>`COALESCE(${standings.setsLost}, 0)`,
+          gamesFor: sql<number>`COALESCE(${standings.gamesFor}, 0)`,
+          gamesAgainst: sql<number>`COALESCE(${standings.gamesAgainst}, 0)`,
+          points: sql<number>`COALESCE(${standings.points}, 0)`,
+          pointsDiff: sql<number>`COALESCE(${standings.pointsDiff}, 0)`,
+          rank: sql<number | null>`${standings.rank}`,
           tpr: teams.tpr,
         })
-        .from(standings)
-        .leftJoin(teams, eq(standings.teamId, teams.id))
+        .from(teamEntries)
+        .innerJoin(teams, eq(teamEntries.teamId, teams.id))
         .leftJoin(organisations, eq(teams.organisationId, organisations.id))
-        .where(and(eq(standings.seasonId, season.id), inArray(standings.divisionId, usedDivisionIds)))
-        .orderBy(asc(standings.divisionId), asc(standings.rank))
+        .leftJoin(
+          standings,
+          and(
+            eq(standings.teamId, teamEntries.teamId),
+            eq(standings.seasonId, teamEntries.seasonId),
+            eq(standings.divisionId, teamEntries.divisionId),
+          ),
+        )
+        .where(
+          and(
+            eq(teamEntries.seasonId, season.id),
+            inArray(teamEntries.divisionId, usedDivisionIds),
+            eq(teamEntries.status, "assigned"),
+          ),
+        )
+        .orderBy(
+          asc(teamEntries.divisionId),
+          sql`${standings.rank} NULLS LAST`,
+          asc(teams.name),
+        )
     : []
 
   // Fixtures — filtered to used divisions in SQL (no JS post-filter needed).
@@ -385,7 +406,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
         .leftJoin(regions, eq(divisions.regionId, regions.id))
         .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
-        .where(and(eq(fixtures.seasonId, season.id), inArray(fixtures.divisionId, usedDivisionIds)))
+        .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.published, true), inArray(fixtures.divisionId, usedDivisionIds)))
         .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
     : []
 
@@ -673,13 +694,17 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   // Anonymous visitors: strip the internal _categoryLinks field and return
   // shared data with empty personal fields — no additional DB work needed.
   if (!user) {
-    const fixtures: LCFixture[] = shared.sharedFixtures.map(({ _categoryLinks: _cl, ...f }) => ({
-      ...f,
-      mine: false,
-      assignedToFixture: false,
-      joinUrl: null,
-      joinUrlByCategory: {},
-    }))
+    const fixtures: LCFixture[] = shared.sharedFixtures.map((fixture) => {
+      const { _categoryLinks, ...f } = fixture
+      void _categoryLinks
+      return {
+        ...f,
+        mine: false,
+        assignedToFixture: false,
+        joinUrl: null,
+        joinUrlByCategory: {},
+      }
+    })
     return {
       season: shared.season,
       stats: shared.stats,
@@ -725,11 +750,12 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     if (f.awayTeamId != null) {
       for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
     }
-    const assignedToFixture = allowedCategories.size > 0
+    const assignedToFixture = mine || allowedCategories.size > 0
 
     const joinUrlByCategory: Record<string, string> = {}
     if (mine) {
-      for (const cat of allowedCategories) {
+      const sourceLinks = allowedCategories.size > 0 ? [...allowedCategories] : Object.keys(_categoryLinks)
+      for (const cat of sourceLinks) {
         const url = _categoryLinks[cat]
         if (url) joinUrlByCategory[cat] = url
       }
@@ -834,7 +860,7 @@ export async function getMatchDetail(fixtureId: number): Promise<LCMatchDetail |
     .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
     .leftJoin(regions, eq(divisions.regionId, regions.id))
     .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
-    .where(eq(fixtures.id, fixtureId))
+    .where(and(eq(fixtures.id, fixtureId), eq(fixtures.published, true)))
     .limit(1)
   if (!f) return null
 

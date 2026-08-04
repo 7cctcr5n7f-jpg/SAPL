@@ -12,12 +12,11 @@ import {
   CATEGORIES,
   CATEGORY_COUNT,
   categoryReady,
-  canPublish,
   deriveOpsStatus,
   defaultCourtAssignments,
   type OpsStatus,
 } from "@/lib/fixtures-ops"
-import { saveCategoryAssignment, publishFixture, unpublishFixture } from "@/lib/actions/fixtures"
+import { saveCategoryAssignment, saveFixtureSchedule } from "@/lib/actions/fixtures"
 import { ResultEntry } from "@/components/captain/result-entry"
 import type { DashboardFixture, FixtureHealth, HostClub } from "@/lib/queries-fixtures"
 import {
@@ -28,13 +27,13 @@ import {
   AlertTriangle,
   MapPin,
   Search,
-  Send,
-  EyeOff,
   Trophy,
   ClipboardList,
+  Download,
+  Pencil,
 } from "lucide-react"
 
-type StatusFilter = "all" | OpsStatus | "needs_attention"
+type StatusFilter = "all" | OpsStatus | "needs_attention" | "published"
 
 function teamLabel(name: string | null, slot: number | null) {
   if (name) return { text: name, placeholder: false }
@@ -53,16 +52,26 @@ function resultsEntered(f: DashboardFixture): number {
   return f.matches.filter((m) => m.winnerTeamId != null).length
 }
 
+function formatPairingNames(names: string[] | undefined) {
+  const players = names ?? []
+  if (players.length >= 2) return players.slice(0, 2).join(" / ")
+  if (players.length === 1) return `${players[0]} / TBC`
+  return "TBC / TBC"
+}
+
 export function OpsConsole({
   seasonName,
+  canManageVenue,
   fixtures,
   clubs,
+  divisionTeams,
   health,
 }: {
   seasonName: string | null
   canManageVenue: boolean
   fixtures: DashboardFixture[]
   clubs: HostClub[]
+  divisionTeams: Record<number, { id: number; name: string }[]>
   health: FixtureHealth
 }) {
   const weeks = useMemo(() => Array.from(new Set(fixtures.map((f) => f.week))).sort((a, b) => a - b), [fixtures])
@@ -109,6 +118,7 @@ export function OpsConsole({
   const [status, setStatus] = useState<StatusFilter>("all")
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -121,6 +131,8 @@ export function OpsConsole({
         const s = deriveOpsStatus(f).status
         if (status === "needs_attention") {
           if (s !== "missing_links" && s !== "planned") return false
+        } else if (status === "published") {
+          if (!f.published) return false
         } else if (s !== status) return false
       }
       if (q) {
@@ -141,13 +153,6 @@ export function OpsConsole({
       icon: AlertTriangle,
     },
     {
-      key: "ready_to_publish" as StatusFilter,
-      label: "Ready to publish",
-      count: health.readyToPublish,
-      tone: "text-sky-400",
-      icon: Send,
-    },
-    {
       key: "awaiting_result" as StatusFilter,
       label: "Published, awaiting results",
       count: health.awaitingResults,
@@ -157,15 +162,56 @@ export function OpsConsole({
   ].filter((a) => a.count > 0)
 
   const activeDivisions = regionId === "all" ? divisionOptions : divisionOptions.filter((d) => d.regionId === regionId)
+  const selectedVenueName = venueId === "all" ? null : venueOptions.find((option) => option.id === venueId)?.name ?? null
+
+  function exportVenueSheet() {
+    if (venueId === "all" || filtered.length === 0) return
+    const rows = filtered.flatMap((fixture) =>
+      CATEGORIES.map((category) => {
+        const assignment = fixture.courtAssignments?.[category.category] ?? defaultCourtAssignments(fixture.venueCourts)[category.category]
+        const link = fixture.courtLinks?.[category.category] ?? ""
+        return [
+          fixture.week,
+          fixture.matchDate ? fmtDate(fixture.matchDate) : "",
+          fixture.timeslot ?? "",
+          fixture.divisionName ?? "",
+          fixture.venueClubName ?? fixture.venue ?? "",
+          fixture.homeName ?? "TBC",
+          fixture.awayName ?? "TBC",
+          category.category,
+          formatPairingNames(fixture.homePlayers[category.category]),
+          formatPairingNames(fixture.awayPlayers[category.category]),
+          assignment?.court ?? "",
+          assignment?.time ?? "",
+          link,
+        ]
+      }),
+    )
+    const escape = (value: string | number) => `"${String(value ?? "").replace(/"/g, '""')}"`
+    const csv = [
+      ["Week", "Date", "Fixture Time", "Division", "Venue", "Home Team", "Away Team", "Category", "Home Players", "Away Players", "Court", "Category Time", "Booking Link"]
+        .map(escape)
+        .join(","),
+      ...rows.map((row) => row.map(escape).join(",")),
+    ].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `${(selectedVenueName ?? "venue").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fixtures.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success("Venue fixture sheet exported")
+  }
 
   return (
     <div className="space-y-5">
       {/* Fixture Health */}
       <section aria-label="Fixture health" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <HealthTile label="Total Fixtures" value={health.total} active={status === "all"} onClick={() => setStatus("all")} />
+        <HealthTile label="Drafts" value={health.draft} tone="text-violet-400" active={status === "draft"} onClick={() => setStatus("draft")} />
         <HealthTile label="Completed" value={health.completed} tone="text-emerald-400" active={status === "completed"} onClick={() => setStatus("completed")} />
         <HealthTile label="Awaiting Results" value={health.awaitingResults} tone="text-amber-400" active={status === "awaiting_result"} onClick={() => setStatus("awaiting_result")} />
-        <HealthTile label="Ready to Publish" value={health.readyToPublish} tone="text-sky-400" active={status === "ready_to_publish"} onClick={() => setStatus("ready_to_publish")} />
         <HealthTile label="Missing Booking" value={health.missingLinks} tone="text-orange-400" active={status === "needs_attention"} onClick={() => setStatus("needs_attention")} />
         <HealthTile label="Published" value={health.published} tone="text-primary" active={status === "published"} onClick={() => setStatus("published")} />
       </section>
@@ -232,6 +278,11 @@ export function OpsConsole({
           options={activeDivisions.map((d) => ({ value: d.id, label: d.region ? `${d.region} · ${d.name}` : d.name }))}
         />
         <FilterSelect value={venueId} onChange={(v) => setVenueId(v)} label="Venue" allLabel="All venues" options={venueOptions.map((v) => ({ value: v.id, label: v.name }))} />
+        {venueId !== "all" && filtered.length > 0 && (
+          <Button type="button" size="sm" variant="outline" className="h-9" onClick={exportVenueSheet}>
+            <Download className="mr-1 h-4 w-4" /> Export venue sheet
+          </Button>
+        )}
         {(status !== "all" || week !== "all" || regionId !== "all" || divisionId !== "all" || venueId !== "all" || search) && (
           <button
             onClick={() => {
@@ -264,7 +315,20 @@ export function OpsConsole({
           <p className="px-4 py-12 text-center text-sm text-muted-foreground">No fixtures match the current filters.</p>
         ) : (
           filtered.map((f) => (
-            <ConsoleRow key={f.id} f={f} expanded={expandedId === f.id} onToggle={() => setExpandedId((id) => (id === f.id ? null : f.id))} />
+            <ConsoleRow
+              key={f.id}
+              f={f}
+              canManageVenue={canManageVenue}
+              clubs={clubs}
+              divisionTeams={divisionTeams[f.divisionId] ?? []}
+              expanded={expandedId === f.id}
+              editing={editingId === f.id}
+              onToggle={() => setExpandedId((id) => (id === f.id ? null : f.id))}
+              onEditToggle={() => {
+                setExpandedId(f.id)
+                setEditingId((id) => (id === f.id ? null : f.id))
+              }}
+            />
           ))
         )}
       </div>
@@ -335,7 +399,25 @@ function FilterSelect<T extends number>({
   )
 }
 
-function ConsoleRow({ f, expanded, onToggle }: { f: DashboardFixture; expanded: boolean; onToggle: () => void }) {
+function ConsoleRow({
+  f,
+  canManageVenue,
+  clubs,
+  divisionTeams,
+  expanded,
+  editing,
+  onToggle,
+  onEditToggle,
+}: {
+  f: DashboardFixture
+  canManageVenue: boolean
+  clubs: HostClub[]
+  divisionTeams: { id: number; name: string }[]
+  expanded: boolean
+  editing: boolean
+  onToggle: () => void
+  onEditToggle: () => void
+}) {
   const info = deriveOpsStatus(f)
   const home = teamLabel(f.homeName, f.homeSlot)
   const away = teamLabel(f.awayName, f.awaySlot)
@@ -346,57 +428,62 @@ function ConsoleRow({ f, expanded, onToggle }: { f: DashboardFixture; expanded: 
 
   return (
     <div className={cn("border-b border-border last:border-b-0", expanded && "bg-secondary/30")}>
-      <button
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="grid w-full grid-cols-[1.25rem_1fr] items-start gap-3 px-4 py-3 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
-      >
-        {/* Mobile chevron / desktop status */}
-        <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden", expanded && "rotate-90")} />
-        <span className={cn("hidden rounded-full px-2 py-0.5 text-center text-[11px] font-semibold lg:inline-block", info.tone)}>
-          {info.label}
-        </span>
-
-        {/* Body (mobile stacks; desktop uses columns) */}
-        <div className="min-w-0 lg:contents">
-          <span className="hidden text-sm text-muted-foreground lg:inline">{f.week}</span>
-
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 lg:block lg:min-w-0">
-            <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
-            <span className="text-xs text-muted-foreground lg:hidden">vs</span>
-            <span className={cn("truncate text-sm font-semibold lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
-            {done && (
-              <span className="font-mono text-xs font-bold tabular-nums lg:hidden">
-                <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
-                <span className="text-muted-foreground">–</span>
-                <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
-              </span>
-            )}
-          </div>
-          <span className={cn("hidden truncate text-sm font-semibold lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
-
-          <span className="hidden min-w-0 items-center gap-1 truncate text-sm text-muted-foreground lg:flex">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{venueName ?? "TBD"}</span>
+      <div className="flex items-start gap-2 px-4 py-3">
+        <button
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="grid min-w-0 flex-1 grid-cols-[1.25rem_1fr] items-start gap-3 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
+        >
+          <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden", expanded && "rotate-90")} />
+          <span className={cn("hidden rounded-full px-2 py-0.5 text-center text-[11px] font-semibold lg:inline-block", info.tone)}>
+            {info.label}
           </span>
 
-          {/* Mobile meta line */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
-            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", info.tone)}>{info.label}</span>
-            <span>Wk {f.week}</span>
-            {f.divisionName && <span>{f.divisionName}</span>}
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {venueName ?? "TBD"}
+          <div className="min-w-0 lg:contents">
+            <span className="hidden text-sm text-muted-foreground lg:inline">{f.week}</span>
+
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 lg:block lg:min-w-0">
+              <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
+              <span className="text-xs text-muted-foreground lg:hidden">vs</span>
+              <span className={cn("truncate text-sm font-semibold lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
+              {done && (
+                <span className="font-mono text-xs font-bold tabular-nums lg:hidden">
+                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
+                  <span className="text-muted-foreground">–</span>
+                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
+                </span>
+              )}
+            </div>
+            <span className={cn("hidden truncate text-sm font-semibold lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
+
+            <span className="hidden min-w-0 items-center gap-1 truncate text-sm text-muted-foreground lg:flex">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{venueName ?? "TBD"}</span>
             </span>
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
+              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", info.tone)}>{info.label}</span>
+              <span>Wk {f.week}</span>
+              {f.divisionName && <span>{f.divisionName}</span>}
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {venueName ?? "TBD"}
+              </span>
+            </div>
+
+            <CountPill count={info.readyCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="courts booked" />
+            <CountPill count={resCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="results entered" resultStyle />
           </div>
+        </button>
 
-          <CountPill count={info.readyCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="courts booked" />
-          <CountPill count={resCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="results entered" resultStyle />
-        </div>
-      </button>
+        {canManageVenue && (
+          <Button type="button" size="sm" variant={editing ? "default" : "outline"} className="shrink-0" onClick={onEditToggle}>
+            <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+          </Button>
+        )}
+      </div>
 
-      {expanded && <FixtureDetail f={f} />}
+      {expanded && <FixtureDetail f={f} canManageVenue={canManageVenue} clubs={clubs} divisionTeams={divisionTeams} editing={editing} />}
     </div>
   )
 }
@@ -434,10 +521,20 @@ function CountPill({
   )
 }
 
-function FixtureDetail({ f }: { f: DashboardFixture }) {
+function FixtureDetail({
+  f,
+  canManageVenue,
+  clubs,
+  divisionTeams,
+  editing,
+}: {
+  f: DashboardFixture
+  canManageVenue: boolean
+  clubs: HostClub[]
+  divisionTeams: { id: number; name: string }[]
+  editing: boolean
+}) {
   const [showResults, setShowResults] = useState(false)
-  const [pending, start] = useTransition()
-  const gate = canPublish(f)
   const canEdit = f.canEditLink
   const bothTeams = f.homeTeamId != null && f.awayTeamId != null
 
@@ -446,14 +543,6 @@ function FixtureDetail({ f }: { f: DashboardFixture }) {
     for (const m of f.matches) if (m.sets.length > 0) out[m.category] = m.sets
     return out
   }, [f.matches])
-
-  function doPublish(publish: boolean) {
-    start(async () => {
-      const res = publish ? await publishFixture(f.id) : await unpublishFixture(f.id)
-      if (res?.ok) toast.success(publish ? "Fixture published — players can now join." : "Fixture unpublished.")
-      else toast.error(res?.error ?? "Something went wrong.")
-    })
-  }
 
   return (
     <div className="space-y-4 border-t border-border bg-background/40 px-4 py-4">
@@ -468,22 +557,18 @@ function FixtureDetail({ f }: { f: DashboardFixture }) {
           <Field label="Night Time" value={f.timeslot} />
         </dl>
         <div className="flex flex-col items-start gap-2 md:items-end">
-          {canEdit ? (
-            f.published ? (
-              <Button variant="outline" size="sm" onClick={() => doPublish(false)} disabled={pending}>
-                <EyeOff className="mr-1.5 h-4 w-4" /> Unpublish
-              </Button>
-            ) : (
-              <div className="flex flex-col items-start gap-1 md:items-end">
-                <Button size="sm" onClick={() => doPublish(true)} disabled={pending || !gate.ok}>
-                  <Send className="mr-1.5 h-4 w-4" /> Publish Fixture
-                </Button>
-                {!gate.ok && <span className="text-[11px] text-muted-foreground">{gate.reason}</span>}
-              </div>
-            )
-          ) : null}
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold",
+              f.published ? "bg-emerald-500/15 text-emerald-400" : "bg-violet-500/15 text-violet-400",
+            )}
+          >
+            {f.published ? "Published" : "Draft"}
+          </span>
         </div>
       </div>
+
+      {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
 
       {/* Audit trail */}
       <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-md bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
@@ -512,6 +597,8 @@ function FixtureDetail({ f }: { f: DashboardFixture }) {
             assignment={f.courtAssignments?.[c.category] ?? defaultCourtAssignments(f.venueCourts)[c.category]}
             link={f.courtLinks?.[c.category] ?? ""}
             match={f.matches.find((m) => m.category === c.category)}
+            homeName={formatPairingNames(f.homePlayers[c.category])}
+            awayName={formatPairingNames(f.awayPlayers[c.category])}
           />
         ))}
       </div>
@@ -549,6 +636,134 @@ function FixtureDetail({ f }: { f: DashboardFixture }) {
   )
 }
 
+function DraftScheduleEditor({
+  f,
+  clubs,
+  divisionTeams,
+}: {
+  f: DashboardFixture
+  clubs: HostClub[]
+  divisionTeams: { id: number; name: string }[]
+}) {
+  const [week, setWeek] = useState(String(f.week))
+  const [matchDate, setMatchDate] = useState(
+    f.matchDate ? new Date(f.matchDate).toISOString().slice(0, 10) : "",
+  )
+  const [venueClubId, setVenueClubId] = useState<string>(f.venueClubId != null ? String(f.venueClubId) : "")
+  const [timeslot, setTimeslot] = useState(f.timeslot ?? "")
+  const [homeTeamId, setHomeTeamId] = useState<string>(f.homeTeamId != null ? String(f.homeTeamId) : "")
+  const [awayTeamId, setAwayTeamId] = useState<string>(f.awayTeamId != null ? String(f.awayTeamId) : "")
+  const [pending, start] = useTransition()
+
+  const dirty =
+    week !== String(f.week) ||
+    matchDate !== (f.matchDate ? new Date(f.matchDate).toISOString().slice(0, 10) : "") ||
+    venueClubId !== (f.venueClubId != null ? String(f.venueClubId) : "") ||
+    timeslot !== (f.timeslot ?? "") ||
+    homeTeamId !== (f.homeTeamId != null ? String(f.homeTeamId) : "") ||
+    awayTeamId !== (f.awayTeamId != null ? String(f.awayTeamId) : "")
+
+  function swapTeams() {
+    setHomeTeamId(awayTeamId)
+    setAwayTeamId(homeTeamId)
+  }
+
+  function save() {
+    start(async () => {
+      const res = await saveFixtureSchedule({
+        fixtureId: f.id,
+        week: Number(week),
+        matchDate: matchDate || null,
+        venueClubId: venueClubId ? Number(venueClubId) : null,
+        timeslot: timeslot || null,
+        homeTeamId: Number(homeTeamId),
+        awayTeamId: Number(awayTeamId),
+      })
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not save draft fixture.")
+        return
+      }
+      const errors = res.report?.errors ?? 0
+      const warnings = res.report?.warnings ?? 0
+      toast.success(
+        errors > 0 || warnings > 0
+          ? `Fixture updated · validation ${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`
+          : "Fixture updated",
+      )
+    })
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-card/60 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Draft schedule editor</h3>
+        <Button type="button" size="sm" variant="outline" onClick={swapTeams}>
+          Swap Home/Away
+        </Button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Week</span>
+          <Input value={week} onChange={(e) => setWeek(e.target.value)} inputMode="numeric" className="h-9" />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Date</span>
+          <Input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} className="h-9" />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Timeslot</span>
+          <select value={timeslot} onChange={(e) => setTimeslot(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Unscheduled</option>
+            {FIXTURE_TIMESLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {slot}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Home team</span>
+          <select value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Select home team</option>
+            {divisionTeams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Away team</span>
+          <select value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Select away team</option>
+            {divisionTeams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted-foreground">Venue</span>
+          <select value={venueClubId} onChange={(e) => setVenueClubId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Default home venue</option>
+            {clubs.map((club) => (
+              <option key={club.id} value={club.id}>
+                {club.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button type="button" size="sm" onClick={save} disabled={pending || !dirty}>
+          {pending ? "Saving…" : "Save schedule"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
@@ -566,6 +781,8 @@ function CategoryEditor({
   assignment,
   link,
   match,
+  homeName,
+  awayName,
 }: {
   fixtureId: number
   category: string
@@ -574,6 +791,8 @@ function CategoryEditor({
   assignment: { court: string | null; time: string | null }
   link: string
   match?: DashboardFixture["matches"][number]
+  homeName: string
+  awayName: string
 }) {
   const [court, setCourt] = useState(assignment?.court ?? "")
   const [time, setTime] = useState(assignment?.time ?? "")
@@ -601,9 +820,16 @@ function CategoryEditor({
 
   return (
     <div className="grid grid-cols-1 gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">{category}</span>
-        {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{category}</span>
+          {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{homeName}</span>
+          <span className="mx-1.5 text-muted-foreground">vs</span>
+          <span className="font-medium text-foreground">{awayName}</span>
+        </div>
       </div>
 
       <Input

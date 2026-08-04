@@ -14,15 +14,20 @@ export function StandingsTable({
   if (!rows.length) {
     return (
       <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-        Standings will appear once results are recorded for this division.
+        No teams have been assigned to this division yet.
       </p>
     )
   }
+  const anyPlayed = rows.some((r) => r.played > 0)
   const total = rows.length
   const hasWildcards = Array.from(qualifierByTeamId.values()).includes("wildcard")
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
-      {qualificationRule ? (
+      {!anyPlayed ? (
+        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
+          Season has not started yet — standings will update as results are recorded.
+        </div>
+      ) : qualificationRule ? (
         <div className="border-b border-sky-100 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800">
           {qualificationRule}
         </div>
@@ -113,13 +118,15 @@ export function StandingsTable({
           )
         })}
       </ul>
-      <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Playoff qualification</span>
-        {hasWildcards ? (
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-500" /> Wildcard qualification</span>
-        ) : null}
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" /> Relegation</span>
-      </div>
+      {anyPlayed && (
+        <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500">
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Playoff qualification</span>
+          {hasWildcards ? (
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-500" /> Wildcard qualification</span>
+          ) : null}
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" /> Relegation</span>
+        </div>
+      )}
     </div>
   )
 }

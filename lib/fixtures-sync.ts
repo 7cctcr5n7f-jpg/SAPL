@@ -1,13 +1,13 @@
 import { db } from "@/lib/db"
 import { fixtures, teams, teamEntries, divisions, clubs } from "@/lib/db/schema"
 import { and, eq, inArray } from "drizzle-orm"
+import { buildCourtAssignments } from "@/lib/engine/season"
+import { isEditableLeagueFixtureStatus } from "@/lib/fixture-status"
 
 /**
- * Re-link a division's slot-based template fixtures to the teams currently
- * placed in each slot, and default each fixture's venue to the home team's home
- * club. Only scheduled fixtures are touched so completed/disputed results are
- * never disturbed. The per-fixture Playtomic link is left untouched (it is set
- * manually by clubs/admins).
+ * Re-link a division's draft/editable fixtures to the teams currently placed in
+ * each slot, and default each fixture's venue to the home team's home club.
+ * Completed/disputed fixtures are never touched.
  */
 export async function syncDivisionFixtures(divisionId: number) {
   const [div] = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, divisionId)).limit(1)
@@ -36,11 +36,12 @@ export async function syncDivisionFixtures(divisionId: number) {
   const clubIds = teamRows.map((t) => t.homeClubId).filter((x): x is number => x != null)
   const clubRows = clubIds.length
     ? await db
-        .select({ id: clubs.id, name: clubs.name, hostTimeslots: clubs.hostTimeslots })
+        .select({ id: clubs.id, name: clubs.name, courts: clubs.courts, hostTimeslots: clubs.hostTimeslots })
         .from(clubs)
         .where(inArray(clubs.id, clubIds))
     : []
   const clubNameById = new Map(clubRows.map((c) => [c.id, c.name]))
+  const clubCourtsById = new Map(clubRows.map((c) => [c.id, c.courts ?? 0]))
   // venue -> league-night slots it will host (subset of ["17:00","18:30"]).
   const hostTimesById = new Map(
     clubRows.map((c) => [c.id, Array.isArray(c.hostTimeslots) ? c.hostTimeslots : []]),
@@ -49,9 +50,10 @@ export async function syncDivisionFixtures(divisionId: number) {
   const divFixtures = await db
     .select()
     .from(fixtures)
-    .where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.status, "scheduled")))
+    .where(eq(fixtures.divisionId, divisionId))
 
   for (const f of divFixtures) {
+    if (!isEditableLeagueFixtureStatus(f.status)) continue
     const homeTeamId = f.homeSlot ? (slotToTeam.get(f.homeSlot) ?? null) : f.homeTeamId
     const awayTeamId = f.awaySlot ? (slotToTeam.get(f.awaySlot) ?? null) : f.awayTeamId
     const homeClubId = homeTeamId ? (homeClubByTeam.get(homeTeamId) ?? null) : null
@@ -62,9 +64,22 @@ export async function syncDivisionFixtures(divisionId: number) {
     let timeslot = f.timeslot
     const offered = homeClubId ? (hostTimesById.get(homeClubId) ?? []) : []
     if (offered.length === 1 && timeslot !== offered[0]) timeslot = offered[0]
+    if (homeClubId == null) timeslot = null
+    const courtAssignments =
+      homeClubId != null
+        ? buildCourtAssignments(clubCourtsById.get(homeClubId) ?? 0, timeslot === "17:00" || timeslot === "18:30" ? timeslot : null)
+        : {}
     await db
       .update(fixtures)
-      .set({ homeTeamId, awayTeamId, venueClubId: homeClubId, venue, timeslot, updatedAt: new Date() })
+      .set({
+        homeTeamId,
+        awayTeamId,
+        venueClubId: homeClubId,
+        venue,
+        timeslot,
+        courtAssignments,
+        updatedAt: new Date(),
+      })
       .where(eq(fixtures.id, f.id))
   }
 }

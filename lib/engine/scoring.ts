@@ -77,8 +77,14 @@ export function formatScoreDetail(sets: SetScore[]): string {
 
 /**
  * League scoring:
- *  - 1 point per set won
- *  - 1 bonus point to the fixture winner (most sets won across all matches)
+ *  - 1 point per set won (per category)
+ *  - 1 bonus point per CATEGORY won (team that won more sets in that category)
+ *
+ * Example: winning a category 2-1 in sets → 2 + 1 = 3 pts
+ *          winning a category 3-0 in sets → 3 + 1 = 4 pts
+ *          losing a category 1-2 in sets  → 1 + 0 = 1 pt
+ *
+ * Fixture-level win/loss is determined by who won more categories.
  */
 export function scoreFixture(matches: MatchResult[]): FixtureScore {
   let homeSetsWon = 0
@@ -87,27 +93,31 @@ export function scoreFixture(matches: MatchResult[]): FixtureScore {
   let awayGames = 0
   let homeMatchesWon = 0
   let awayMatchesWon = 0
+  let homePoints = 0
+  let awayPoints = 0
 
   for (const m of matches) {
     homeSetsWon += m.homeSetsWon
     awaySetsWon += m.awaySetsWon
     homeGames += m.homeGames
     awayGames += m.awayGames
-    if (m.homeSetsWon > m.awaySetsWon) homeMatchesWon++
-    else if (m.awaySetsWon > m.homeSetsWon) awayMatchesWon++
+
+    // Per-category points: sets won + bonus if this category was won
+    homePoints += m.homeSetsWon * LEAGUE_SCORING.pointPerSet
+    awayPoints += m.awaySetsWon * LEAGUE_SCORING.pointPerSet
+    if (m.homeSetsWon > m.awaySetsWon) {
+      homeMatchesWon++
+      homePoints += LEAGUE_SCORING.bonusForWinner
+    } else if (m.awaySetsWon > m.homeSetsWon) {
+      awayMatchesWon++
+      awayPoints += LEAGUE_SCORING.bonusForWinner
+    }
   }
 
-  let homePoints = homeSetsWon * LEAGUE_SCORING.pointPerSet
-  let awayPoints = awaySetsWon * LEAGUE_SCORING.pointPerSet
-
+  // Fixture winner determined by categories won (most categories)
   let winnerSide: "home" | "away" | "draw" = "draw"
-  if (homeSetsWon > awaySetsWon) {
-    winnerSide = "home"
-    homePoints += LEAGUE_SCORING.bonusForWinner
-  } else if (awaySetsWon > homeSetsWon) {
-    winnerSide = "away"
-    awayPoints += LEAGUE_SCORING.bonusForWinner
-  }
+  if (homeMatchesWon > awayMatchesWon) winnerSide = "home"
+  else if (awayMatchesWon > homeMatchesWon) winnerSide = "away"
 
   return {
     homePoints,
@@ -139,21 +149,22 @@ export type StandingRow = {
 
 /**
  * League table ordering:
- *  1. Points
- *  2. Match Wins
- *  3. Sets Won
- *  4. Head-to-Head
- *  5. Points Difference (Games For − Games Against)
+ *  1. Points (most first)
+ *  2. Points Difference (gamesFor − gamesAgainst)
+ *  3. Match Wins
+ *  4. Sets Won
+ *  5. Head-to-Head
  */
 export function sortStandings(rows: StandingRow[]): StandingRow[] {
   const sorted = [...rows].sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points
+    if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
     if (b.wins !== a.wins) return b.wins - a.wins
     if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
     const h2hA = a.headToHead[b.teamId] ?? 0
     const h2hB = b.headToHead[a.teamId] ?? 0
     if (h2hA !== h2hB) return h2hB - h2hA
-    return b.pointsDiff - a.pointsDiff
+    return a.teamId - b.teamId
   })
   return sorted.map((row, i) => ({ ...row, rank: i + 1 }))
 }

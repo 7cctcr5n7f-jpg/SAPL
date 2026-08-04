@@ -462,6 +462,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .from(fixtures)
     .where(
       and(
+        eq(fixtures.published, true),
         ne(fixtures.status, "completed"),
         or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)),
       ),

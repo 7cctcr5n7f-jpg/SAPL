@@ -41,6 +41,7 @@ export default async function AdminSeasonsPage() {
           status: s.status,
           isCurrent: s.isCurrent,
           weeks: s.weeks,
+          startDate: s.startDate ?? null,
           regions: s.divisions
             .filter((d) => d.regionId != null && d.regionName)
             .reduce<Array<{ id: number; name: string }>>((acc, d) => {
@@ -57,6 +58,15 @@ export default async function AdminSeasonsPage() {
           })),
         }))}
         defaultRegionNames={regions.map((r) => r.name)}
+        currentSeasonReadiness={
+          currentSeason && readiness
+            ? {
+                seasonId: currentSeason.id,
+                incompleteTeams: readiness.teams.filter((team) => !team.isLeagueReady).length,
+                playersOutstanding: readiness.playersOutstanding,
+              }
+            : null
+        }
       />
     </div>
   )
