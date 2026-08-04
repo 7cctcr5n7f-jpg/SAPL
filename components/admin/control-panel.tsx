@@ -102,7 +102,7 @@ export function ControlPanel({ seasons }: { seasons: Season[] }) {
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <CalendarRange className="h-3.5 w-3.5" />
-                      {s.weeks} week{s.weeks === 1 ? "" : "s"}
+                      {s.weeks > 0 ? `${s.weeks} week${s.weeks === 1 ? "" : "s"}` : "Weeks TBD"}
                     </span>
                   </div>
                 </div>
@@ -405,10 +405,6 @@ function NewSeasonDialog({
             <Input id="sname" name="name" placeholder="e.g. Spring 2026" required />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="weeks">Weeks</Label>
-              <Input id="weeks" name="weeks" type="number" defaultValue={7} min={1} max={30} />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="startDate">Start date</Label>
               <Input id="startDate" name="startDate" type="date" />

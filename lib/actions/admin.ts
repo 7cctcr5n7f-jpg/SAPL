@@ -109,7 +109,18 @@ export async function generateSeason(formData: FormData) {
   await requireAdmin()
   if (await isSeasonLocked()) return seasonLockedResult()
   const seasonId = Number(formData.get("seasonId"))
-  const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  const [season] = await db
+    .select({
+      id: seasons.id,
+      startDate: seasons.startDate,
+      regionalFinalsDate: seasons.regionalFinalsDate,
+      regionalFinalsVenueClubId: seasons.regionalFinalsVenueClubId,
+      mastersDate: seasons.mastersDate,
+      mastersVenueClubId: seasons.mastersVenueClubId,
+    })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1)
   if (!season) return { ok: false, error: "Season not found" }
   const [existingSeasonFixture] = await db
     .select({ id: fixtures.id })
@@ -175,6 +186,7 @@ export async function generateSeason(formData: FormData) {
   const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
 
   let total = 0
+  let maxWeek = 0
   let lastRoundDate = firstNight
   for (const d of divs) {
     const maxTeams = d.maxTeams ?? 8
@@ -188,6 +200,8 @@ export async function generateSeason(formData: FormData) {
     const slots = Array.from({ length: slotCount }, (_, i) => i + 1)
     const rr = generateRoundRobin(slots)
     if (rr.length === 0) continue
+    // Track the highest week across all divisions so we can store it back.
+    for (const g of rr) if (g.week > maxWeek) maxWeek = g.week
     // Balance 17:00 / 18:30 fairly across each division slot for the season.
     const timeslots = balanceTimeslots(rr.map((g) => ({ homeSlot: g.homeTeamId, awaySlot: g.awayTeamId })))
     await db.insert(fixtures).values(
@@ -280,7 +294,11 @@ export async function generateSeason(formData: FormData) {
   )
 
   // Fixture generation is a one-time phase transition.
-  await db.update(seasons).set({ status: "fixtures_generated" }).where(eq(seasons.id, seasonId))
+  // Store the auto-calculated week count so the UI can display it correctly.
+  await db
+    .update(seasons)
+    .set({ status: "fixtures_generated", weeks: maxWeek > 0 ? maxWeek : undefined })
+    .where(eq(seasons.id, seasonId))
   await syncSeasonTeamLifecycle(seasonId)
 
   revalidatePath("/admin")
@@ -566,7 +584,6 @@ export async function resolveDispute(formData: FormData) {
 export async function createSeason(formData: FormData) {
   await requireAdmin()
   const name = String(formData.get("name") ?? "").trim()
-  const weeks = Number(formData.get("weeks") ?? 7)
   const startStr = String(formData.get("startDate") ?? "").trim()
   const makeCurrent = formData.get("makeCurrent") === "on" || formData.get("makeCurrent") === "true"
   const feeRaw = Number(formData.get("playerFee") ?? 500)
@@ -579,7 +596,8 @@ export async function createSeason(formData: FormData) {
   if (!name) return { ok: false, error: "Season name required" }
 
   const startDate = startStr ? new Date(startStr) : null
-  const endDate = startDate ? new Date(startDate.getTime() + weeks * 7 * 24 * 60 * 60 * 1000) : null
+  // weeks will be auto-calculated when fixtures are generated; store 0 as placeholder
+  const endDate = null
 
   // Optional playoff scheduling captured at creation (used by Generate Season).
   const num = (k: string) => {
@@ -598,7 +616,7 @@ export async function createSeason(formData: FormData) {
     .insert(seasons)
     .values({
       name,
-      weeks,
+      weeks: 0, // will be auto-calculated when fixtures are generated
       startDate,
       endDate,
       status: "registration_open",
@@ -808,7 +826,10 @@ export async function setSeasonDivisions(input: {
   await requireAdmin()
   if (await isSeasonLocked()) return seasonLockedResult()
   const { seasonId } = input
-  const existing = await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.seasonId, seasonId))
+  const existing = await db
+    .select({ id: divisions.id, regionId: divisions.regionId, level: divisions.level, maxTeams: divisions.maxTeams })
+    .from(divisions)
+    .where(eq(divisions.seasonId, seasonId))
   const keyOf = (regionId: number | null, level: number) => `${regionId ?? "none"}:${level}`
   const existingByKey = new Map(existing.map((d) => [keyOf(d.regionId, d.level), d]))
 
