@@ -251,7 +251,6 @@ export function planSeason(args: {
 }): PlannedFixture[] {
   const firstNight = nextThursday(args.startDate)
   const clubById = new Map(args.clubs.map((club) => [club.id, club]))
-  const hostClubs = args.clubs.filter((club) => venueNightCapacity(club) > 0)
   const usage: UsageByWeek = new Map()
   const planned: PlannedFixture[] = []
 
@@ -321,42 +320,29 @@ export function planSeason(args: {
         const homeTeamId = scoreAHome <= scoreBHome ? pair.a : pair.b
         const awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
 
-        // Pick venue: always start with the home team's own venue.
-        // If unavailable, fall back to any venue with capacity — never swap home/away.
+        // Pick venue: home team's venue first, then away team's venue.
+        // Never assign an unrelated venue — if neither team's venue is available
+        // this week the fixture is left without a venue (TBD) so the admin can
+        // assign one manually.
         let venuePick: { club: PlannerClub | null; kickoff: FixtureTimeslot | null } = {
           club: null,
           kickoff: null,
         }
 
-        const homeTeam = teamById.get(homeTeamId)
-        if (homeTeam?.homeClubId != null) {
-          const club = clubById.get(homeTeam.homeClubId)
-          if (club) {
-            const current = venueUsageForWeek(usage, week, club.id)
-            if (current.total < venueNightCapacity(club)) {
-              const kickoff = chooseKickoffForVenue(club, week, usage)
-              if (kickoff) venuePick = { club, kickoff }
-            }
-          }
+        const tryTeamVenue = (teamId: number): boolean => {
+          const team = teamById.get(teamId)
+          if (!team?.homeClubId) return false
+          const club = clubById.get(team.homeClubId)
+          if (!club) return false
+          const current = venueUsageForWeek(usage, week, club.id)
+          if (current.total >= venueNightCapacity(club)) return false
+          const kickoff = chooseKickoffForVenue(club, week, usage)
+          if (!kickoff) return false
+          venuePick = { club, kickoff }
+          return true
         }
 
-        if (!venuePick.club) {
-          const sortedFallback = [...hostClubs].sort((a, b) => {
-            const ua = venueUsageForWeek(usage, week, a.id).total
-            const ub = venueUsageForWeek(usage, week, b.id).total
-            if (ua !== ub) return ua - ub
-            return a.name.localeCompare(b.name)
-          })
-          for (const club of sortedFallback) {
-            const current = venueUsageForWeek(usage, week, club.id)
-            if (current.total >= venueNightCapacity(club)) continue
-            const kickoff = chooseKickoffForVenue(club, week, usage)
-            if (kickoff) {
-              venuePick = { club, kickoff }
-              break
-            }
-          }
-        }
+        tryTeamVenue(homeTeamId) || tryTeamVenue(awayTeamId)
 
         if (venuePick.club && venuePick.kickoff) markVenueUsage(usage, week, venuePick.club, venuePick.kickoff)
 
