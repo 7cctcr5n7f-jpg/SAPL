@@ -2,7 +2,15 @@ import { cn } from "@/lib/utils"
 import { Crest } from "@/components/league-centre/crest"
 import type { LCStanding } from "@/lib/queries-league-centre"
 
-export function StandingsTable({ rows }: { rows: LCStanding[] }) {
+export function StandingsTable({
+  rows,
+  qualifierByTeamId = new Map<number, "direct" | "wildcard">(),
+  qualificationRule,
+}: {
+  rows: LCStanding[]
+  qualifierByTeamId?: Map<number, "direct" | "wildcard">
+  qualificationRule?: string
+}) {
   if (!rows.length) {
     return (
       <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
@@ -11,8 +19,14 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
     )
   }
   const total = rows.length
+  const hasWildcards = Array.from(qualifierByTeamId.values()).includes("wildcard")
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
+      {qualificationRule ? (
+        <div className="border-b border-sky-100 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800">
+          {qualificationRule}
+        </div>
+      ) : null}
       <div className="hidden grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 md:grid">
         <span className="text-center">#</span>
         <span>Team</span>
@@ -30,15 +44,14 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
       <ul>
         {rows.map((r, i) => {
           const pos = r.rank ?? i + 1
-          const promo = pos <= 2
-          const playoff = pos <= 4 && !promo
+          const qualifier = qualifierByTeamId.get(r.teamId) ?? null
           const releg = pos >= total - 1 && total > 4
           return (
             <li
               key={r.teamId}
               className={cn(
                 "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
-                promo && "bg-emerald-50/60",
+                qualifier && "bg-sky-50/70",
                 releg && "bg-red-50/60",
               )}
             >
@@ -46,7 +59,7 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
                 aria-hidden
                 className={cn(
                   "absolute left-0 top-0 h-full w-1",
-                  promo ? "bg-emerald-500" : playoff ? "bg-slate-300" : releg ? "bg-red-400" : "bg-transparent",
+                  qualifier ? (qualifier === "wildcard" ? "bg-violet-500" : "bg-sky-500") : releg ? "bg-red-400" : "bg-transparent",
                 )}
               />
               <span className="text-center text-sm font-bold tabular-nums text-slate-800">{pos}</span>
@@ -57,7 +70,24 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
                   <p className="truncate text-[11px] text-slate-500 md:hidden">
                     {r.played}P · {r.wins}W · {r.points}pts
                   </p>
-                  {r.orgName ? <p className="hidden truncate text-[11px] text-slate-500 md:block">{r.orgName}</p> : null}
+                  <div className="hidden items-center gap-2 md:flex">
+                    {r.orgName ? <p className="truncate text-[11px] text-slate-500">{r.orgName}</p> : null}
+                    {qualifier ? (
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          qualifier === "wildcard" ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700",
+                        )}
+                      >
+                        {qualifier === "wildcard" ? "Best 3rd in line" : "In playoff places"}
+                      </span>
+                    ) : null}
+                  </div>
+                  {qualifier ? (
+                    <p className="text-[11px] text-sky-700 md:hidden">
+                      {qualifier === "wildcard" ? "Best 3rd in line" : "In playoff places"}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.played}</span>
@@ -84,8 +114,10 @@ export function StandingsTable({ rows }: { rows: LCStanding[] }) {
         })}
       </ul>
       <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Promotion</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-300" /> Playoff</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Playoff qualification</span>
+        {hasWildcards ? (
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-500" /> Wildcard qualification</span>
+        ) : null}
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" /> Relegation</span>
       </div>
     </div>

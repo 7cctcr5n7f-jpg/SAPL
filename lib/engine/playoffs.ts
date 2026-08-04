@@ -57,7 +57,7 @@ export type PlayoffPairing = {
 
 export type PlayoffTemplate = {
   type: "regional_final" | "tshwane_masters"
-  round: "semi_final" | "final"
+  round: "quarter_final" | "semi_final" | "final"
   divisionId: number | null
   regionId: number | null
   bracketPosition: number
@@ -72,6 +72,176 @@ export type PlayoffTemplate = {
 }
 
 const ordinal = (n: number) => ["", "1st", "2nd", "3rd", "4th"][n] ?? `${n}th`
+
+export type DivisionPlayoffStandingInput = {
+  divisionId: number
+  divisionLevel: number
+  divisionName: string
+  regionId: number | null
+  regionName: string | null
+  teamId: number
+  teamName?: string | null
+  rank: number | null
+  points: number
+  wins: number
+  setsWon: number
+  pointsDiff: number
+}
+
+export type DivisionPlayoffQualifier = DivisionPlayoffStandingInput & {
+  seed: number
+  qualificationType: "direct" | "wildcard"
+}
+
+function compareQualifierStrength(a: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "wins" | "setsWon" | "pointsDiff" | "teamId">, b: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "wins" | "setsWon" | "pointsDiff" | "teamId">) {
+  const rankA = a.rank ?? Number.MAX_SAFE_INTEGER
+  const rankB = b.rank ?? Number.MAX_SAFE_INTEGER
+  if (rankA !== rankB) return rankA - rankB
+  if (b.points !== a.points) return b.points - a.points
+  if (b.wins !== a.wins) return b.wins - a.wins
+  if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
+  if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
+  return a.teamId - b.teamId
+}
+
+export function computeDivisionPlayoffQualifiers(
+  rows: DivisionPlayoffStandingInput[],
+  targetSize = 8,
+): DivisionPlayoffQualifier[] {
+  const rankedRows = rows
+    .filter((row): row is DivisionPlayoffStandingInput & { rank: number } => row.rank != null)
+    .sort((a, b) => compareQualifierStrength(a, b))
+
+  const rowsByRegion = new Map<number | null, (DivisionPlayoffStandingInput & { rank: number })[]>()
+  for (const row of rankedRows) {
+    const bucket = rowsByRegion.get(row.regionId) ?? []
+    bucket.push(row)
+    rowsByRegion.set(row.regionId, bucket)
+  }
+
+  const regionCount = rowsByRegion.size
+  if (regionCount === 0) return []
+
+  const basePerRegion = Math.floor(targetSize / regionCount)
+  const extraSlots = targetSize % regionCount
+
+  const direct: DivisionPlayoffQualifier[] = []
+  const wildcards: DivisionPlayoffQualifier[] = []
+
+  for (const regionRows of rowsByRegion.values()) {
+    const ordered = [...regionRows].sort((a, b) => compareQualifierStrength(a, b))
+    for (const row of ordered.slice(0, basePerRegion)) {
+      direct.push({ ...row, seed: 0, qualificationType: "direct" })
+    }
+    const wildcardCandidate = ordered[basePerRegion]
+    if (wildcardCandidate) {
+      wildcards.push({ ...wildcardCandidate, seed: 0, qualificationType: "wildcard" })
+    }
+  }
+
+  const selected = [
+    ...direct,
+    ...wildcards.sort((a, b) => compareQualifierStrength(a, b)).slice(0, extraSlots),
+  ]
+    .sort((a, b) => compareQualifierStrength(a, b))
+    .slice(0, targetSize)
+
+  return selected.map((row, index) => ({ ...row, seed: index + 1 }))
+}
+
+export function buildDivisionPlayoffTemplates(opts: {
+  divisionId: number
+  divisionName: string
+}): PlayoffTemplate[] {
+  const { divisionId, divisionName } = opts
+  const seedLabel = (seed: number) => `${divisionName} Seed ${seed}`
+  const base = {
+    type: "regional_final" as const,
+    divisionId,
+    regionId: null,
+    homeRegionId: null,
+    awayRegionId: null,
+  }
+  return [
+    {
+      ...base,
+      round: "quarter_final",
+      bracketPosition: 1,
+      homeSeed: 1,
+      awaySeed: 8,
+      homeSourceBracket: null,
+      awaySourceBracket: null,
+      homeLabel: seedLabel(1),
+      awayLabel: seedLabel(8),
+    },
+    {
+      ...base,
+      round: "quarter_final",
+      bracketPosition: 2,
+      homeSeed: 4,
+      awaySeed: 5,
+      homeSourceBracket: null,
+      awaySourceBracket: null,
+      homeLabel: seedLabel(4),
+      awayLabel: seedLabel(5),
+    },
+    {
+      ...base,
+      round: "quarter_final",
+      bracketPosition: 3,
+      homeSeed: 2,
+      awaySeed: 7,
+      homeSourceBracket: null,
+      awaySourceBracket: null,
+      homeLabel: seedLabel(2),
+      awayLabel: seedLabel(7),
+    },
+    {
+      ...base,
+      round: "quarter_final",
+      bracketPosition: 4,
+      homeSeed: 3,
+      awaySeed: 6,
+      homeSourceBracket: null,
+      awaySourceBracket: null,
+      homeLabel: seedLabel(3),
+      awayLabel: seedLabel(6),
+    },
+    {
+      ...base,
+      round: "semi_final",
+      bracketPosition: 5,
+      homeSeed: null,
+      awaySeed: null,
+      homeSourceBracket: 1,
+      awaySourceBracket: 2,
+      homeLabel: "Winner Quarter 1",
+      awayLabel: "Winner Quarter 2",
+    },
+    {
+      ...base,
+      round: "semi_final",
+      bracketPosition: 6,
+      homeSeed: null,
+      awaySeed: null,
+      homeSourceBracket: 3,
+      awaySourceBracket: 4,
+      homeLabel: "Winner Quarter 3",
+      awayLabel: "Winner Quarter 4",
+    },
+    {
+      ...base,
+      round: "final",
+      bracketPosition: 7,
+      homeSeed: null,
+      awaySeed: null,
+      homeSourceBracket: 5,
+      awaySourceBracket: 6,
+      homeLabel: "Winner Semi 1",
+      awayLabel: "Winner Semi 2",
+    },
+  ]
+}
 
 /**
  * Regional Final bracket for one division: SF1 (1st v 4th), SF2 (2nd v 3rd) and
@@ -130,11 +300,14 @@ export function buildRegionalFinalTemplates(opts: {
 }
 
 /**
- * Tshwane Masters bracket: regional champions meet across SF1 (East v South) and
- * SF2 (West v Central), with the Final fed by the semi winners.
+ * Masters placeholder bracket for the active season regions.
+ *
+ * Supports:
+ *  - 2 regions: direct final
+ *  - 3 regions: region 1 bye to final, regions 2v3 in a semi
+ *  - 4 regions: two semis and a final
  */
-export function buildMastersTemplates(regionIdByName: Map<string, number>): PlayoffTemplate[] {
-  const r = (name: string) => regionIdByName.get(name) ?? null
+export function buildMastersTemplates(regions: { id: number; name: string }[]): PlayoffTemplate[] {
   const base = {
     type: "tshwane_masters" as const,
     divisionId: null,
@@ -142,28 +315,70 @@ export function buildMastersTemplates(regionIdByName: Map<string, number>): Play
     homeSeed: null,
     awaySeed: null,
   }
+  if (regions.length < 2) return []
+  if (regions.length === 2) {
+    return [
+      {
+        ...base,
+        round: "final",
+        bracketPosition: 1,
+        homeRegionId: regions[0].id,
+        awayRegionId: regions[1].id,
+        homeSourceBracket: null,
+        awaySourceBracket: null,
+        homeLabel: `${regions[0].name} Champion`,
+        awayLabel: `${regions[1].name} Champion`,
+      },
+    ]
+  }
+  if (regions.length === 3) {
+    return [
+      {
+        ...base,
+        round: "semi_final",
+        bracketPosition: 1,
+        homeRegionId: regions[1].id,
+        awayRegionId: regions[2].id,
+        homeSourceBracket: null,
+        awaySourceBracket: null,
+        homeLabel: `${regions[1].name} Champion`,
+        awayLabel: `${regions[2].name} Champion`,
+      },
+      {
+        ...base,
+        round: "final",
+        bracketPosition: 2,
+        homeRegionId: regions[0].id,
+        awayRegionId: null,
+        homeSourceBracket: null,
+        awaySourceBracket: 1,
+        homeLabel: `${regions[0].name} Champion`,
+        awayLabel: "Winner Semi 1",
+      },
+    ]
+  }
   return [
     {
       ...base,
       round: "semi_final",
       bracketPosition: 1,
-      homeRegionId: r("Tshwane East"),
-      awayRegionId: r("Tshwane South"),
+      homeRegionId: regions[0].id,
+      awayRegionId: regions[3].id,
       homeSourceBracket: null,
       awaySourceBracket: null,
-      homeLabel: "Tshwane East Champion",
-      awayLabel: "Tshwane South Champion",
+      homeLabel: `${regions[0].name} Champion`,
+      awayLabel: `${regions[3].name} Champion`,
     },
     {
       ...base,
       round: "semi_final",
       bracketPosition: 2,
-      homeRegionId: r("Tshwane West"),
-      awayRegionId: r("Tshwane Central"),
+      homeRegionId: regions[1].id,
+      awayRegionId: regions[2].id,
       homeSourceBracket: null,
       awaySourceBracket: null,
-      homeLabel: "Tshwane West Champion",
-      awayLabel: "Tshwane Central Champion",
+      homeLabel: `${regions[1].name} Champion`,
+      awayLabel: `${regions[2].name} Champion`,
     },
     {
       ...base,

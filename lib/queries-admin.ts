@@ -68,8 +68,10 @@ export async function getSeasonsWithDivisions() {
       level: divisions.level,
       maxTeams: divisions.maxTeams,
       regionId: divisions.regionId,
+      regionName: regions.name,
     })
     .from(divisions)
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
     .orderBy(asc(divisions.level))
   return ss.map((s) => ({
     ...s,

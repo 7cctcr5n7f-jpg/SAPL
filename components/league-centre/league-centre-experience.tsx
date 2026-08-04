@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
 import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
+import { computeDivisionPlayoffQualifiers } from "@/lib/engine/playoffs"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { ResultEntry } from "@/components/captain/result-entry"
 import {
@@ -30,6 +31,18 @@ import Link from "next/link"
 type ContentTab = "schedule" | "standings"
 
 const DIVISION_ORDER = ["Premier", "Championship", "Shield", "Challenge"]
+
+function playoffQualificationRule(regionCount: number) {
+  if (regionCount <= 1) return "Top 8 qualify for the playoff weekend."
+  if (regionCount === 2) return "Top 4 from each region qualify for quarter-finals."
+  if (regionCount === 3) return "Top 2 from each region plus the best two 3rd-place teams qualify for quarter-finals."
+  if (regionCount === 4) return "Top 2 from each region qualify for quarter-finals."
+  const base = Math.floor(8 / regionCount)
+  const extra = 8 % regionCount
+  return extra > 0
+    ? `Top ${base} from each region plus ${extra} wildcard team${extra === 1 ? "" : "s"} qualify for quarter-finals.`
+    : `Top ${base} from each region qualify for quarter-finals.`
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -77,6 +90,37 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     () => data.standings.filter((s) => s.divisionId === activeDivisionId),
     [data.standings, activeDivisionId],
   )
+
+  const playoffQualification = useMemo(() => {
+    if (!activeDivision) return { byTeamId: new Map<number, "direct" | "wildcard">(), rule: "" }
+    const sameLevelDivisions = data.divisions.filter((d) => d.level === activeDivision.level && d.regionId != null)
+    const byDivisionId = new Map(sameLevelDivisions.map((d) => [d.id, d]))
+    const qualifiers = computeDivisionPlayoffQualifiers(
+      data.standings
+        .filter((row) => byDivisionId.has(row.divisionId))
+        .map((row) => {
+          const division = byDivisionId.get(row.divisionId)!
+          return {
+            divisionId: row.divisionId,
+            divisionLevel: division.level,
+            divisionName: division.name,
+            regionId: division.regionId,
+            regionName: null,
+            teamId: row.teamId,
+            teamName: row.teamName,
+            rank: row.rank,
+            points: row.points,
+            wins: row.wins,
+            setsWon: row.setsWon,
+            pointsDiff: row.pointsDiff,
+          }
+        }),
+    )
+    return {
+      byTeamId: new Map(qualifiers.map((q) => [q.teamId, q.qualificationType])),
+      rule: playoffQualificationRule(sameLevelDivisions.length),
+    }
+  }, [activeDivision, data.divisions, data.standings])
 
   const divisionFixtures = useMemo(
     () => data.fixtures.filter((f) => f.divisionId === activeDivisionId),
@@ -222,7 +266,11 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
           {/* Tab Content */}
           <div className="p-4 md:p-6">
             {tab === "standings" ? (
-              <StandingsTable rows={divisionStandings} />
+              <StandingsTable
+                rows={divisionStandings}
+                qualifierByTeamId={playoffQualification.byTeamId}
+                qualificationRule={playoffQualification.rule}
+              />
             ) : (
               <FixturesByCategory
                 fixtures={activeFixtures}
