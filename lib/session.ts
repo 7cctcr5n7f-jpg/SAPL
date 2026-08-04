@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { userMeta, user as user } from "@/lib/db/schema"
@@ -39,7 +40,7 @@ export async function getOptionalSession() {
   }
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+async function _getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
 
@@ -88,6 +89,15 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     onMarketplace,
   }
 }
+
+/**
+ * Request-scoped memoised version of _getCurrentUser.
+ * React.cache() ensures that within a single server request the auth + DB work
+ * runs at most once — every layout and page that calls getCurrentUser() in the
+ * same request receives the same result without additional DB round-trips.
+ * This is safe for auth data because React.cache() is isolated per request.
+ */
+export const getCurrentUser = cache(_getCurrentUser)
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser()
