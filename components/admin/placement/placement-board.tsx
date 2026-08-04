@@ -34,7 +34,6 @@ import { toast } from "sonner"
 import { reindexDivisionColumn } from "@/lib/actions/placement"
 import { adjustDivisionFixtures } from "@/lib/actions/admin"
 import { PLACEMENT_SLOTS, type BoardTeam, type BoardDivision } from "@/lib/placement-types"
-import { SAPL_REGIONS } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { Wand2 } from "lucide-react"
 
@@ -95,13 +94,11 @@ export function PlacementBoard({
   const [panelTeam, setPanelTeam] = useState<BoardTeam | null>(null)
   const [regionFilter, setRegionFilter] = useState<string>("all")
 
-  // Regions that actually appear on this board, in canonical SAPL order.
+  // Region chips should come from the divisions created for this season, not
+  // from a team's home venue region.
   const regionOptions = useMemo(() => {
-    const present = new Set<string>()
-    for (const t of teams) if (t.saplRegion) present.add(t.saplRegion)
-    for (const d of divisions) if (d.regionName) present.add(d.regionName)
-    return SAPL_REGIONS.filter((r) => present.has(r))
-  }, [teams, divisions])
+    return [...new Set(divisions.map((d) => d.regionName).filter((name): name is string => Boolean(name)))]
+  }, [divisions])
   const dragStartContainer = useRef<string | null>(null)
   // Distinguish a click (open panel) from a drag.
   const movedRef = useRef(false)
@@ -278,15 +275,9 @@ export function PlacementBoard({
   const fitToViewport = regionFilter !== "all"
 
   const allUnassigned = containers[UNASSIGNED] ?? []
-  // When filtering by region, also keep teams that have no region at all so a
-  // region-less team is never hidden and can still be dragged into a division.
-  const filteredUnassigned =
-    regionFilter === "all"
-      ? allUnassigned
-      : allUnassigned.filter((id) => {
-          const region = teamsById[id]?.saplRegion
-          return !region || region === regionFilter
-        })
+  // Region selection filters the division columns only. Unassigned teams must
+  // remain fully visible so admins can place any team into any season region.
+  const filteredUnassigned = allUnassigned
   // Highest LI first so the strongest teams are easiest to spread across divisions.
   const unassignedIds = [...filteredUnassigned].sort(
     (a, b) => (teamsById[b]?.avgLi ?? 0) - (teamsById[a]?.avgLi ?? 0),
@@ -312,7 +303,7 @@ export function PlacementBoard({
           </RegionChip>
           {regionOptions.map((r) => (
             <RegionChip key={r} active={regionFilter === r} onClick={() => setRegionFilter(r)}>
-              {r.replace("Tshwane ", "")}
+                {r}
             </RegionChip>
           ))}
         </div>
