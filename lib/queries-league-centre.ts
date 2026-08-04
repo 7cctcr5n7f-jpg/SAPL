@@ -385,7 +385,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
         .leftJoin(regions, eq(divisions.regionId, regions.id))
         .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
-        .where(and(eq(fixtures.seasonId, season.id), inArray(fixtures.divisionId, usedDivisionIds)))
+        .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.published, true), inArray(fixtures.divisionId, usedDivisionIds)))
         .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
     : []
 
@@ -834,7 +834,7 @@ export async function getMatchDetail(fixtureId: number): Promise<LCMatchDetail |
     .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
     .leftJoin(regions, eq(divisions.regionId, regions.id))
     .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
-    .where(eq(fixtures.id, fixtureId))
+    .where(and(eq(fixtures.id, fixtureId), eq(fixtures.published, true)))
     .limit(1)
   if (!f) return null
 

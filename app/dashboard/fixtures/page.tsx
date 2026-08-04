@@ -31,6 +31,7 @@ export default async function DashboardFixturesPage() {
         canManageVenue={data.canManageVenue}
         fixtures={data.fixtures}
         clubs={data.clubs}
+        divisionTeams={data.divisionTeams}
         health={data.health}
       />
     </div>

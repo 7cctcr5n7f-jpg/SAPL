@@ -202,6 +202,7 @@ export async function getUpcomingFixtures(seasonId: number, limit = 6): Promise<
     .where(
       and(
         eq(fixtures.seasonId, seasonId),
+        eq(fixtures.published, true),
         ne(fixtures.status, "completed"),
         isNotNull(fixtures.homeTeamId),
         isNotNull(fixtures.awayTeamId),

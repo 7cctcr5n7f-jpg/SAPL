@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { fixtures, clubs } from "@/lib/db/schema"
+import { fixtures, clubs, teams, teamEntries } from "@/lib/db/schema"
 import { and, eq, ne } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
@@ -9,6 +9,8 @@ import { revalidatePath } from "next/cache"
 import { notifyTeam } from "@/lib/notify"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { canPublish, type CourtAssignments, type CourtLinks } from "@/lib/fixtures-ops"
+import { buildCourtAssignments } from "@/lib/engine/season"
+import { validateSeason, type SeasonValidation } from "@/lib/engine/validation"
 
 // Courts a single fixture (tie) consumes — one per category.
 const COURTS_PER_FIXTURE = CATEGORY_RULES.length
@@ -87,6 +89,9 @@ async function canManageFixtureLink(fixtureId: number) {
   if (!fx) return false
 
   // Club owners can edit fixtures hosted at their own club.
+  if (!fx.venueClubId || !fx.homeTeamId || !fx.awayTeamId) return false
+  const [meta] = await db.select({ published: fixtures.published }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  if (!meta?.published) return false
   if (fx.venueClubId != null && access.canManageClub(fx.venueClubId)) return true
 
   // Team owners/captains can edit fixtures involving their own teams.
@@ -119,6 +124,95 @@ export async function setFixturePlaytomicUrl(fixtureId: number, url: string) {
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/league-centre")
   return { ok: true }
+}
+
+/** Save draft scheduling fields for a fixture and re-run season validation. */
+export async function saveFixtureSchedule(input: {
+  fixtureId: number
+  week: number
+  matchDate: string | null
+  venueClubId: number | null
+  timeslot: string | null
+  homeTeamId: number
+  awayTeamId: number
+}): Promise<{ ok: boolean; error?: string; report?: SeasonValidation }> {
+  const user = await requireUser()
+  if (!isLeagueAdmin(user.realRole)) return { ok: false, error: "League admin access required" }
+  if (input.homeTeamId === input.awayTeamId) return { ok: false, error: "Home and away teams must be different." }
+  if (!Number.isFinite(input.week) || input.week < 1) return { ok: false, error: "Week must be 1 or greater." }
+
+  const [fixture] = await db
+    .select({
+      id: fixtures.id,
+      seasonId: fixtures.seasonId,
+      divisionId: fixtures.divisionId,
+      courtAssignments: fixtures.courtAssignments,
+    })
+    .from(fixtures)
+    .where(eq(fixtures.id, input.fixtureId))
+    .limit(1)
+  if (!fixture) return { ok: false, error: "Fixture not found." }
+
+  const divisionTeams = await db
+    .select({ teamId: teamEntries.teamId, homeClubId: teams.homeClubId, slot: teamEntries.slot })
+    .from(teamEntries)
+    .innerJoin(teams, eq(teams.id, teamEntries.teamId))
+    .where(and(eq(teamEntries.seasonId, fixture.seasonId), eq(teamEntries.divisionId, fixture.divisionId), eq(teamEntries.status, "assigned")))
+
+  const divisionTeamIds = new Set(divisionTeams.map((team) => team.teamId))
+  if (!divisionTeamIds.has(input.homeTeamId) || !divisionTeamIds.has(input.awayTeamId)) {
+    return { ok: false, error: "Both teams must belong to this division." }
+  }
+
+  let venueName: string | null = null
+  let venueCourts = 0
+  const homeEntry = divisionTeams.find((team) => team.teamId === input.homeTeamId)
+  const awayEntry = divisionTeams.find((team) => team.teamId === input.awayTeamId)
+  if (input.venueClubId != null) {
+    const [club] = await db.select({ name: clubs.name, courts: clubs.courts }).from(clubs).where(eq(clubs.id, input.venueClubId)).limit(1)
+    if (!club) return { ok: false, error: "Venue not found." }
+    venueName = club.name
+    venueCourts = club.courts ?? 0
+  } else {
+    if (homeEntry?.homeClubId != null) {
+      const [club] = await db.select({ id: clubs.id, name: clubs.name, courts: clubs.courts }).from(clubs).where(eq(clubs.id, homeEntry.homeClubId)).limit(1)
+      if (club) {
+        input.venueClubId = club.id
+        venueName = club.name
+        venueCourts = club.courts ?? 0
+      }
+    }
+  }
+
+  const currentAssignments = (fixture.courtAssignments ?? {}) as CourtAssignments
+  const nextAssignments =
+    Object.keys(currentAssignments).length > 0
+      ? currentAssignments
+      : buildCourtAssignments(venueCourts, input.timeslot === "17:00" || input.timeslot === "18:30" ? input.timeslot : null)
+
+  await db
+    .update(fixtures)
+    .set({
+      week: input.week,
+      matchDate: input.matchDate ? new Date(`${input.matchDate}T19:00:00`) : null,
+      venueClubId: input.venueClubId,
+      venue: venueName,
+      timeslot: input.timeslot,
+      homeTeamId: input.homeTeamId,
+      awayTeamId: input.awayTeamId,
+      homeSlot: homeEntry?.slot ?? null,
+      awaySlot: awayEntry?.slot ?? null,
+      courtAssignments: nextAssignments,
+      updatedByUserId: user.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(fixtures.id, input.fixtureId))
+
+  const report = await validateSeason(fixture.seasonId)
+  revalidatePath("/dashboard/fixtures")
+  revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  return { ok: true, report }
 }
 
 /** Set (or clear) a single court's Playtomic booking link for a category. */
@@ -237,11 +331,12 @@ async function authorizeFixtureEdit(fixtureId: number) {
   if (access.isLeagueAdmin) return { user, ok: true as const }
 
   const [fx] = await db
-    .select({ venueClubId: fixtures.venueClubId, homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId })
+    .select({ venueClubId: fixtures.venueClubId, homeTeamId: fixtures.homeTeamId, awayTeamId: fixtures.awayTeamId, published: fixtures.published })
     .from(fixtures)
     .where(eq(fixtures.id, fixtureId))
     .limit(1)
   if (!fx) return { user, ok: false as const }
+  if (!fx.published) return { user, ok: false as const }
 
   if (fx.venueClubId != null && access.canManageClub(fx.venueClubId)) return { user, ok: true as const }
   if ((fx.homeTeamId != null && access.ownedTeamIds.includes(fx.homeTeamId)) || (fx.awayTeamId != null && access.ownedTeamIds.includes(fx.awayTeamId))) {

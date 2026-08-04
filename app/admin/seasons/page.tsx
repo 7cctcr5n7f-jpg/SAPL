@@ -57,6 +57,15 @@ export default async function AdminSeasonsPage() {
           })),
         }))}
         defaultRegionNames={regions.map((r) => r.name)}
+        currentSeasonReadiness={
+          currentSeason && readiness
+            ? {
+                seasonId: currentSeason.id,
+                incompleteTeams: readiness.teams.filter((team) => !team.isLeagueReady).length,
+                playersOutstanding: readiness.playersOutstanding,
+              }
+            : null
+        }
       />
     </div>
   )

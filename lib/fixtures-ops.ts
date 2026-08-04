@@ -73,10 +73,9 @@ export function readyCategoryCount(fx: FixtureLike): number {
 }
 
 export type OpsStatus =
+  | "draft"
   | "planned"
   | "missing_links"
-  | "ready_to_publish"
-  | "published"
   | "awaiting_result"
   | "completed"
 
@@ -91,32 +90,31 @@ export type OpsStatusInfo = {
 
 /**
  * Derives the operational status of a fixture for the console grid.
- * Order of precedence: completed → awaiting result (published, playable) →
- * published → ready-to-publish → missing links → planned.
+ * Order of precedence: completed → draft → awaiting result →
+ * missing links → planned.
  */
 export function deriveOpsStatus(fx: FixtureLike): OpsStatusInfo {
   const readyCount = readyCategoryCount(fx)
   const total = CATEGORY_COUNT
   const hasTeams = fx.homeTeamId != null && fx.awayTeamId != null
-  const allReady = readyCount === total && hasTeams && fx.venueClubId != null && fx.matchDate != null
 
   if (fx.status === "completed") {
     return { status: "completed", label: "Completed", tone: "bg-emerald-500/15 text-emerald-400", readyCount, total }
   }
-  if (fx.published) {
+  if (!fx.published || fx.status === "draft") {
     return {
-      status: "awaiting_result",
-      label: "Awaiting Result",
-      tone: "bg-amber-500/15 text-amber-400",
+      status: "draft",
+      label: "Draft",
+      tone: "bg-violet-500/15 text-violet-400",
       readyCount,
       total,
     }
   }
-  if (allReady) {
+  if (readyCount === total && hasTeams && fx.venueClubId != null && fx.matchDate != null) {
     return {
-      status: "ready_to_publish",
-      label: "Ready to Publish",
-      tone: "bg-sky-500/15 text-sky-400",
+      status: "awaiting_result",
+      label: "Awaiting Result",
+      tone: "bg-amber-500/15 text-amber-400",
       readyCount,
       total,
     }

@@ -143,6 +143,7 @@ export async function getFixtures(opts: { seasonId: number; divisionId?: number;
   const home = alias(teams, "home")
   const away = alias(teams, "away")
   const conditions = [eq(fixtures.seasonId, opts.seasonId)]
+  conditions.push(eq(fixtures.published, true))
   if (opts.divisionId) conditions.push(eq(fixtures.divisionId, opts.divisionId))
   if (opts.week) conditions.push(eq(fixtures.week, opts.week))
 

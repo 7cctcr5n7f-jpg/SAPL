@@ -23,7 +23,6 @@ import {
   setSeasonDivisions,
   validateSeasonAction,
   publishSeasonAction,
-  revertSeasonToDraftAction,
   unlockSeasonAction,
 } from "@/lib/actions/admin"
 import type { SeasonValidation } from "@/lib/engine/validation"
@@ -69,7 +68,15 @@ function groupDivisions(season: Season) {
   return [...map.values()].sort((a, b) => a.region.localeCompare(b.region))
 }
 
-export function ControlPanel({ seasons, defaultRegionNames }: { seasons: Season[]; defaultRegionNames: string[] }) {
+export function ControlPanel({
+  seasons,
+  defaultRegionNames,
+  currentSeasonReadiness,
+}: {
+  seasons: Season[]
+  defaultRegionNames: string[]
+  currentSeasonReadiness: { seasonId: number; incompleteTeams: number; playersOutstanding: number } | null
+}) {
   const [pending, start] = useTransition()
 
   return (
@@ -155,7 +162,7 @@ export function ControlPanel({ seasons, defaultRegionNames }: { seasons: Season[
               )}
 
               {/* Lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked */}
-              <SeasonLifecycle season={s} />
+              <SeasonLifecycle season={s} readinessWarning={currentSeasonReadiness?.seasonId === s.id ? currentSeasonReadiness : null} />
             </div>
           )
         })}
@@ -182,12 +189,18 @@ function StatusBadge({ status }: { status: string }) {
 
 /**
  * Lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked.
- *  - Validate finalises divisions readiness.
- *  - Generate fixtures is one-time.
- *  - Start season locks structure.
- *  - Unlock season re-opens back to Divisions Finalised.
+ *  - Generate fixtures creates draft fixtures only.
+ *  - Validate checks the draft schedule.
+ *  - Publish makes fixtures visible to clubs/players/public.
+ *  - Unpublish moves the season back to draft fixtures.
  */
-function SeasonLifecycle({ season }: { season: Season }) {
+function SeasonLifecycle({
+  season,
+  readinessWarning,
+}: {
+  season: Season
+  readinessWarning: { seasonId: number; incompleteTeams: number; playersOutstanding: number } | null
+}) {
   const [pending, start] = useTransition()
   const [report, setReport] = useState<SeasonValidation | null>(null)
   const status = normalizeSeasonStatus(season.status)
@@ -213,14 +226,14 @@ function SeasonLifecycle({ season }: { season: Season }) {
       {isActive && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
           <Lock className="h-4 w-4 shrink-0" />
-          League is locked — team names, home venues and club slot settings are locked. Unlock to make changes.
+          League is locked — new team creation, team names, home venues and club slot settings are locked. Players can still join incomplete teams.
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant="outline"
-          disabled={pending || isActive || hasFixtures || status !== "divisions_finalised"}
+          disabled={pending || isActive || hasFixtures}
           onClick={() =>
             run(async (fd) => {
               const res = await generateSeason(fd)
@@ -231,13 +244,30 @@ function SeasonLifecycle({ season }: { season: Season }) {
           <Wand2 className="mr-1 h-4 w-4" /> Generate fixtures
         </Button>
 
+        {!isActive && hasFixtures && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() =>
+              run(async (fd) => {
+                fd.set("force", "1")
+                const res = await generateSeason(fd)
+                return res.ok ? { ...res } : { ok: false, error: res.error ?? "Failed to regenerate fixtures" }
+              }, "Draft fixtures regenerated")
+            }
+          >
+            <Undo2 className="mr-1 h-4 w-4" /> Redo fixture generation
+          </Button>
+        )}
+
         <Button
           size="sm"
           variant="outline"
-          disabled={pending || isActive || status === "fixtures_generated"}
-          onClick={() => run(validateSeasonAction, "Divisions finalised")}
+          disabled={pending || !hasFixtures}
+          onClick={() => run(validateSeasonAction, "Validation complete")}
         >
-          <ShieldCheck className="mr-1 h-4 w-4" /> Validate
+          <ShieldCheck className="mr-1 h-4 w-4" /> Validate Fixtures
         </Button>
 
         {isActive ? (
@@ -245,32 +275,28 @@ function SeasonLifecycle({ season }: { season: Season }) {
             size="sm"
             variant="outline"
             disabled={pending}
-            onClick={() => run(unlockSeasonAction, "Season unlocked")}
+            onClick={() => run(unlockSeasonAction, "Fixtures moved back to draft")}
           >
-            <LockOpen className="mr-1 h-4 w-4" /> Unlock season
+            <LockOpen className="mr-1 h-4 w-4" /> Unpublish Fixtures
           </Button>
         ) : (
           <Button
             size="sm"
             disabled={pending || status !== "fixtures_generated"}
-            onClick={() => run(publishSeasonAction, "Season started")}
+            onClick={() => run(publishSeasonAction, "Fixtures published")}
           >
-            <Rocket className="mr-1 h-4 w-4" /> Start season
-          </Button>
-        )}
-
-        {!isActive && hasFixtures && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground"
-            disabled={pending}
-            onClick={() => run(revertSeasonToDraftAction, "Registration re-opened")}
-          >
-            <Undo2 className="mr-1 h-4 w-4" /> Re-open registration
+            <Rocket className="mr-1 h-4 w-4" /> Publish Fixtures
           </Button>
         )}
       </div>
+
+      {readinessWarning && (readinessWarning.incompleteTeams > 0 || readinessWarning.playersOutstanding > 0) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+          {readinessWarning.incompleteTeams > 0 && <div>⚠ {readinessWarning.incompleteTeams} teams are still incomplete.</div>}
+          {readinessWarning.playersOutstanding > 0 && <div>⚠ {readinessWarning.playersOutstanding} players still owe league fees.</div>}
+          <div className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/80">These warnings do not block fixture generation.</div>
+        </div>
+      )}
 
       {report && <ValidationReport report={report} />}
     </div>
@@ -282,7 +308,7 @@ function ValidationReport({ report }: { report: SeasonValidation }) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
         <CircleCheck className="h-4 w-4 shrink-0" />
-        No issues found — schedule is ready to start.
+        No issues found — draft fixtures are ready to publish.
       </div>
     )
   }
