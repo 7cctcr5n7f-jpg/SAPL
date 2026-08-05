@@ -76,7 +76,7 @@ export function StandingsTable({
               />
               <span className="text-center text-sm font-bold tabular-nums text-slate-800">{pos}</span>
               <div className="flex min-w-0 items-center gap-2.5">
-                <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.orgLogo} size="sm" />
+                <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.venueLogo ?? r.orgLogo} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900">{r.teamName ?? "—"}</p>
                   <p className="truncate text-[11px] text-slate-500 md:hidden">

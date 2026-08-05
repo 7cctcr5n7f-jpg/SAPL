@@ -49,6 +49,7 @@ export type LCStanding = {
   teamId: number
   teamName: string | null
   venueName: string | null
+  venueLogo: string | null
   orgName: string | null
   orgSlug: string | null
   teamLogo: string | null
@@ -323,6 +324,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           teamName: teams.name,
           teamLogo: teams.logoUrl,
           venueName: clubs.name,
+          venueLogo: clubs.logoUrl,
           orgName: organisations.name,
           orgSlug: organisations.slug,
           orgLogo: organisations.logoUrl,
