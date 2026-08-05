@@ -146,13 +146,21 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   let teamId: number
   let otherTeams: { id: number; name: string }[]
 
+  const managedIds = opts?.managedTeamIds ?? []
+  const ownedRows = currentEmail
+    ? await db
+        .select({ teamId: teams.id, name: teams.name })
+        .from(teams)
+        .where(or(sql`lower(${teams.ownerEmail}) = ${currentEmail}`, sql`lower(${teams.coOwnerEmail}) = ${currentEmail}`))
+    : []
+  const scopedTeamIds = [...new Set([...managedIds, ...ownedRows.map((r) => r.teamId)])]
+
   if (memberships.length > 0) {
-    const managedIds = opts?.managedTeamIds ?? []
-    const managedRows = managedIds.length > 0
+    const managedRows = scopedTeamIds.length > 0
       ? await db
           .select({ teamId: teams.id, name: teams.name })
           .from(teams)
-          .where(inArray(teams.id, managedIds))
+          .where(inArray(teams.id, scopedTeamIds))
       : []
 
     // Team switcher scope is the union of active memberships and managed teams.
@@ -174,29 +182,21 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     otherTeams = selectableTeams.filter((t) => t.id !== teamId)
   } else {
     // No active memberships — check if this user manages any teams by email or via passed scope.
-    const managed = opts?.managedTeamIds ?? []
-    const ownedRows = currentEmail
-      ? await db
-          .select({ id: teams.id, name: teams.name })
-          .from(teams)
-          .where(or(sql`lower(${teams.ownerEmail}) = ${currentEmail}`, sql`lower(${teams.coOwnerEmail}) = ${currentEmail}`))
-      : []
-    const managedIds = [...new Set([...managed, ...ownedRows.map((r) => r.id)])]
-    if (managedIds.length === 0) return null
+    if (scopedTeamIds.length === 0) return null
 
     // Fetch names for all managed teams so the team switcher works.
     const managedRows = await db
       .select({ id: teams.id, name: teams.name })
       .from(teams)
-      .where(inArray(teams.id, managedIds))
+      .where(inArray(teams.id, scopedTeamIds))
 
     if (managedRows.length === 0) return null
 
     // Pick the preferred team if it's in scope, otherwise the first managed one.
     const chosenId =
-      (opts?.preferredTeamId && managedIds.includes(opts.preferredTeamId))
+      (opts?.preferredTeamId && scopedTeamIds.includes(opts.preferredTeamId))
         ? opts.preferredTeamId
-        : managedIds[0]
+        : scopedTeamIds[0]
 
     teamId = chosenId
     otherTeams = managedRows.filter((r) => r.id !== chosenId).map((r) => ({ id: r.id, name: r.name }))
