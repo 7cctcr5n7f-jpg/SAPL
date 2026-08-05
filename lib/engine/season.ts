@@ -146,7 +146,9 @@ export function buildCourtAssignments(courts: number, kickoff: FixtureTimeslot |
 
 function venueNightCapacity(club: PlannerClub): number {
   if (!club.hostsThursday || club.hostingCapacity <= 0) return 0
-  if ((club.courts ?? 0) < CATEGORY_LAYOUT.length) return club.hostTimeslots.length >= 2 ? 1 : 0
+  // Capacity = number of available timeslots (each timeslot can host one fixture)
+  // A venue with 2 courts and both 18:30+17:00 timeslots can host 2 fixtures per week.
+  // A venue with 2 courts and only one timeslot can host 1 fixture per week.
   return club.hostTimeslots.length
 }
 
