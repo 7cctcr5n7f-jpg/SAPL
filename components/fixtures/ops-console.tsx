@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { fmtDate } from "@/lib/format"
 import { SegmentedTabs, StatGrid } from "@/components/shared/dense"
 import { toast } from "sonner"
 import { FIXTURE_TIMESLOTS } from "@/lib/constants"
@@ -42,11 +41,11 @@ function teamLabel(name: string | null, slot: number | null) {
   return { text: "TBD", placeholder: true }
 }
 
-function fmtWhen(value: Date | string | null): string {
-  if (!value) return "—"
+function fmtShortDate(value: Date | string | null) {
+  if (!value) return "TBD"
   const d = typeof value === "string" ? new Date(value) : value
-  if (Number.isNaN(d.getTime())) return "—"
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  if (Number.isNaN(d.getTime())) return "TBD"
+  return new Intl.DateTimeFormat("en-ZA", { day: "2-digit", month: "2-digit" }).format(d)
 }
 
 function resultsEntered(f: DashboardFixture): number {
@@ -491,39 +490,6 @@ function ConsoleRow({
   )
 }
 
-function CountPill({
-  count,
-  total,
-  className,
-  label,
-  resultStyle,
-}: {
-  count: number
-  total: number
-  className?: string
-  label: string
-  resultStyle?: boolean
-}) {
-  const complete = count === total
-  return (
-    <span
-      title={`${count} of ${total} ${label}`}
-      className={cn(
-        "mx-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium tabular-nums",
-        complete
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-          : resultStyle
-            ? "border-border bg-secondary text-muted-foreground"
-            : "border-orange-500/30 bg-orange-500/10 text-orange-400",
-        className,
-      )}
-    >
-      {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-      {count}/{total}
-    </span>
-  )
-}
-
 function FixtureDetail({
   f,
   canManageVenue,
@@ -549,54 +515,22 @@ function FixtureDetail({
 
   return (
     <div className="space-y-3 border-t border-border bg-background/40 px-4 py-3">
-      {/* Detail + audit */}
-      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-          <Field label="Region" value={f.regionName} />
-          <Field label="Division" value={f.divisionName} />
-          <Field label="Week" value={`Week ${f.week}`} />
-          <Field label="Date" value={f.matchDate ? fmtDate(f.matchDate) : null} />
-          <Field label="Venue" value={f.venueClubName ?? f.venue} />
-          <Field label="Night Time" value={f.timeslot} />
-        </dl>
-        <div className="flex flex-col items-start gap-2 md:items-end">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold",
-              f.published ? "bg-emerald-500/15 text-emerald-400" : "bg-violet-500/15 text-violet-400",
-            )}
-          >
-            {f.published ? "Published" : "Draft"}
-          </span>
-        </div>
-      </div>
-
-      {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
-
-      {/* Audit trail */}
-      <div className="hidden flex-wrap gap-x-6 gap-y-1 rounded-md bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground md:flex">
-        <span>Created by <span className="text-foreground">System (Season Generator)</span></span>
-        <span>Updated by <span className="text-foreground">{f.updatedByName ?? "—"}</span> {f.updatedAt ? `· ${fmtWhen(f.updatedAt)}` : ""}</span>
-        <span>Published by <span className="text-foreground">{f.publishedByName ?? "—"}</span> {f.publishedAt ? `· ${fmtWhen(f.publishedAt)}` : ""}</span>
-        <span>Result by <span className="text-foreground">{f.resultEnteredByName ?? "—"}</span> {f.resultEnteredAt ? `· ${fmtWhen(f.resultEnteredAt)}` : ""}</span>
-      </div>
-
       {/* Category child table */}
       <div className="overflow-hidden rounded-md border border-border">
-        <div className="hidden grid-cols-[1fr_4rem_6rem_1fr_7rem] items-center gap-3 border-b border-border bg-secondary/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+        <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
+          <span>Date</span>
           <span>Category</span>
-          <span>Court</span>
-          <span>Time</span>
-          <span>Booking Link</span>
-          <span className="text-right">Status</span>
+          <span className="text-right">Link</span>
         </div>
         {CATEGORIES.map((c) => (
           <CategoryEditor
             key={c.category}
             fixtureId={f.id}
+            matchDate={f.matchDate}
             category={c.category}
             isFeature={c.isFeatureCourt}
             canEdit={canEdit}
+            editing={editing}
             assignment={f.courtAssignments?.[c.category] ?? defaultCourtAssignments(f.venueCourts)[c.category]}
             link={f.courtLinks?.[c.category] ?? ""}
             match={f.matches.find((m) => m.category === c.category)}
@@ -607,6 +541,8 @@ function FixtureDetail({
       </div>
 
       {/* Result entry */}
+      {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
+
       {bothTeams && (
         <div className="rounded-md border border-border">
           <button
@@ -767,20 +703,13 @@ function DraftScheduleEditor({
   )
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-0.5 text-sm", value ? "text-foreground" : "italic text-muted-foreground")}>{value || "Not set"}</dd>
-    </div>
-  )
-}
-
 function CategoryEditor({
   fixtureId,
+  matchDate,
   category,
   isFeature,
   canEdit,
+  editing,
   assignment,
   link,
   match,
@@ -788,9 +717,11 @@ function CategoryEditor({
   awayName,
 }: {
   fixtureId: number
+  matchDate: Date | string | null
   category: string
   isFeature: boolean
   canEdit: boolean
+  editing: boolean
   assignment: { court: string | null; time: string | null }
   link: string
   match?: DashboardFixture["matches"][number]
@@ -821,90 +752,106 @@ function CategoryEditor({
     )
   }
 
+  const linkReady = Boolean(url)
   return (
-    <div className="grid grid-cols-2 gap-2 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
-      <div className="col-span-2 min-w-0 sm:col-span-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{category}</span>
-          {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
+    <div className="border-b border-border px-3 py-2 last:border-b-0">
+      <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-start gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {fmtShortDate(matchDate)}
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>{assignment?.time ?? "TBD"}</span>
+            <span>·</span>
+            <span>Court {assignment?.court ?? "TBD"}</span>
+          </div>
         </div>
-        <div className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          <span className="font-medium text-foreground">{homeName}</span>
-          <span className="mx-1.5 text-muted-foreground">vs</span>
-          <span className="font-medium text-foreground">{awayName}</span>
+
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{category}</span>
+            {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
+          </div>
+          <div className="mt-0.5 text-sm leading-4">
+            <span className="font-medium text-foreground">{homeName}</span>
+            <span className="mx-1.5 text-muted-foreground">vs</span>
+            <span className="font-medium text-foreground">{awayName}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          {linkReady ? (
+            <a
+              href={/^https?:\/\//i.test(url) ? url : `https://${url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-500 hover:bg-emerald-500/15"
+              aria-label={`Open ${category} booking`}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Playtomic
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-500">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Pending
+            </span>
+          )}
+          {canEdit && (
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {match?.winnerTeamId != null && match.scoreDetail ? match.scoreDetail : ""}
+            </span>
+          )}
         </div>
       </div>
 
-      <Input
-        value={court}
-        onChange={(e) => setCourt(e.target.value)}
-        disabled={!canEdit}
-        inputMode="numeric"
-        placeholder="—"
-        className="h-8 text-center text-sm"
-        aria-label={`${category} court number`}
-      />
-
-      <select
-        value={time ?? ""}
-        onChange={(e) => setTime(e.target.value)}
-        disabled={!canEdit}
-        className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-        aria-label={`${category} start time`}
-      >
-        <option value="">Time</option>
-        {FIXTURE_TIMESLOTS.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
-
-      <div className="col-span-2 flex items-center gap-1.5 sm:col-span-1">
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          disabled={!canEdit}
-          placeholder="playtomic.io/…"
-          className="h-8 text-sm"
-          aria-label={`${category} booking link`}
-        />
-        {url && !canEdit && (
-          <a
-            href={/^https?:\/\//i.test(url) ? url : `https://${url}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={`Open ${category} booking`}
+      {editing && canEdit ? (
+        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-[4rem_6rem_minmax(0,1fr)_auto]">
+          <Input
+            value={court}
+            onChange={(e) => setCourt(e.target.value)}
+            disabled={!canEdit}
+            inputMode="numeric"
+            placeholder="Court"
+            className="h-8 text-center text-sm"
+            aria-label={`${category} court number`}
+          />
+          <select
+            value={time ?? ""}
+            onChange={(e) => setTime(e.target.value)}
+            disabled={!canEdit}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+            aria-label={`${category} start time`}
           >
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        )}
-      </div>
-
-      <div className="col-span-2 flex items-center justify-end gap-1.5 sm:col-span-1">
-        {match?.winnerTeamId != null && match.scoreDetail && (
-          <span className="mr-auto font-mono text-[11px] text-muted-foreground sm:mr-0">{match.scoreDetail}</span>
-        )}
-        {canEdit && url && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyLink} aria-label="Copy link">
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        )}
-        {canEdit && dirty ? (
-          <Button size="sm" className="h-8" onClick={save} disabled={pending}>
-            {pending ? "…" : "Save"}
-          </Button>
-        ) : ready ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Ready
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-md bg-orange-500/15 px-2 py-1 text-[11px] font-medium text-orange-400">
-            <AlertTriangle className="h-3.5 w-3.5" /> Pending
-          </span>
-        )}
-      </div>
+            <option value="">Time</option>
+            {FIXTURE_TIMESLOTS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={!canEdit}
+            placeholder="playtomic.io/…"
+            className="h-8 text-sm"
+            aria-label={`${category} booking link`}
+          />
+          <div className="flex items-center justify-end gap-1.5">
+            {canEdit && url && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyLink} aria-label="Copy link">
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canEdit && dirty ? (
+              <Button size="sm" className="h-8" onClick={save} disabled={pending}>
+                {pending ? "…" : "Save"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
