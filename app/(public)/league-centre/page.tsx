@@ -27,7 +27,7 @@ export default async function LeagueCentrePage() {
             </div>
             <dl className="flex items-center gap-5 pb-1 text-sm tabular-nums">
               <HeaderStat label="Teams" value={data.stats.teamCount} />
-              <HeaderStat label="Clubs" value={data.stats.clubCount} />
+              <HeaderStat label="Venues" value={data.stats.clubCount} />
               <HeaderStat label="Played" value={data.stats.matchesPlayed} />
               <HeaderStat label="Remaining" value={data.stats.matchesRemaining} />
             </dl>

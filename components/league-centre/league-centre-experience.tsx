@@ -186,7 +186,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                       active ? "text-red-100" : "text-slate-500",
                     )}
                   >
-                    {r.teamCount} teams &middot; {r.clubCount} clubs
+                    {r.teamCount} teams &middot; {r.clubCount} venues
                   </span>
                 </button>
               )
