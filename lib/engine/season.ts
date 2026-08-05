@@ -152,7 +152,9 @@ function venueNightCapacity(club: PlannerClub): number {
 
 function venueAvailableTimeslots(club: PlannerClub): FixtureTimeslot[] {
   if ((club.courts ?? 0) < CATEGORY_LAYOUT.length) {
-    return club.hostTimeslots.length >= 2 ? [FIXTURE_TIMESLOTS[0]] : []
+    // Venue with < 4 courts can host only 1 fixture per night.
+    // Return the first available timeslot from the club's configured slots.
+    return club.hostTimeslots.length > 0 ? [club.hostTimeslots[0]] : []
   }
   return club.hostTimeslots
 }
@@ -183,17 +185,21 @@ function chooseKickoffForVenue(
 
   const current = venueUsageForWeek(usage, week, club.id)
   if ((club.courts ?? 0) < CATEGORY_LAYOUT.length) {
-    return current.total === 0 ? FIXTURE_TIMESLOTS[0] : null
+    // Venue with < 4 courts can host only 1 fixture per night.
+    // Return the first available timeslot if this is the first fixture this week.
+    return current.total === 0 ? available[0] : null
   }
 
   const preferred = club.preferredTimeslot
+  const timeslotIndex = (slot: FixtureTimeslot): number => FIXTURE_TIMESLOTS.indexOf(slot)
   const ordered = [...available].sort((a, b) => {
     if (preferred && a === preferred && b !== preferred) return -1
     if (preferred && b === preferred && a !== preferred) return 1
     const aUsed = current.slots.has(a) ? 1 : 0
     const bUsed = current.slots.has(b) ? 1 : 0
     if (aUsed !== bUsed) return aUsed - bUsed
-    return a.localeCompare(b)
+    // Sort by FIXTURE_TIMESLOTS order (priority)
+    return timeslotIndex(a) - timeslotIndex(b)
   })
 
   for (const slot of ordered) {
