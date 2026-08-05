@@ -473,8 +473,6 @@ function ConsoleRow({
               )}
             </div>
 
-            <CountPill count={info.readyCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="courts booked" />
-            <CountPill count={resCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="results entered" resultStyle />
           </div>
         </button>
 
