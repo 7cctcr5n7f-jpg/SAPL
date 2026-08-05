@@ -321,6 +321,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           teamId: teamEntries.teamId,
           teamName: teams.name,
           teamLogo: teams.logoUrl,
+          venueName: clubs.name,
           orgName: organisations.name,
           orgSlug: organisations.slug,
           orgLogo: organisations.logoUrl,
@@ -338,6 +339,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         })
         .from(teamEntries)
         .innerJoin(teams, eq(teamEntries.teamId, teams.id))
+        .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
         .leftJoin(organisations, eq(teams.organisationId, organisations.id))
         .leftJoin(
           standings,

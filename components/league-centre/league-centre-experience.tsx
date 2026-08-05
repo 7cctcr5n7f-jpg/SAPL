@@ -180,14 +180,6 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                   )}
                 >
                   <span className="block text-sm font-bold">{r.name}</span>
-                  <span
-                    className={cn(
-                      "block text-[11px] tabular-nums",
-                      active ? "text-red-100" : "text-slate-500",
-                    )}
-                  >
-                    {r.teamCount} teams &middot; {r.clubCount} venues
-                  </span>
                 </button>
               )
             })}
