@@ -289,6 +289,29 @@ export function planSeason(args: {
       return current.total < venueNightCapacity(club)
     }
 
+    // Prioritize venues by capacity utilization. Defined here (before minimumHomeGames)
+    // so teamVenuePriority is available when computing minimum home game allocations.
+    const venueTeamCount = new Map<number, number>()
+    for (const team of division.teamSlots) {
+      if (team.homeClubId != null) {
+        venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
+      }
+    }
+
+    const venueConstraintScore = (clubId: number): number => {
+      const club = clubById.get(clubId)
+      if (!club) return 0
+      const teamCount = venueTeamCount.get(clubId) ?? 0
+      const courts = club.courts ?? 0
+      const utilization = courts > 0 ? teamCount / courts : teamCount * 100
+      return utilization
+    }
+
+    const teamVenuePriority = (teamId: number): number => {
+      const team = teamById.get(teamId)
+      return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
+    }
+
     // Compute minimum home games required per team based on venue constraint.
     // Teams at bottleneck venues (100% utilization) MUST get at least 2 home games.
     // This is computed BEFORE orientation to ensure fairness for constrained venues.
@@ -334,43 +357,6 @@ export function planSeason(args: {
       if (allocated.size > 0) {
         preAllocatedHome.set(team.id, allocated)
       }
-    }
-
-    // Prioritize venues by capacity utilization. Venues at or above 100% capacity
-    // MUST host every week and are the bottleneck. These are scheduled first.
-    // Venues with slack capacity are scheduled last when more flexibility exists.
-    //
-    // Capacity Utilization Ranking:
-    // - 4 teams + 4 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
-    // - 2 teams + 2 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
-    // - 4 teams + 2 courts = 2.0  (200% - OVER-SUBSCRIBED: impossible to fit all)
-    // - 3 teams + 2 courts = 1.5  (150% - OVER-SUBSCRIBED: very constrained)
-    // - 2 teams + 4 courts = 0.5  (50% - SLACK: lots of flexibility)
-    // - 1 team + 4 courts = 0.25  (25% - SLACK: maximum flexibility)
-    const venueTeamCount = new Map<number, number>()
-    for (const team of division.teamSlots) {
-      if (team.homeClubId != null) {
-        venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
-      }
-    }
-    
-    const venueConstraintScore = (clubId: number): number => {
-      const club = clubById.get(clubId)
-      if (!club) return 0
-      const teamCount = venueTeamCount.get(clubId) ?? 0
-      const courts = club.courts ?? 0
-      
-      // Score = teams / courts (utilization ratio)
-      // Higher score = more constrained = schedule first
-      const utilization = courts > 0 ? teamCount / courts : teamCount * 100
-      
-      // Return raw utilization to allow fine-grained sorting
-      return utilization
-    }
-    
-    const teamVenuePriority = (teamId: number): number => {
-      const team = teamById.get(teamId)
-      return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
     }
 
     for (let weekIndex = 0; weekIndex < rounds.length; weekIndex++) {
