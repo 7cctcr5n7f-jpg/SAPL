@@ -1,4 +1,5 @@
 import React from "react"
+import { getAccessContext } from "@/lib/access"
 import { getCurrentUser } from "@/lib/session"
 import {
   getPlayerByUserId,
@@ -62,7 +63,6 @@ export default async function DashboardOverview({
 }) {
   const me = await getCurrentUser()
   if (!me) return null
-  const { getAccessContext } = await import("@/lib/access")
   const { payment } = await searchParams
   const access = await getAccessContext(me)
   // Load player data for everyone — admins also have LI, ratings, and teams.

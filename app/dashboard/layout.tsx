@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { UserMenu } from "@/components/dashboard/user-menu"
+import { getAccessContext } from "@/lib/access"
+import { getCurrentUser } from "@/lib/session"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { getCurrentUser } = await import("@/lib/session")
-  const { getAccessContext } = await import("@/lib/access")
   const me = await getCurrentUser()
   if (!me) redirect("/sign-in")
   // Only pure "player" role users who haven't completed onboarding get redirected.
