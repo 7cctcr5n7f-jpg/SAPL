@@ -20,6 +20,8 @@ import {
   setCurrentSeason,
   deleteSeason,
   generateSeason,
+  finalizeSeasonFixturesFromPlanning,
+  updateFixturePlanningPairing,
   setSeasonDivisions,
   validateSeasonAction,
   publishSeasonAction,
@@ -32,6 +34,7 @@ import { DIVISIONS } from "@/lib/constants"
 import { normalizeSeasonStatus, seasonStatusLabel } from "@/lib/season-lifecycle"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { Crest } from "@/components/league-centre/crest"
 import {
   Plus,
   CalendarRange,
@@ -46,6 +49,7 @@ import {
   CircleCheck,
   Lock,
   LockOpen,
+  GripVertical,
 } from "lucide-react"
 
 type Division = { id: number; name: string; level: number; maxTeams: number; regionId: number | null }
@@ -60,6 +64,29 @@ type Season = {
   regions: Region[]
   divisions: Division[]
 }
+type PlanningDivision = { id: number; name: string; level: number; maxTeams: number; regionId: number | null; regionName: string | null }
+type PlanningPairing = {
+  id: number
+  seasonId: number
+  divisionId: number
+  round: number
+  pairingOrder: number
+  week: number | null
+  teamAId: number
+  teamBId: number
+  teamAName: string
+  teamBName: string
+  teamALogoUrl?: string | null
+  teamBLogoUrl?: string | null
+  teamAHomeClubName?: string | null
+  teamBHomeClubName?: string | null
+  teamAHomeClubCourts?: number | null
+  teamBHomeClubCourts?: number | null
+  homeTeamId: number | null
+  awayTeamId: number | null
+  timeslot: string | null
+}
+type SeasonPlanning = { divisions: PlanningDivision[]; pairings: PlanningPairing[] }
 function groupDivisions(season: Season) {
   const map = new Map<string, { key: string; region: string; divisions: Division[] }>()
   for (const d of season.divisions) {
@@ -73,10 +100,12 @@ function groupDivisions(season: Season) {
 
 export function ControlPanel({
   seasons,
+  planningBySeason,
   defaultRegionNames,
   currentSeasonReadiness,
 }: {
   seasons: Season[]
+  planningBySeason: Record<number, SeasonPlanning>
   defaultRegionNames: string[]
   currentSeasonReadiness: { seasonId: number; incompleteTeams: number; playersOutstanding: number } | null
 }) {
@@ -194,7 +223,11 @@ export function ControlPanel({
               )}
 
               {/* Lifecycle: Registration Open -> Divisions Finalised -> Fixtures Generated -> League Locked */}
-              <SeasonLifecycle season={s} readinessWarning={currentSeasonReadiness?.seasonId === s.id ? currentSeasonReadiness : null} />
+              <SeasonLifecycle
+                season={s}
+                planning={planningBySeason[s.id] ?? { divisions: [], pairings: [] }}
+                readinessWarning={currentSeasonReadiness?.seasonId === s.id ? currentSeasonReadiness : null}
+              />
             </div>
           )
         })}
@@ -291,9 +324,11 @@ function StatusBadge({ status }: { status: string }) {
  */
 function SeasonLifecycle({
   season,
+  planning,
   readinessWarning,
 }: {
   season: Season
+  planning: SeasonPlanning
   readinessWarning: { seasonId: number; incompleteTeams: number; playersOutstanding: number } | null
 }) {
   const [pending, start] = useTransition()
@@ -306,9 +341,11 @@ function SeasonLifecycle({
   function run<T extends { report?: SeasonValidation }>(
     action: (fd: FormData) => Promise<T & { ok: boolean; error?: string }>,
     okMsg: string,
+    mutate?: (fd: FormData) => void,
   ) {
     const fd = new FormData()
     fd.set("seasonId", String(season.id))
+    mutate?.(fd)
     start(async () => {
       const res = await action(fd)
       if (res.report) setReport(res.report)
@@ -339,6 +376,8 @@ function SeasonLifecycle({
         >
           <Wand2 className="mr-1 h-4 w-4" /> Generate fixtures
         </Button>
+
+        <FixturePlanningDialog season={season} planning={planning} pending={pending} start={start} />
 
         {!isActive && hasFixtures && (
           <Button
@@ -376,13 +415,23 @@ function SeasonLifecycle({
             <LockOpen className="mr-1 h-4 w-4" /> Unpublish Fixtures
           </Button>
         ) : (
-          <Button
-            size="sm"
-            disabled={pending || status !== "fixtures_generated"}
-            onClick={() => run(publishSeasonAction, "Fixtures published")}
-          >
-            <Rocket className="mr-1 h-4 w-4" /> Publish Fixtures
-          </Button>
+          <>
+            <Button
+              size="sm"
+              disabled={pending || status !== "fixtures_generated"}
+              onClick={() => run(publishSeasonAction, "Fixtures published")}
+            >
+              <Rocket className="mr-1 h-4 w-4" /> Publish Fixtures
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending || status !== "fixtures_generated"}
+              onClick={() => run(publishSeasonAction, "Fixtures published with warnings", (fd) => fd.set("ignoreWarnings", "1"))}
+            >
+              <AlertTriangle className="mr-1 h-4 w-4" /> Publish with warnings
+            </Button>
+          </>
         )}
 
         {hasFixtures && (
@@ -445,6 +494,7 @@ function ValidationReport({ report }: { report: SeasonValidation }) {
       </div>
     )
   }
+
   return (
     <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -471,6 +521,385 @@ function ValidationReport({ report }: { report: SeasonValidation }) {
       </ul>
     </div>
   )
+}
+
+function FixturePlanningDialog({
+    season,
+    planning,
+    pending,
+    start,
+  }: {
+    season: Season
+    planning: SeasonPlanning
+    pending: boolean
+    start: React.TransitionStartFunction
+  }) {
+    const [open, setOpen] = useState(false)
+    const [local, setLocal] = useState<PlanningPairing[]>(planning.pairings)
+    const [draggingPairingId, setDraggingPairingId] = useState<number | null>(null)
+    const [divisionId, setDivisionId] = useState<number | "all">(
+      planning.divisions[0]?.id ?? "all",
+    )
+    const weekCount = Math.max(season.weeks || 0, ...local.map((pairing) => pairing.round), 1)
+    const weeks = Array.from({ length: weekCount }, (_, index) => index + 1)
+    const visiblePairings =
+      divisionId === "all" ? local : local.filter((pairing) => pairing.divisionId === divisionId)
+    const unassigned = visiblePairings.filter((pairing) => pairing.week == null)
+    const homeCounts = new Map<number, number>()
+    const venueWeekCounts = new Map<string, number>()
+    for (const pairing of visiblePairings) {
+      const effectiveHomeTeamId = pairing.homeTeamId ?? pairing.teamAId
+      const hostingVenue =
+        effectiveHomeTeamId === pairing.teamAId
+          ? pairing.teamAHomeClubName
+          : pairing.teamBHomeClubName
+      if (pairing.week != null) {
+        if (hostingVenue != null) {
+          if (pairing.teamAHomeClubName === hostingVenue) {
+            homeCounts.set(pairing.teamAId, (homeCounts.get(pairing.teamAId) ?? 0) + 1)
+          }
+          if (pairing.teamBHomeClubName === hostingVenue) {
+            homeCounts.set(pairing.teamBId, (homeCounts.get(pairing.teamBId) ?? 0) + 1)
+          }
+          const key = `${pairing.week}:${hostingVenue}`
+          venueWeekCounts.set(key, (venueWeekCounts.get(key) ?? 0) + 1)
+        }
+      }
+    }
+
+    function syncPairing(pairingId: number, patch: Partial<Pick<PlanningPairing, "week" | "homeTeamId" | "awayTeamId" | "timeslot">>) {
+      const current = local.find((pairing) => pairing.id === pairingId)
+      const nextLocal = local.map((pairing) => (pairing.id === pairingId ? { ...pairing, ...patch } : pairing))
+      setLocal(nextLocal)
+      start(async () => {
+        const res = await updateFixturePlanningPairing({
+          pairingId,
+          week: patch.week !== undefined ? patch.week : current?.week ?? null,
+          homeTeamId: patch.homeTeamId !== undefined ? patch.homeTeamId : current?.homeTeamId,
+          awayTeamId: patch.awayTeamId !== undefined ? patch.awayTeamId : current?.awayTeamId,
+          timeslot:
+            patch.timeslot !== undefined
+              ? (patch.timeslot as "17:00" | "18:30" | null)
+              : ((current?.timeslot as "17:00" | "18:30" | null | undefined) ?? null),
+        })
+        if (!res.ok) toast.error(res.error ?? "Could not save planning change")
+      })
+    }
+
+    function swapHomeAway(pairing: PlanningPairing) {
+      const nextHome = pairing.awayTeamId ?? pairing.teamBId
+      const nextAway = pairing.homeTeamId ?? pairing.teamAId
+      syncPairing(pairing.id, { homeTeamId: nextHome, awayTeamId: nextAway })
+    }
+
+    function handleDropOnWeek(week: number) {
+      if (draggingPairingId == null) return
+      syncPairing(draggingPairingId, { week })
+      setDraggingPairingId(null)
+    }
+
+    function pairingWarnings(pairing: PlanningPairing, week: number) {
+      const inWeek = local.filter((item) => item.week === week && item.id !== pairing.id)
+      const teamIds = [pairing.homeTeamId ?? pairing.teamAId, pairing.awayTeamId ?? pairing.teamBId]
+      const hostingVenue =
+        (pairing.homeTeamId ?? pairing.teamAId) === pairing.teamAId
+          ? pairing.teamAHomeClubName
+          : pairing.teamBHomeClubName
+      const conflict = inWeek.some((item) => {
+        const otherIds = [item.homeTeamId ?? item.teamAId, item.awayTeamId ?? item.teamBId]
+        return teamIds.some((teamId) => otherIds.includes(teamId))
+      })
+      return {
+        teamConflict: conflict,
+        duplicate: inWeek.some((item) => {
+          const a = [item.teamAId, item.teamBId].sort((x, y) => x - y).join("-")
+          const b = [pairing.teamAId, pairing.teamBId].sort((x, y) => x - y).join("-")
+          return a === b
+        }),
+        missingVenue: !hostingVenue,
+        venueConflict: false,
+        timeConflict:
+          hostingVenue != null &&
+          pairing.timeslot != null &&
+          inWeek.some((item) => {
+            const otherVenue =
+              (item.homeTeamId ?? item.teamAId) === item.teamAId
+                ? item.teamAHomeClubName
+                : item.teamBHomeClubName
+            return otherVenue === hostingVenue && item.timeslot === pairing.timeslot
+          }),
+      }
+    }
+
+    function getAllowedTimeslots(pairing: PlanningPairing) {
+      const effectiveHomeTeamId = pairing.homeTeamId ?? pairing.teamAId
+      const homeCourts =
+        effectiveHomeTeamId === pairing.teamAId
+          ? pairing.teamAHomeClubCourts ?? null
+          : pairing.teamBHomeClubCourts ?? null
+      return homeCourts != null && homeCourts < 4 ? ["both"] : ["17:00", "18:30"]
+    }
+
+    const readyToFinalize =
+      local.length > 0 &&
+      local.every((pairing) => pairing.week != null && (pairing.homeTeamId ?? pairing.teamAId) != null && (pairing.awayTeamId ?? pairing.teamBId) != null && pairing.timeslot)
+
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger
+          render={
+            <Button size="sm" variant="outline" disabled={pending || planning.pairings.length === 0}>
+              <GripVertical className="mr-1 h-4 w-4" /> Fixture planning
+            </Button>
+          }
+        />
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-7xl">
+          <DialogHeader>
+            <DialogTitle>Fixture Planning Wizard — {season.name}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex max-h-[70vh] gap-4 overflow-hidden">
+            <div className="w-[250px] shrink-0 space-y-3 overflow-y-auto pr-1">
+              <div>
+                <p className="text-sm font-medium">Available Pairings</p>
+                <p className="text-xs text-muted-foreground">Assign a week, then choose home/away and time.</p>
+              </div>
+              <select
+                className="h-9 rounded border border-border bg-background px-3 text-sm"
+                value={divisionId}
+                onChange={(e) => setDivisionId(e.target.value === "all" ? "all" : Number(e.target.value))}
+              >
+                <option value="all">All pools</option>
+                {planning.divisions.map((division) => (
+                  <option key={division.id} value={division.id}>
+                    {division.regionName ? `${division.regionName} · ${division.name}` : division.name}
+                  </option>
+                ))}
+              </select>
+              <div className="space-y-2">
+                {unassigned.map((pairing) => (
+                  <PlanningCard
+                    key={pairing.id}
+                    pairing={pairing}
+                    compact
+                    draggable
+                    onDragStart={() => setDraggingPairingId(pairing.id)}
+                    onDragEnd={() => setDraggingPairingId(null)}
+                    onWeekChange={(week) => syncPairing(pairing.id, { week })}
+                    onSwap={() => swapHomeAway(pairing)}
+                  />
+                ))}
+                {unassigned.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                    All pairings for this pool have been assigned.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1 overflow-auto">
+              <div className="mb-3 flex min-w-max items-start gap-3 overflow-x-auto pb-1">
+                {[...new Map(visiblePairings.flatMap((pairing) => [
+                  [pairing.teamAId, { name: pairing.teamAName, logoUrl: pairing.teamALogoUrl ?? null }],
+                  [pairing.teamBId, { name: pairing.teamBName, logoUrl: pairing.teamBLogoUrl ?? null }],
+                ])).entries()].map(([teamId, team]) => (
+                  <div
+                    key={`home-${teamId}`}
+                    className="flex w-20 shrink-0 flex-col items-center gap-1 rounded-md border border-border/70 bg-secondary/20 px-2 py-2 text-center"
+                  >
+                    <Crest name={team.name} logoUrl={team.logoUrl} size="sm" />
+                    <div className="w-full text-[10px] leading-tight">
+                      <div className="truncate font-medium">{team.name}</div>
+                      <div className="text-muted-foreground">H {homeCounts.get(teamId) ?? 0}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid min-w-[1820px] gap-4 grid-cols-7">
+                {weeks.map((week) => {
+                  const items = visiblePairings.filter((pairing) => pairing.week === week)
+                  const venuesForWeek = [...new Set(items.map((pairing) => {
+                    const homeId = pairing.homeTeamId ?? pairing.teamAId
+                    return homeId === pairing.teamAId ? pairing.teamAHomeClubName : pairing.teamBHomeClubName
+                  }).filter((value): value is string => Boolean(value)))]
+                  return (
+                    <div
+                      key={week}
+                      className={cn(
+                        "rounded-xl border p-3 min-w-[250px] transition-colors",
+                        draggingPairingId != null && "bg-secondary/10",
+                      )}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDropOnWeek(week)}
+                    >
+                      {venuesForWeek.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-1">
+                          {venuesForWeek.map((venueName) => (
+                            <div
+                              key={`${week}-${venueName}`}
+                              className="rounded-md border border-border/60 bg-secondary/20 px-2 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {venueName} · {venueWeekCounts.get(`${week}:${venueName}`) ?? 0}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mb-3">
+                        <p className="font-medium">Week {week}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {items.length > 0 ? `✓ ${items.length} pairing${items.length === 1 ? "" : "s"} assigned` : "No pairings assigned yet"}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {items.map((pairing) => {
+                          const warnings = pairingWarnings(pairing, week)
+                          return (
+                            <div key={pairing.id} className="rounded-lg border bg-secondary/20 p-3">
+                              <PlanningCard pairing={pairing} compact onWeekChange={(nextWeek) => syncPairing(pairing.id, { week: nextWeek })} onSwap={() => swapHomeAway(pairing)} />
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <select
+                                className="h-7 rounded border border-border bg-background px-2 text-xs"
+                                value={pairing.timeslot ?? ""}
+                                onChange={(e) => syncPairing(pairing.id, { timeslot: e.target.value || null })}
+                              >
+                                <option value="">Time</option>
+                                {getAllowedTimeslots(pairing).map((slot) => (
+                                  <option key={slot} value={slot}>
+                                    {slot === "both" ? "Both slots" : slot}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => syncPairing(pairing.id, { week: null })}>
+                                  Remove
+                              </Button>
+                              </div>
+                              {(warnings.teamConflict || warnings.duplicate || warnings.missingVenue || warnings.venueConflict || warnings.timeConflict || !pairing.timeslot) && (
+                                <div className="mt-2 space-y-1 text-[11px]">
+                                  {warnings.teamConflict && <div className="text-amber-600">⚠ Team clash</div>}
+                                  {warnings.duplicate && <div className="text-amber-600">⚠ Duplicate</div>}
+                                  {warnings.missingVenue && <div className="text-amber-600">⚠ Missing venue</div>}
+                                  {warnings.venueConflict && <div className="text-amber-600">⚠ Venue clash across pools</div>}
+                                  {warnings.timeConflict && <div className="text-amber-600">⚠ Venue time clash across pools</div>}
+                                  {!pairing.timeslot && <div className="text-amber-600">⚠ Missing time</div>}
+                                </div>
+                              )}
+                            </div>
+                        )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">
+              {readyToFinalize
+                ? "Ready to create draft fixtures. Publish still happens later from the existing flow."
+                : "Assign every pairing a week, home/away and time before creating fixtures."}
+            </div>
+            <Button
+              disabled={pending || !readyToFinalize}
+              onClick={() => {
+                const fd = new FormData()
+                fd.set("seasonId", String(season.id))
+                start(async () => {
+                  const res = await finalizeSeasonFixturesFromPlanning(fd)
+                  if (res.ok) {
+                    toast.success("Draft fixtures created from planning board")
+                    setOpen(false)
+                  } else {
+                    toast.error(res.error ?? "Failed to create fixtures")
+                  }
+                })
+              }}
+            >
+              Create draft fixtures
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  function PlanningCard({
+    pairing,
+    compact = false,
+    draggable = false,
+    onDragStart,
+    onDragEnd,
+    onWeekChange,
+    onSwap,
+  }: {
+    pairing: PlanningPairing
+    compact?: boolean
+    draggable?: boolean
+    onDragStart?: () => void
+    onDragEnd?: () => void
+    onWeekChange: (week: number | null) => void
+    onSwap: () => void
+  }) {
+    const homeId = pairing.homeTeamId ?? pairing.teamAId
+    const awayId = pairing.awayTeamId ?? pairing.teamBId
+    const leftTeam = homeId === pairing.teamAId
+      ? { name: pairing.teamAName, logoUrl: pairing.teamALogoUrl ?? null }
+      : { name: pairing.teamBName, logoUrl: pairing.teamBLogoUrl ?? null }
+    const rightTeam = awayId === pairing.teamAId
+      ? { name: pairing.teamAName, logoUrl: pairing.teamALogoUrl ?? null }
+      : { name: pairing.teamBName, logoUrl: pairing.teamBLogoUrl ?? null }
+
+    return (
+      <div
+        className={cn("rounded-lg border bg-background p-2", draggable && "cursor-grab active:cursor-grabbing")}
+        draggable={draggable}
+        onDragStart={draggable ? onDragStart : undefined}
+        onDragEnd={draggable ? onDragEnd : undefined}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
+              <div className="min-w-0 space-y-1 text-center">
+                <div className="flex justify-center">
+                  <Crest name={leftTeam.name} logoUrl={leftTeam.logoUrl} size="sm" />
+                </div>
+                <div className="truncate text-[10px] text-muted-foreground">{leftTeam.name}</div>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 self-center text-[10px] text-muted-foreground transition hover:text-foreground"
+                onClick={onSwap}
+              >
+                vs
+              </button>
+              <div className="min-w-0 space-y-1 text-center">
+                <div className="flex justify-center">
+                  <Crest name={rightTeam.name} logoUrl={rightTeam.logoUrl} size="sm" />
+                </div>
+                <div className="truncate text-[10px] text-muted-foreground">{rightTeam.name}</div>
+              </div>
+            </div>
+            {!compact && <div className="text-[10px] text-muted-foreground">Round {pairing.round}</div>}
+          </div>
+          {!compact && (
+            <select
+              className="h-7 rounded border border-border bg-background px-2 text-xs"
+              value={pairing.week ?? ""}
+              onChange={(e) => onWeekChange(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Assign week</option>
+              {Array.from({ length: Math.max(pairing.round, 12) }, (_, index) => index + 1).map((week) => (
+                <option key={week} value={week}>
+                  Week {week}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+    )
 }
 
 function DeleteSeasonDialog({

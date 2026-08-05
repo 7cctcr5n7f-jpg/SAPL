@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import {
   fixtures,
+  fixturePlanningPairings,
   teams,
   divisions,
   seasons,
@@ -14,7 +15,7 @@ import {
   clubs,
   regions,
 } from "@/lib/db/schema"
-import { eq, and, asc, inArray } from "drizzle-orm"
+import { eq, and, asc, inArray, isNull, sql } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { reconcileClubTeams } from "@/lib/club-teams"
@@ -23,7 +24,7 @@ import {
   buildDivisionPlayoffTemplates,
   computeDivisionPlayoffQualifiers,
 } from "@/lib/engine/playoffs"
-import { nextThursday, planSeason } from "@/lib/engine/season"
+import { buildCourtAssignments, nextThursday, planSeason } from "@/lib/engine/season"
 import { validateSeason } from "@/lib/engine/validation"
 import {
   REGIONAL_FINALS_GAP_DAYS,
@@ -128,97 +129,15 @@ async function loadSeasonFixtureInputs(seasonId: number, divisionId?: number) {
   }
 }
 
-// ---- Fixture generation ---------------------------------------------------
+// ---- Fixture planning ------------------------------------------------------
 
-export async function generateFixtures(formData: FormData) {
-  await requireAdmin()
-  if (await isSeasonLocked()) return seasonLockedResult()
-  const divisionId = Number(formData.get("divisionId"))
-  const [division] = await db
-    .select({ id: divisions.id, seasonId: divisions.seasonId, name: divisions.name })
-    .from(divisions)
-    .where(eq(divisions.id, divisionId))
-    .limit(1)
-  if (!division) return { ok: false, error: "Division not found" }
-  const [existing] = await db
-    .select({ id: fixtures.id, status: fixtures.status })
-    .from(fixtures)
-    .where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.seasonId, division.seasonId)))
-    .limit(1)
-  if (existing) {
-    return { ok: false, error: "Fixtures were already generated for this division and cannot be regenerated." }
-  }
-
-  const [season] = await db
-    .select({ id: seasons.id, startDate: seasons.startDate })
-    .from(seasons)
-    .where(eq(seasons.id, division.seasonId))
-    .limit(1)
-  if (!season) return { ok: false, error: "Season not found" }
-
-  const inputs = await loadSeasonFixtureInputs(division.seasonId, divisionId)
-  const divisionEntries = inputs.entries
-    .filter((entry) => entry.divisionId === divisionId)
-    .sort((a, b) => (a.slot ?? Number.MAX_SAFE_INTEGER) - (b.slot ?? Number.MAX_SAFE_INTEGER) || a.sortOrder - b.sortOrder)
-  if (divisionEntries.length < 2) return { ok: false, error: "Need at least 2 teams in the division" }
-  if (divisionEntries.some((entry) => entry.slot == null)) return { ok: false, error: "Every team in the division needs a placement slot before fixtures can be generated." }
-
-  const planned = planSeason({
-    startDate: season.startDate ? new Date(season.startDate) : new Date(),
-    divisions: [
-      {
-        id: divisionId,
-        teamSlots: divisionEntries.map((entry) => ({
-          id: entry.teamId,
-          slot: entry.slot as number,
-          homeClubId: entry.homeClubId ?? null,
-        })),
-      },
-    ],
-    clubs: inputs.clubs,
-  })
-
-  await db.delete(fixtures).where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.seasonId, division.seasonId), eq(fixtures.status, DRAFT_FIXTURE_STATUS)))
-
-  if (planned.length > 0) {
-    await db.insert(fixtures).values(
-      planned.map((fixture) => ({
-        seasonId: division.seasonId,
-        divisionId,
-        week: fixture.week,
-        homeTeamId: fixture.homeTeamId,
-        awayTeamId: fixture.awayTeamId,
-        homeSlot: fixture.homeSlot,
-        awaySlot: fixture.awaySlot,
-        matchDate: fixture.matchDate,
-        timeslot: fixture.timeslot,
-        venueClubId: fixture.venueClubId,
-        venue: fixture.venue,
-        courtAssignments: fixture.courtAssignments,
-        status: DRAFT_FIXTURE_STATUS,
-      })),
-    )
-  }
-
-  await db.update(seasons).set({ status: "fixtures_generated", weeks: divisionEntries.length - 1 }).where(eq(seasons.id, division.seasonId))
-  await syncSeasonTeamLifecycle(division.seasonId)
-  revalidatePath("/admin")
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
-  return { ok: true, count: planned.length }
+function pairingDateForWeek(startDate: Date | null, week: number): Date | null {
+  if (!startDate) return null
+  const firstNight = nextThursday(startDate)
+  return new Date(firstNight.getTime() + Math.max(0, week - 1) * 7 * MS_PER_DAY)
 }
 
-/**
- * Generate a complete season's draft fixture schedule.
- *
- * Uses the placed teams in every division, builds a balanced round robin, and
- * stores draft fixtures that only league admins can see until published.
- */
-export async function generateSeason(formData: FormData) {
-  await requireAdmin()
-  if (await isSeasonLocked()) return seasonLockedResult()
-  const seasonId = Number(formData.get("seasonId"))
-  const forceRegenerate = formData.get("force") === "1"
+async function buildSeasonPairings(seasonId: number) {
   const [season] = await db
     .select({
       id: seasons.id,
@@ -231,30 +150,23 @@ export async function generateSeason(formData: FormData) {
     .from(seasons)
     .where(eq(seasons.id, seasonId))
     .limit(1)
-  if (!season) return { ok: false, error: "Season not found" }
+  if (!season) return { ok: false as const, error: "Season not found" }
+
   const existingSeasonFixtures = await db
     .select({ id: fixtures.id, status: fixtures.status, published: fixtures.published })
     .from(fixtures)
     .where(eq(fixtures.seasonId, seasonId))
   if (existingSeasonFixtures.length > 0) {
-    if (!forceRegenerate) {
-      return { ok: false, error: "Fixtures already exist for this season. Use redo fixture generation to replace the current draft." }
-    }
-
     const protectedFixtures = existingSeasonFixtures.filter(
       (fixture) => fixture.published || (fixture.status !== DRAFT_FIXTURE_STATUS && fixture.status !== "scheduled"),
     )
     if (protectedFixtures.length > 0) {
-      return { ok: false, error: "Only unpublished draft fixtures can be regenerated. Unpublish the season first if fixtures are already live." }
+      return { ok: false as const, error: "Only unpublished draft fixtures can be regenerated. Unpublish the season first if fixtures are already live." }
     }
-
-    await db
-      .delete(fixtures)
-      .where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.published, false), inArray(fixtures.status, [DRAFT_FIXTURE_STATUS, "scheduled"])))
   }
 
   const inputs = await loadSeasonFixtureInputs(seasonId)
-  if (inputs.divisions.length === 0) return { ok: false, error: "No divisions configured for this season" }
+  if (inputs.divisions.length === 0) return { ok: false as const, error: "No divisions configured for this season" }
 
   const divisionPlans = inputs.divisions.map((division) => {
     const teamsInDivision = inputs.entries
@@ -266,7 +178,7 @@ export async function generateSeason(formData: FormData) {
   const emptyDivisions = divisionPlans.filter((plan) => plan.teamsInDivision.length === 0).map((plan) => plan.division.name)
   if (emptyDivisions.length > 0) {
     return {
-      ok: false,
+      ok: false as const,
       error: `Every division needs teams before fixtures can be generated. Empty: ${emptyDivisions.slice(0, 4).join(", ")}${emptyDivisions.length > 4 ? ` and ${emptyDivisions.length - 4} more` : ""}.`,
     }
   }
@@ -274,7 +186,7 @@ export async function generateSeason(formData: FormData) {
   const shortDivisions = divisionPlans.filter((plan) => plan.teamsInDivision.length < 2).map((plan) => `${plan.division.name} (${plan.teamsInDivision.length})`)
   if (shortDivisions.length > 0) {
     return {
-      ok: false,
+      ok: false as const,
       error: `Each division needs at least 2 teams. Fix: ${shortDivisions.slice(0, 4).join(", ")}${shortDivisions.length > 4 ? ` and ${shortDivisions.length - 4} more` : ""}.`,
     }
   }
@@ -283,8 +195,11 @@ export async function generateSeason(formData: FormData) {
     .filter((plan) => plan.teamsInDivision.some((entry) => entry.slot == null))
     .map((plan) => plan.division.name)
   if (missingSlots.length > 0) {
-    return { ok: false, error: `Every assigned team needs a placement slot before fixture generation. Fix: ${missingSlots.join(", ")}.` }
+    return { ok: false as const, error: `Every assigned team needs a placement slot before fixture generation. Fix: ${missingSlots.join(", ")}.` }
   }
+
+  await db.delete(fixtures).where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.published, false), inArray(fixtures.status, [DRAFT_FIXTURE_STATUS, "scheduled"])))
+  await db.delete(fixturePlanningPairings).where(eq(fixturePlanningPairings.seasonId, seasonId))
 
   const planned = planSeason({
     startDate: season.startDate ? new Date(season.startDate) : new Date(),
@@ -299,41 +214,27 @@ export async function generateSeason(formData: FormData) {
     clubs: inputs.clubs,
   })
 
-  const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
-  let lastRoundDate = firstNight
-  let maxWeek = 0
-  for (const fixture of planned) {
-    if (fixture.matchDate > lastRoundDate) lastRoundDate = fixture.matchDate
-    if (fixture.week > maxWeek) maxWeek = fixture.week
-  }
-
   if (planned.length > 0) {
-    await db.insert(fixtures).values(
-      planned.map((fixture) => ({
+    await db.insert(fixturePlanningPairings).values(
+      planned.map((pairing) => ({
         seasonId,
-        divisionId: fixture.divisionId,
-        week: fixture.week,
-        homeTeamId: fixture.homeTeamId,
-        awayTeamId: fixture.awayTeamId,
-        homeSlot: fixture.homeSlot,
-        awaySlot: fixture.awaySlot,
-        matchDate: fixture.matchDate,
-        timeslot: fixture.timeslot,
-        venueClubId: fixture.venueClubId,
-        venue: fixture.venue,
-        courtAssignments: fixture.courtAssignments,
-        status: DRAFT_FIXTURE_STATUS,
+        divisionId: pairing.divisionId,
+        round: pairing.round,
+        pairingOrder: pairing.pairingOrder,
+        teamAId: pairing.teamAId,
+        teamBId: pairing.teamBId,
       })),
     )
   }
 
+  await db.update(seasons).set({ status: "fixtures_generated", weeks: Math.max(...planned.map((p) => p.round), 0) || undefined }).where(eq(seasons.id, seasonId))
   await syncSeasonTeamLifecycle(seasonId)
 
-  // ---- Playoff placeholders -----------------------------------------------
-  // Wipe any previously generated (un-played) playoff rows for this season.
   await db.delete(playoffs).where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.status, "scheduled")))
 
-  // Regional Finals: 9 days after the last league round (or the chosen date).
+  const firstNight = nextThursday(season.startDate ? new Date(season.startDate) : new Date())
+  const maxWeek = Math.max(...planned.map((p) => p.round), 1)
+  const lastRoundDate = new Date(firstNight.getTime() + Math.max(0, maxWeek - 1) * 7 * MS_PER_DAY)
   const quarterFinalsDate = season.regionalFinalsDate
     ? new Date(season.regionalFinalsDate)
     : new Date(lastRoundDate.getTime() + REGIONAL_FINALS_GAP_DAYS * MS_PER_DAY)
@@ -377,27 +278,37 @@ export async function generateSeason(formData: FormData) {
     )
   }
 
-  // Fixture generation is a one-time phase transition.
-  // Store the auto-calculated week count so the UI can display it correctly.
-  await db
-    .update(seasons)
-    .set({ status: "fixtures_generated", weeks: maxWeek > 0 ? maxWeek : undefined })
-    .where(eq(seasons.id, seasonId))
-  await syncSeasonTeamLifecycle(seasonId)
-
   revalidatePath("/admin")
   revalidatePath("/admin/fixtures")
-  revalidatePath("/admin")
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/league-centre")
   revalidatePath("/fixtures")
-  return { ok: true, count: planned.length, divisions: divisionPlans.length }
+  return { ok: true as const, count: planned.length, divisions: divisionPlans.length }
 }
 
-/**
- * Rebuild a single division's draft fixture schedule from the teams currently
- * placed into that division. Completed/disputed results are preserved.
- */
+export async function generateFixtures(formData: FormData) {
+  await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
+  const divisionId = Number(formData.get("divisionId"))
+  const [division] = await db
+    .select({ id: divisions.id, seasonId: divisions.seasonId })
+    .from(divisions)
+    .where(eq(divisions.id, divisionId))
+    .limit(1)
+  if (!division) return { ok: false, error: "Division not found" }
+
+  const result = await buildSeasonPairings(division.seasonId)
+  if (!result.ok) return result
+  return { ok: true, count: result.count }
+}
+
+export async function generateSeason(formData: FormData) {
+  await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
+  const seasonId = Number(formData.get("seasonId"))
+  return buildSeasonPairings(seasonId)
+}
+
 export async function adjustDivisionFixtures(formData: FormData) {
   await requireAdmin()
   if (await isSeasonLocked()) return seasonLockedResult()
@@ -409,63 +320,142 @@ export async function adjustDivisionFixtures(formData: FormData) {
     .limit(1)
   if (!division) return { ok: false, error: "Division not found" }
 
+  await db.delete(fixturePlanningPairings).where(and(eq(fixturePlanningPairings.divisionId, divisionId), eq(fixturePlanningPairings.seasonId, division.seasonId)))
+  await db.delete(fixtures).where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.seasonId, division.seasonId), eq(fixtures.status, DRAFT_FIXTURE_STATUS)))
+
+  const result = await buildSeasonPairings(division.seasonId)
+  if (!result.ok) return result
+  return { ok: true, teams: 0, rounds: 0, fixtures: result.count }
+}
+
+export async function updateFixturePlanningPairing(input: {
+  pairingId: number
+  week: number | null
+  homeTeamId?: number | null
+  awayTeamId?: number | null
+  timeslot?: "17:00" | "18:30" | null
+}) {
+  await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
+
+  const [pairing] = await db
+    .select({
+      id: fixturePlanningPairings.id,
+      seasonId: fixturePlanningPairings.seasonId,
+      divisionId: fixturePlanningPairings.divisionId,
+      teamAId: fixturePlanningPairings.teamAId,
+      teamBId: fixturePlanningPairings.teamBId,
+    })
+    .from(fixturePlanningPairings)
+    .where(eq(fixturePlanningPairings.id, input.pairingId))
+    .limit(1)
+  if (!pairing) return { ok: false, error: "Pairing not found" }
+
+  const patch: {
+    week: number | null
+    homeTeamId?: number | null
+    awayTeamId?: number | null
+    updatedAt: Date
+    timeslot?: "17:00" | "18:30" | null
+  } = {
+    week: input.week,
+    updatedAt: new Date(),
+  }
+
+  if (input.homeTeamId !== undefined) patch.homeTeamId = input.homeTeamId
+  if (input.awayTeamId !== undefined) patch.awayTeamId = input.awayTeamId
+  if (input.timeslot !== undefined) patch.timeslot = input.timeslot
+
+  await db.update(fixturePlanningPairings).set(patch).where(eq(fixturePlanningPairings.id, input.pairingId))
+
+  revalidatePath("/admin")
+  revalidatePath("/admin/seasons")
+  return { ok: true }
+}
+
+export async function finalizeSeasonFixturesFromPlanning(formData: FormData) {
+  await requireAdmin()
+  if (await isSeasonLocked()) return seasonLockedResult()
+  const seasonId = Number(formData.get("seasonId"))
+  if (!seasonId) return { ok: false, error: "Season id required" }
+
+  const pairings = await db
+    .select({
+      id: fixturePlanningPairings.id,
+      divisionId: fixturePlanningPairings.divisionId,
+      week: fixturePlanningPairings.week,
+      teamAId: fixturePlanningPairings.teamAId,
+      teamBId: fixturePlanningPairings.teamBId,
+      homeTeamId: fixturePlanningPairings.homeTeamId,
+      awayTeamId: fixturePlanningPairings.awayTeamId,
+      timeslot: sql<string | null>`"timeslot"`,
+    })
+    .from(fixturePlanningPairings)
+    .where(eq(fixturePlanningPairings.seasonId, seasonId))
+    .orderBy(asc(fixturePlanningPairings.divisionId), asc(fixturePlanningPairings.week), asc(fixturePlanningPairings.id))
+
+  if (pairings.length === 0) return { ok: false, error: "No planning pairings found for this season" }
+
+  const resolvedPairings = pairings.map((pairing) => ({
+    ...pairing,
+    homeTeamId: pairing.homeTeamId ?? pairing.teamAId,
+    awayTeamId: pairing.awayTeamId ?? pairing.teamBId,
+  }))
+
+  const incomplete = resolvedPairings.filter((pairing) => pairing.week == null || pairing.homeTeamId == null || pairing.awayTeamId == null || !pairing.timeslot)
+  if (incomplete.length > 0) {
+    return { ok: false, error: "Every pairing needs a week, home team, away team and time before creating fixtures." }
+  }
+
   const [season] = await db
-    .select({ id: seasons.id, startDate: seasons.startDate })
+    .select({ startDate: seasons.startDate })
     .from(seasons)
-    .where(eq(seasons.id, division.seasonId))
+    .where(eq(seasons.id, seasonId))
     .limit(1)
   if (!season) return { ok: false, error: "Season not found" }
 
-  const inputs = await loadSeasonFixtureInputs(division.seasonId, divisionId)
-  const entries = inputs.entries
-    .filter((entry) => entry.divisionId === divisionId)
-    .sort((a, b) => (a.slot ?? Number.MAX_SAFE_INTEGER) - (b.slot ?? Number.MAX_SAFE_INTEGER) || a.sortOrder - b.sortOrder)
-  if (entries.length < 2) return { ok: false, error: "Assign at least 2 teams before adjusting fixtures." }
-  if (entries.some((entry) => entry.slot == null)) return { ok: false, error: "Every assigned team needs a placement slot before adjusting fixtures." }
+  const teamRows = await db
+    .select({ id: teams.id, slot: teamEntries.slot, homeClubId: teams.homeClubId, homeClubName: clubs.name, homeClubCourts: clubs.courts })
+    .from(teams)
+    .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
+    .leftJoin(teamEntries, and(eq(teamEntries.teamId, teams.id), eq(teamEntries.seasonId, seasonId)))
+    .where(inArray(teams.id, [...new Set(resolvedPairings.flatMap((pairing) => [pairing.teamAId, pairing.teamBId, pairing.homeTeamId, pairing.awayTeamId]))]))
+  const teamMeta = new Map(teamRows.map((row) => [row.id, row]))
 
-  await db.delete(fixtures).where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.seasonId, division.seasonId), eq(fixtures.status, DRAFT_FIXTURE_STATUS)))
+  await db
+    .delete(fixtures)
+    .where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.published, false), inArray(fixtures.status, [DRAFT_FIXTURE_STATUS, "scheduled"])))
 
-  const planned = planSeason({
-    startDate: season.startDate ? new Date(season.startDate) : new Date(),
-    divisions: [
-      {
-        id: divisionId,
-        teamSlots: entries.map((entry) => ({
-          id: entry.teamId,
-          slot: entry.slot as number,
-          homeClubId: entry.homeClubId ?? null,
-        })),
-      },
-    ],
-    clubs: inputs.clubs,
-  })
-
-  if (planned.length > 0) {
-    await db.insert(fixtures).values(
-      planned.map((fixture) => ({
-        seasonId: division.seasonId,
-        divisionId,
-        week: fixture.week,
-        homeTeamId: fixture.homeTeamId,
-        awayTeamId: fixture.awayTeamId,
-        homeSlot: fixture.homeSlot,
-        awaySlot: fixture.awaySlot,
-        matchDate: fixture.matchDate,
-        timeslot: fixture.timeslot,
-        venueClubId: fixture.venueClubId,
-        venue: fixture.venue,
-        courtAssignments: fixture.courtAssignments,
+  await db.insert(fixtures).values(
+    resolvedPairings.map((pairing) => {
+      const home = teamMeta.get(pairing.homeTeamId!)
+      const away = teamMeta.get(pairing.awayTeamId!)
+      return {
+        seasonId,
+        divisionId: pairing.divisionId,
+        week: pairing.week!,
+        homeTeamId: pairing.homeTeamId!,
+        awayTeamId: pairing.awayTeamId!,
+        homeSlot: home?.slot ?? null,
+        awaySlot: away?.slot ?? null,
+        matchDate: pairingDateForWeek(season.startDate ? new Date(season.startDate) : null, pairing.week!),
+        timeslot: pairing.timeslot,
+        venueClubId: home?.homeClubId ?? null,
+        venue: home?.homeClubName ?? null,
+        courtAssignments: home ? buildCourtAssignments(home.homeClubCourts ?? 0, pairing.timeslot === "17:00" || pairing.timeslot === "18:30" ? pairing.timeslot : null) : {},
         status: DRAFT_FIXTURE_STATUS,
-      })),
-    )
-  }
+      }
+    }),
+  )
 
+  await db.update(seasons).set({ status: "fixtures_generated" }).where(eq(seasons.id, seasonId))
+  await syncSeasonTeamLifecycle(seasonId)
   revalidatePath("/admin")
   revalidatePath("/admin/fixtures")
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/league-centre")
   revalidatePath("/fixtures")
-  return { ok: true, teams: entries.length, rounds: entries.length - 1, fixtures: planned.length }
+  return { ok: true, count: pairings.length }
 }
 
 // ---- Playoffs -------------------------------------------------------------
@@ -851,7 +841,7 @@ export async function validateSeasonAction(formData: FormData) {
   if (!seasonId) return { ok: false, error: "Season id required" }
   const report = await validateSeason(seasonId)
   revalidatePath("/admin")
-  return { ok: report.ok, report, error: report.ok ? undefined : "Fix all validation errors before publishing fixtures." }
+  return { ok: report.ok, report, error: report.ok ? undefined : "Validation found blocking issues. Use publish with warnings if you have reviewed the schedule." }
 }
 
 /**
@@ -865,9 +855,16 @@ export async function publishSeasonAction(formData: FormData) {
   const admin = await requireAdmin()
   const seasonId = Number(formData.get("seasonId"))
   if (!seasonId) return { ok: false, error: "Season id required" }
+  const ignoreWarnings = formData.get("ignoreWarnings") === "1"
   const report = await validateSeason(seasonId)
   if (!report.ok) {
-    return { ok: false, report, error: "Season still has validation errors." }
+    const blockingIssues = report.issues.filter((issue) => issue.level === "error")
+    const hasOnlyPublishWarnings = blockingIssues.every((issue) =>
+      issue.code === "home_away_balance" || issue.code === "venue_unavailable_slot",
+    )
+    if (!ignoreWarnings || !hasOnlyPublishWarnings) {
+      return { ok: false, report, error: "Season still has validation errors." }
+    }
   }
 
   const editableFixtures = await db

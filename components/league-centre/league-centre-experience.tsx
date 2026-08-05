@@ -51,6 +51,24 @@ function shortDate(iso: string | null) {
   return new Intl.DateTimeFormat("en-ZA", { weekday: "short", day: "numeric", month: "short" }).format(new Date(iso))
 }
 
+function slotTimeValue(value: string | null | undefined) {
+  if (!value) return Number.MAX_SAFE_INTEGER
+  const [hour, minute] = value.split(":").map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return Number.MAX_SAFE_INTEGER
+  return hour * 60 + minute
+}
+
+function courtSortValue(value: string | null | undefined) {
+  const court = Number(value)
+  return Number.isFinite(court) ? court : Number.MIN_SAFE_INTEGER
+}
+
+function averagePairRating(players: { rating: number | null }[]) {
+  const ratings = players.map((player) => player.rating).filter((rating): rating is number => rating != null)
+  if (ratings.length === 0) return null
+  return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+}
+
 // ─── Main experience ────────────────────────────────────────────────────────
 
 export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
@@ -140,7 +158,9 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
       divisionFixtures
         .filter((f) => f.week === activeWeek)
         .sort((a, b) =>
-          a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0,
+          slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot) ||
+          courtSortValue(b.courtInfoByCategory?.[b.divisionName ?? ""]?.court) - courtSortValue(a.courtInfoByCategory?.[a.divisionName ?? ""]?.court) ||
+          (a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0),
         ),
     [divisionFixtures, activeWeek],
   )
@@ -501,7 +521,6 @@ function FixtureCard({
                 )}>
                   {fixture.homeName ?? "TBD"}
                 </span>
-                <LiBadge li={fixture.homeAvgLi} />
               </div>
               <FormDots items={fixture.homeFormItems} align="left" />
             </div>
@@ -509,7 +528,7 @@ function FixtureCard({
           {homePlayers.length > 0 && (
             <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
               {homePlayers.map((p) => (
-                <p key={p} className="text-[11px] text-slate-500">{p}</p>
+                <p key={p.name} className="text-[11px] text-slate-500">{p.name}</p>
               ))}
             </div>
           )}
@@ -551,7 +570,6 @@ function FixtureCard({
             <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="md" />
             <div className="flex flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
-                <LiBadge li={fixture.awayAvgLi} />
                 <span className={cn(
                   "text-right text-sm font-bold leading-tight md:text-base",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
@@ -565,7 +583,7 @@ function FixtureCard({
           {awayPlayers.length > 0 && (
             <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
               {awayPlayers.map((p) => (
-                <p key={p} className="text-[11px] text-slate-500">{p}</p>
+                <p key={p.name} className="text-[11px] text-slate-500">{p.name}</p>
               ))}
             </div>
           )}
@@ -660,19 +678,18 @@ function FormDots({
 }
 
 /** Small LI pill — shown inline with team/player name */
-function LiBadge({ li }: { li: number | null }) {
+function LiBadge({ li, tall = false }: { li: number | null; tall?: boolean }) {
   if (li == null || li === 0) return null
   return (
     <span
       className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200"
-      title="Average League Index"
+      title="Average pair rating"
+      style={tall ? { minHeight: 40, alignSelf: "stretch" } : undefined}
     >
       {li.toFixed(1)}
     </span>
   )
 }
-
-const RUBBER_CATEGORY_ORDER = ["Mens Beginner", "Mens Intermediate", "Mens Open", "Ladies Open"]
 
 function FixtureBreakdown({
   fixture,
@@ -693,7 +710,7 @@ function FixtureBreakdown({
   return (
     <>
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
-        {/* Header — team names with LI badge + form dots */}
+        {/* Header — team names + form dots */}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
           {/* Home side */}
           <div className="flex flex-col gap-0.5">
@@ -701,7 +718,6 @@ function FixtureBreakdown({
               <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
                 {fixture.homeName}
               </span>
-              <LiBadge li={fixture.homeAvgLi} />
             </div>
             <FormDots items={fixture.homeFormItems} align="left" />
           </div>
@@ -711,7 +727,6 @@ function FixtureBreakdown({
           {/* Away side */}
           <div className="flex flex-col items-end gap-0.5">
             <div className="flex items-center gap-1.5">
-              <LiBadge li={fixture.awayAvgLi} />
               <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
                 {fixture.awayName}
               </span>
@@ -721,13 +736,21 @@ function FixtureBreakdown({
         </div>
 
         <div className="divide-y divide-slate-100">
-          {RUBBER_CATEGORY_ORDER.map((category) => {
+          {Object.keys(fixture.courtInfoByCategory)
+            .sort((a, b) =>
+              slotTimeValue(fixture.courtInfoByCategory[a]?.time) - slotTimeValue(fixture.courtInfoByCategory[b]?.time) ||
+              courtSortValue(fixture.courtInfoByCategory[b]?.court) - courtSortValue(fixture.courtInfoByCategory[a]?.court) ||
+              a.localeCompare(b),
+            )
+            .map((category) => {
             const rubber = rubberByCategory.get(category)
             const homePair = fixture.homePlayers?.[category] ?? []
             const awayPair = fixture.awayPlayers?.[category] ?? []
             const homeWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.homeTeamId
             const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
             const hasScore = !!rubber && isCompleted
+            const homePairRating = averagePairRating(homePair)
+            const awayPairRating = averagePairRating(awayPair)
 
             // iMyRubber: true when rubber has player assigned, OR when no pairings exist yet
             // but the fixture belongs to the current player's team (fixture.mine).
@@ -741,8 +764,8 @@ function FixtureBreakdown({
 
             const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? null
             const courtInfo = fixture.courtInfoByCategory?.[category]
-            const showJoin = fixture.mine && !isCompleted && !!categoryJoinUrl
-            const showScore = fixture.mine && iMyRubber
+            const showJoin = fixture.canSeeBookingLinks && !isCompleted && !!categoryJoinUrl
+            const showScore = fixture.canSubmitResult && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
@@ -770,26 +793,29 @@ function FixtureBreakdown({
                   {/* Home pair */}
                   <div className="space-y-0.5">
                     {homePair.length > 0 ? (
-                      homePair.map((name) => (
-                        <p
-                          key={name}
-                          className={cn(
-                            "text-xs font-semibold leading-tight",
-                            hasScore && awayWon ? "text-slate-400" : "text-slate-800",
-                            hasScore && homeWon && "text-red-600",
-                          )}
-                        >
-                          {name}
-                        </p>
-                      ))
+                      <div className="flex items-start gap-2">
+                        {homePairRating != null && (
+                          <LiBadge li={homePairRating} tall />
+                        )}
+                        <div className="space-y-0.5">
+                          {homePair.map((player) => (
+                            <p
+                              key={player.name}
+                              className={cn(
+                                "text-xs font-semibold leading-tight",
+                                hasScore && awayWon ? "text-slate-400" : "text-slate-800",
+                                hasScore && homeWon && "text-red-600",
+                              )}
+                            >
+                              {player.name}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
                     ) : (
                       <p className="text-xs text-slate-400">TBD</p>
                     )}
-                    {/* Pair LI + team form for this category */}
                     <div className="flex items-center gap-1.5 pt-0.5">
-                      {fixture.homePairLi[category] != null && (
-                        <LiBadge li={fixture.homePairLi[category]!} />
-                      )}
                       <FormDots items={fixture.homeFormItems} align="left" />
                     </div>
                   </div>
@@ -814,27 +840,30 @@ function FixtureBreakdown({
                   {/* Away pair */}
                   <div className="space-y-0.5 text-right">
                     {awayPair.length > 0 ? (
-                      awayPair.map((name) => (
-                        <p
-                          key={name}
-                          className={cn(
-                            "text-xs font-semibold leading-tight",
-                            hasScore && homeWon ? "text-slate-400" : "text-slate-800",
-                            hasScore && awayWon && "text-red-600",
-                          )}
-                        >
-                          {name}
-                        </p>
-                      ))
+                      <div className="flex items-start justify-end gap-2">
+                        <div className="space-y-0.5">
+                          {awayPair.map((player) => (
+                            <p
+                              key={player.name}
+                              className={cn(
+                                "text-xs font-semibold leading-tight",
+                                hasScore && homeWon ? "text-slate-400" : "text-slate-800",
+                                hasScore && awayWon && "text-red-600",
+                              )}
+                            >
+                              {player.name}
+                            </p>
+                          ))}
+                        </div>
+                        {awayPairRating != null && (
+                          <LiBadge li={awayPairRating} tall />
+                        )}
+                      </div>
                     ) : (
                       <p className="text-right text-xs text-slate-400">TBD</p>
                     )}
-                    {/* Pair LI + team form for this category */}
                     <div className="flex items-center justify-end gap-1.5 pt-0.5">
                       <FormDots items={fixture.awayFormItems} align="right" />
-                      {fixture.awayPairLi[category] != null && (
-                        <LiBadge li={fixture.awayPairLi[category]!} />
-                      )}
                     </div>
                   </div>
                 </div>
@@ -905,6 +934,8 @@ function FixtureBreakdown({
                 session: scoreRubber.session,
                 isFeatureCourt: scoreRubber.isFeatureCourt,
               }]}
+              isEdit={isCompleted}
+              allowClear={isCompleted}
               onDone={() => setScoreRubber(null)}
             />
           )}

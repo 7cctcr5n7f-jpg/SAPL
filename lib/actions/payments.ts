@@ -84,7 +84,7 @@ export async function createPlayerPayment(teamId: number): Promise<{ ok: true; u
     .orderBy(desc(payments.paidAt), desc(payments.createdAt))
     .limit(1)
   if (alreadyPaid) {
-    return { ok: false, error: "Your league fee for this team is already paid" }
+    return { ok: true, url: `${await getBaseUrl()}/dashboard?payment=success` }
   }
 
   const [latest] = await db
@@ -189,7 +189,7 @@ export async function createTeamPayment(teamId: number): Promise<{ ok: true; url
     .orderBy(desc(payments.paidAt), desc(payments.createdAt))
     .limit(1)
   if (alreadyPaid) {
-    return { ok: false, error: "This team fee is already paid" }
+    return { ok: true, url: `${await getBaseUrl()}/dashboard?payment=success` }
   }
 
   const [latest] = await db

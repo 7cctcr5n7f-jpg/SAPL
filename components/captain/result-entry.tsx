@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
+import { clearResult } from "@/lib/actions/captain"
 
 type Cat = { category: string; session: number; isFeatureCourt: boolean }
 type SetScore = { home: number; away: number }
@@ -35,6 +36,7 @@ export function ResultEntry({
   initialScores,
   isEdit,
   onDone,
+  allowClear,
 }: {
   fixtureId: number
   homeName: string
@@ -43,8 +45,10 @@ export function ResultEntry({
   initialScores?: Record<string, SetScore[]>
   isEdit?: boolean
   onDone?: () => void
+  allowClear?: boolean
 }) {
   const [pending, start] = useTransition()
+  const [clearing, startClearing] = useTransition()
   const [sets, setSets] = useState<Record<string, SetScore[]>>(
     Object.fromEntries(categories.map((c) => [c.category, normalizeSets(initialScores?.[c.category])])),
   )
@@ -227,6 +231,26 @@ export function ResultEntry({
       <Button onClick={submit} disabled={pending} className="w-full">
        {pending ? "Saving..." : isEdit ? "Save changes" : "Submit Result"}
       </Button>
+      {isEdit && allowClear ? (
+       <Button
+         type="button"
+         variant="outline"
+         onClick={() =>
+           startClearing(async () => {
+             const res = await clearResult(fixtureId)
+             if (res?.error) toast.error(res.error)
+             else {
+               toast.success(res.success ?? "Result cleared")
+               onDone?.()
+             }
+           })
+         }
+         disabled={clearing}
+         className="w-full"
+       >
+         {clearing ? "Clearing..." : "Delete Result"}
+       </Button>
+      ) : null}
       <p className="text-center text-xs text-muted-foreground">
        Enter the actual game score for each set (e.g. 6–4). Standings and TPR update immediately; either
        captain can edit the result later if there&apos;s a mistake.

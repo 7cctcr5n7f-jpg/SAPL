@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+import ExcelJS from "exceljs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,7 @@ import {
   defaultCourtAssignments,
   type OpsStatus,
 } from "@/lib/fixtures-ops"
-import { saveCategoryAssignment, saveFixtureSchedule } from "@/lib/actions/fixtures"
+import { publishFixture, saveCategoryAssignment, saveFixtureSchedule, unpublishFixture } from "@/lib/actions/fixtures"
 import { ResultEntry } from "@/components/captain/result-entry"
 import type { DashboardFixture, FixtureHealth, HostClub } from "@/lib/queries-fixtures"
 import {
@@ -33,6 +34,8 @@ import {
   Pencil,
 } from "lucide-react"
 
+const FIXTURE_EDIT_TIMESLOTS = [...FIXTURE_TIMESLOTS, "19:00"] as const
+
 type StatusFilter = "all" | OpsStatus | "needs_attention" | "published"
 
 function teamLabel(name: string | null, slot: number | null) {
@@ -48,15 +51,52 @@ function fmtShortDate(value: Date | string | null) {
   return new Intl.DateTimeFormat("en-ZA", { day: "2-digit", month: "2-digit" }).format(d)
 }
 
+function fmtExportDate(value: Date | string | null) {
+  if (!value) return ""
+  const d = typeof value === "string" ? new Date(value) : value
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toISOString().slice(0, 10)
+}
+
 function resultsEntered(f: DashboardFixture): number {
   return f.matches.filter((m) => m.winnerTeamId != null).length
 }
 
-function formatPairingNames(names: string[] | undefined) {
+function formatPairingNames(names: { name: string; playtomicUrl: string | null }[] | undefined) {
   const players = names ?? []
-  if (players.length >= 2) return players.slice(0, 2).join(" / ")
-  if (players.length === 1) return `${players[0]} / TBC`
+  const playerNames = players.map((player) => player.name)
+  if (playerNames.length >= 2) return playerNames.slice(0, 2).join(" / ")
+  if (playerNames.length === 1) return `${playerNames[0]} / TBC`
   return "TBC / TBC"
+}
+
+function sanitizePlaytomicUrl(url: string | null | undefined) {
+  if (!url) return null
+  const start = url.indexOf("https://")
+  const trimmedStart = start >= 0 ? url.slice(start) : url
+  const end = trimmedStart.indexOf(")")
+  return (end >= 0 ? trimmedStart.slice(0, end) : trimmedStart).trim()
+}
+
+function exportPlayerCell(player: { name: string; playtomicUrl: string | null } | undefined) {
+  if (!player) return { v: "TBC" }
+  const cleanUrl = sanitizePlaytomicUrl(player.playtomicUrl)
+  if (!cleanUrl) return { v: player.name, hyperlink: null }
+  return { v: player.name, hyperlink: cleanUrl }
+}
+
+function exportBookingCell(link: string | null | undefined) {
+  if (!link) {
+    return {
+      v: "ADD BOOKING LINK HERE",
+      needsAttention: true,
+      hyperlink: null,
+    }
+  }
+  return {
+    v: link,
+    hyperlink: link,
+  }
 }
 
 export function OpsConsole({
@@ -175,41 +215,122 @@ export function OpsConsole({
   const activeDivisions = regionId === "all" ? divisionOptions : divisionOptions.filter((d) => d.regionId === regionId)
   const selectedVenueName = venueId === "all" ? null : venueOptions.find((option) => option.id === venueId)?.name ?? null
 
-  function exportVenueSheet() {
+  async function exportVenueSheet() {
     if (venueId === "all" || filtered.length === 0) return
+    const header = ["Week", "Date", "Fixture Time", "Court", "Category", "Venue", "Home Team", "Away Team", "Home Player 1", "Home Player 2", "Away Player 1", "Away Player 2", "Booking Link"]
     const rows = filtered.flatMap((fixture) =>
       CATEGORIES.map((category) => {
         const assignment = fixture.courtAssignments?.[category.category] ?? defaultCourtAssignments(fixture.venueCourts)[category.category]
         const link = fixture.courtLinks?.[category.category] ?? ""
+        const homePlayers = fixture.homePlayers[category.category] ?? []
+        const awayPlayers = fixture.awayPlayers[category.category] ?? []
         return [
           fixture.week,
-          fixture.matchDate ? fmtDate(fixture.matchDate) : "",
+          fixture.matchDate ? fmtExportDate(fixture.matchDate) : "",
           fixture.timeslot ?? "",
-          fixture.divisionName ?? "",
+          assignment?.court ?? "",
+          category.category,
           fixture.venueClubName ?? fixture.venue ?? "",
           fixture.homeName ?? "TBC",
           fixture.awayName ?? "TBC",
-          category.category,
-          formatPairingNames(fixture.homePlayers[category.category]),
-          formatPairingNames(fixture.awayPlayers[category.category]),
-          assignment?.court ?? "",
-          assignment?.time ?? "",
-          link,
+          exportPlayerCell(homePlayers[0]),
+          exportPlayerCell(homePlayers[1]),
+          exportPlayerCell(awayPlayers[0]),
+          exportPlayerCell(awayPlayers[1]),
+          exportBookingCell(link),
         ]
       }),
     )
-    const escape = (value: string | number) => `"${String(value ?? "").replace(/"/g, '""')}"`
-    const csv = [
-      ["Week", "Date", "Fixture Time", "Division", "Venue", "Home Team", "Away Team", "Category", "Home Players", "Away Players", "Court", "Category Time", "Booking Link"]
-        .map(escape)
-        .join(","),
-      ...rows.map((row) => row.map(escape).join(",")),
-    ].join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet("Venue sheet", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    })
+
+    worksheet.addRow(header)
+    rows.forEach((row) => {
+      const excelRow = worksheet.addRow(row.map((cell) => (typeof cell === "object" && cell !== null && "v" in cell ? cell.v : cell)))
+      row.forEach((cell, index) => {
+        if (typeof cell !== "object" || cell === null || !("v" in cell)) return
+        const excelCell = excelRow.getCell(index + 1)
+        if ("hyperlink" in cell && cell.hyperlink) {
+          excelCell.value = { text: cell.v, hyperlink: cell.hyperlink }
+          excelCell.font = { color: { argb: "FF0563C1" }, underline: true }
+        }
+        if ("needsAttention" in cell && cell.needsAttention) {
+          excelCell.font = { color: { argb: "FFB91C1C" }, bold: true }
+          excelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEE2E2" } }
+          excelCell.alignment = { horizontal: "center", vertical: "middle" }
+        }
+      })
+    })
+
+    worksheet.columns = [
+      { width: 8 },
+      { width: 14 },
+      { width: 14 },
+      { width: 8 },
+      { width: 20 },
+      { width: 28 },
+      { width: 26 },
+      { width: 26 },
+      { width: 24 },
+      { width: 24 },
+      { width: 24 },
+      { width: 24 },
+      { width: 42 },
+    ]
+
+    const headerRow = worksheet.getRow(1)
+    headerRow.height = 22
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } }
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } }
+      cell.alignment = { horizontal: "center", vertical: "middle" }
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD1D5DB" } },
+        bottom: { style: "thin", color: { argb: "FFD1D5DB" } },
+        left: { style: "thin", color: { argb: "FFD1D5DB" } },
+        right: { style: "thin", color: { argb: "FFD1D5DB" } },
+      }
+    })
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return
+      row.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFE5E7EB" } },
+          bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
+          left: { style: "thin", color: { argb: "FFE5E7EB" } },
+          right: { style: "thin", color: { argb: "FFE5E7EB" } },
+        }
+        if (!cell.fill || !("fgColor" in cell.fill)) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: rowNumber % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" },
+          }
+        }
+        if (!cell.alignment) {
+          cell.alignment = {
+            horizontal: colNumber <= 5 ? "center" : "left",
+            vertical: "middle",
+            wrapText: true,
+          }
+        }
+      })
+    })
+
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: header.length },
+    }
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([arrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `${(selectedVenueName ?? "venue").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fixtures.csv`
+    link.download = `${(selectedVenueName ?? "venue").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fixtures.xlsx`
     link.click()
     URL.revokeObjectURL(url)
     toast.success("Venue fixture sheet exported")
@@ -502,8 +623,10 @@ function FixtureDetail({
   editing: boolean
 }) {
   const [showResults, setShowResults] = useState(false)
+  const [publishing, startPublishing] = useTransition()
   const canEdit = f.canEditLink
   const bothTeams = f.homeTeamId != null && f.awayTeamId != null
+  const publishGate = deriveOpsStatus(f)
 
   const initialScores = useMemo(() => {
     const out: Record<string, { home: number; away: number }[]> = {}
@@ -513,6 +636,67 @@ function FixtureDetail({
 
   return (
     <div className="space-y-2 border-t border-border bg-background/40 px-4 py-2">
+      {canManageVenue && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {f.published ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                startPublishing(async () => {
+                  const res = await unpublishFixture(f.id)
+                  if (!res.ok) toast.error(res.error ?? "Could not unpublish fixture.")
+                  else toast.success("Fixture unpublished")
+                })
+              }
+              disabled={publishing}
+            >
+              {publishing ? "Saving..." : "Unpublish"}
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() =>
+                  startPublishing(async () => {
+                    const res = await publishFixture(f.id)
+                    if (!res.ok) {
+                      toast.error(res.error ?? "Could not publish fixture.")
+                      return
+                    }
+                    const warnings = res.report?.warnings ?? 0
+                    toast.success(warnings > 0 ? `Fixture published with ${warnings} warning${warnings === 1 ? "" : "s"}.` : "Fixture published")
+                  })
+                }
+                disabled={publishing || publishGate.status === "draft"}
+              >
+                {publishing ? "Publishing..." : "Publish"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  startPublishing(async () => {
+                    const res = await publishFixture(f.id, { ignoreWarnings: true })
+                    if (!res.ok) {
+                      toast.error(res.error ?? "Could not publish fixture.")
+                      return
+                    }
+                    toast.success("Fixture published with warnings")
+                  })
+                }
+                disabled={publishing || publishGate.status === "draft"}
+              >
+                Publish with warnings
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Categories list */}
       <div className="space-y-0.5 rounded-md border border-border overflow-hidden">
         {CATEGORIES.map((c) => (
@@ -558,6 +742,7 @@ function FixtureDetail({
                 categories={CATEGORIES.map((c) => ({ category: c.category, session: c.session, isFeatureCourt: c.isFeatureCourt }))}
                 initialScores={initialScores}
                 isEdit={f.status === "completed"}
+                allowClear={f.status === "completed"}
                 onDone={() => setShowResults(false)}
               />
             </div>
@@ -646,7 +831,7 @@ function DraftScheduleEditor({
           <span className="text-muted-foreground">Timeslot</span>
           <select value={timeslot} onChange={(e) => setTimeslot(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="">Unscheduled</option>
-            {FIXTURE_TIMESLOTS.map((slot) => (
+            {FIXTURE_EDIT_TIMESLOTS.map((slot) => (
               <option key={slot} value={slot}>
                 {slot}
               </option>
@@ -805,7 +990,7 @@ function CategoryEditor({
             aria-label={`${category} start time`}
           >
             <option value="">Time</option>
-            {FIXTURE_TIMESLOTS.map((t) => (
+            {FIXTURE_EDIT_TIMESLOTS.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import {
   fixtures,
+  fixturePlanningPairings,
   teams,
   divisions,
   seasons,
@@ -11,7 +12,7 @@ import {
   organisations,
   clubs,
 } from "@/lib/db/schema"
-import { eq, desc, asc, inArray } from "drizzle-orm"
+import { eq, desc, asc, inArray, sql } from "drizzle-orm"
 
 export async function getRegions() {
   return db.select({ id: regions.id, name: regions.name }).from(regions).orderBy(asc(regions.name))
@@ -78,6 +79,74 @@ export async function getSeasonsWithDivisions() {
     ...s,
     divisions: ds.filter((d) => d.seasonId === s.id),
   }))
+}
+
+export async function getSeasonFixturePlanning(seasonId: number) {
+  const pairingRows = await db
+    .select({
+      id: fixturePlanningPairings.id,
+      seasonId: fixturePlanningPairings.seasonId,
+      divisionId: fixturePlanningPairings.divisionId,
+      round: fixturePlanningPairings.round,
+      pairingOrder: fixturePlanningPairings.pairingOrder,
+      week: fixturePlanningPairings.week,
+      teamAId: fixturePlanningPairings.teamAId,
+      teamBId: fixturePlanningPairings.teamBId,
+      homeTeamId: fixturePlanningPairings.homeTeamId,
+      awayTeamId: fixturePlanningPairings.awayTeamId,
+      timeslot: fixturePlanningPairings.timeslot,
+    })
+    .from(fixturePlanningPairings)
+    .where(eq(fixturePlanningPairings.seasonId, seasonId))
+    .orderBy(asc(fixturePlanningPairings.divisionId), asc(fixturePlanningPairings.round), asc(fixturePlanningPairings.pairingOrder))
+
+  const divisionRows = await db
+    .select({
+      id: divisions.id,
+      seasonId: divisions.seasonId,
+      name: divisions.name,
+      level: divisions.level,
+      maxTeams: divisions.maxTeams,
+      regionId: divisions.regionId,
+      regionName: regions.name,
+    })
+    .from(divisions)
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .where(eq(divisions.seasonId, seasonId))
+    .orderBy(asc(divisions.level), asc(divisions.id))
+
+  const teamIds = [...new Set(pairingRows.flatMap((row) => [row.teamAId, row.teamBId]))]
+  const teamRows = teamIds.length
+    ? await db
+        .select({
+          id: teams.id,
+          name: teams.name,
+          logoUrl: sql<string | null>`coalesce(${teams.logoUrl}, ${clubs.logoUrl}, ${organisations.logoUrl})`,
+          homeClubId: teams.homeClubId,
+          homeClubName: clubs.name,
+          homeClubCourts: clubs.courts,
+        })
+        .from(teams)
+        .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
+        .leftJoin(organisations, eq(clubs.organisationId, organisations.id))
+        .where(inArray(teams.id, teamIds))
+    : []
+  const teamsById = new Map(teamRows.map((row) => [row.id, row]))
+
+  return {
+    divisions: divisionRows,
+    pairings: pairingRows.map((row) => ({
+      ...row,
+      teamAName: teamsById.get(row.teamAId)?.name ?? `Team ${row.teamAId}`,
+      teamBName: teamsById.get(row.teamBId)?.name ?? `Team ${row.teamBId}`,
+      teamALogoUrl: teamsById.get(row.teamAId)?.logoUrl ?? null,
+      teamBLogoUrl: teamsById.get(row.teamBId)?.logoUrl ?? null,
+      teamAHomeClubName: teamsById.get(row.teamAId)?.homeClubName ?? null,
+      teamBHomeClubName: teamsById.get(row.teamBId)?.homeClubName ?? null,
+      teamAHomeClubCourts: teamsById.get(row.teamAId)?.homeClubCourts ?? null,
+      teamBHomeClubCourts: teamsById.get(row.teamBId)?.homeClubCourts ?? null,
+    })),
+  }
 }
 
 export async function getAllDivisions() {

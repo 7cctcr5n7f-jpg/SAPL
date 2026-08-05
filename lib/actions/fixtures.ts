@@ -407,7 +407,7 @@ export async function saveCategoryAssignment(
 }
 
 /** Publish a fixture so players can see it and join in League Centre. */
-export async function publishFixture(fixtureId: number) {
+export async function publishFixture(fixtureId: number, options?: { ignoreWarnings?: boolean }) {
   const auth = await authorizeFixtureEdit(fixtureId)
   if (!auth.ok) return { ok: false, error: "Not authorised to publish this fixture" }
 
@@ -430,6 +430,29 @@ export async function publishFixture(fixtureId: number) {
   const gate = canPublish(fx)
   if (!gate.ok) return { ok: false, error: gate.reason ?? "Fixture is not ready to publish." }
 
+   const [fixtureSeason] = await db
+    .select({ seasonId: fixtures.seasonId })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
+  if (!fixtureSeason) return { ok: false, error: "Fixture not found" }
+
+  const report = await validateSeason(fixtureSeason.seasonId)
+  if (report.errors > 0) {
+    const blockingIssues = report.issues.filter((issue) => issue.level === "error")
+    const onlyWarningsRequested = options?.ignoreWarnings === true
+    const hasOnlyPublishWarnings = blockingIssues.every((issue) =>
+      issue.code === "home_away_balance" || issue.code === "venue_unavailable_slot",
+    )
+    if (!onlyWarningsRequested || !hasOnlyPublishWarnings) {
+      return {
+        ok: false,
+        error: `${report.errors} validation error${report.errors === 1 ? "" : "s"} still need attention before publishing.`,
+        report,
+      }
+    }
+  }
+
   await db
     .update(fixtures)
     .set({
@@ -450,7 +473,7 @@ export async function publishFixture(fixtureId: number) {
 
   revalidatePath("/dashboard/fixtures")
   revalidatePath("/league-centre")
-  return { ok: true }
+  return { ok: true, report }
 }
 
 /** Unpublish a fixture, hiding it from players again. */
