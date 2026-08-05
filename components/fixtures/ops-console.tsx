@@ -432,7 +432,7 @@ function ConsoleRow({
 
   return (
     <div className={cn("border-b border-border last:border-b-0", expanded && "bg-secondary/30")}>
-      <div className="flex items-start gap-2 px-4 py-2.5">
+      <div className="flex items-start gap-2 px-4 py-1.5">
         <button
           onClick={onToggle}
           aria-expanded={expanded}

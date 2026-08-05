@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { ChevronRight } from "lucide-react"
 
 type Cat = { category: string; session: number; isFeatureCourt: boolean }
 type SetScore = { home: number; away: number }
@@ -47,11 +48,23 @@ export function ResultEntry({
   const [sets, setSets] = useState<Record<string, SetScore[]>>(
     Object.fromEntries(categories.map((c) => [c.category, normalizeSets(initialScores?.[c.category])])),
   )
+  const [expandedSets, setExpandedSets] = useState<Record<string, Set<number>>>(
+    Object.fromEntries(categories.map((c) => [c.category, new Set()]))
+  )
 
   function setGame(cat: string, idx: number, side: "home" | "away", value: number) {
     setSets((prev) => {
       const rows = prev[cat].map((r, i) => (i === idx ? { ...r, [side]: Math.max(0, Math.min(99, value)) } : r))
       return { ...prev, [cat]: rows }
+    })
+  }
+
+  function toggleSetExpanded(cat: string, setIdx: number) {
+    setExpandedSets((prev) => {
+      const current = new Set(prev[cat])
+      if (current.has(setIdx)) current.delete(setIdx)
+      else current.add(setIdx)
+      return { ...prev, [cat]: current }
     })
   }
 
@@ -97,8 +110,8 @@ export function ResultEntry({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-4 py-3">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-4 py-2">
         <span className="flex-1 truncate text-sm font-semibold">{homeName}</span>
         <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           vs
@@ -106,15 +119,17 @@ export function ResultEntry({
         <span className="flex-1 truncate text-right text-sm font-semibold">{awayName}</span>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-1.5">
         {categories.map((c) => {
           const rows = sets[c.category] ?? EMPTY_SETS
           const t = tallySets(rows)
           const hw = t.homeSetsWon > t.awaySetsWon
           const aw = t.awaySetsWon > t.homeSetsWon
+          const expanded = expandedSets[c.category] ?? new Set()
+          
           return (
-            <div key={c.category} className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-2.5 flex items-center justify-between gap-2">
+            <div key={c.category} className="rounded-md border border-border bg-card">
+              <div className="flex items-center justify-between gap-2 px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="truncate text-sm font-semibold">{c.category}</span>
                   {c.isFeatureCourt && (
@@ -129,46 +144,67 @@ export function ResultEntry({
                   <span className={cn(aw ? "font-bold text-primary" : "text-muted-foreground")}>{t.awaySetsWon}</span>
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {rows.map((r, i) => (
-                  <div key={i} className="rounded-md bg-secondary/60 p-1.5">
-                    <div className="mb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Set {i + 1}
+              
+              <div className="border-t border-border">
+                {rows.map((r, i) => {
+                  const isExpanded = expanded.has(i)
+                  return (
+                    <div key={i} className="border-b border-border last:border-b-0">
+                      <button
+                        onClick={() => toggleSetExpanded(c.category, i)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-secondary/30"
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="text-sm font-semibold">Set {i + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm">
+                            <span>{r.home || "0"}</span>
+                            <span className="text-muted-foreground">–</span>
+                            <span>{r.away || "0"}</span>
+                          </span>
+                          <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", isExpanded && "rotate-90")} />
+                        </div>
+                      </button>
+                      
+                      {isExpanded && (
+                        <div className="border-t border-border bg-secondary/20 px-3 py-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              max={99}
+                              value={r.home === 0 ? "" : r.home}
+                              placeholder="0"
+                              onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
+                              className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
+                              aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
+                            />
+                            <span className="text-sm text-muted-foreground">–</span>
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              max={99}
+                              value={r.away === 0 ? "" : r.away}
+                              placeholder="0"
+                              onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
+                              className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
+                              aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center justify-center gap-1">
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        max={99}
-                        value={r.home === 0 ? "" : r.home}
-                        placeholder="0"
-                        onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
-                        className="h-10 w-full min-w-0 px-0 text-center text-base font-semibold tabular-nums"
-                        aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
-                      />
-                      <span className="text-xs text-muted-foreground">–</span>
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        max={99}
-                        value={r.away === 0 ? "" : r.away}
-                        placeholder="0"
-                        onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
-                        className="h-10 w-full min-w-0 px-0 text-center text-base font-semibold tabular-nums"
-                        aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )
         })}
       </div>
 
-      <div className="space-y-1 rounded-md bg-secondary px-4 py-3 text-sm">
+      <div className="space-y-1 rounded-md bg-secondary px-3 py-2 text-sm">
         <div className="flex items-center justify-between">
           <span className="font-semibold">Fixture points</span>
           <span className="font-mono text-base font-bold">
@@ -182,11 +218,11 @@ export function ResultEntry({
       </div>
 
       <Button onClick={submit} disabled={pending} className="w-full">
-        {pending ? "Saving..." : isEdit ? "Save changes" : "Submit Result"}
+       {pending ? "Saving..." : isEdit ? "Save changes" : "Submit Result"}
       </Button>
       <p className="text-center text-xs text-muted-foreground">
-        Enter the actual game score for each set (e.g. 6–4). Standings and TPR update immediately; either
-        captain can edit the result later if there&apos;s a mistake.
+       Enter the actual game score for each set (e.g. 6–4). Standings and TPR update immediately; either
+       captain can edit the result later if there&apos;s a mistake.
       </p>
     </div>
   )
