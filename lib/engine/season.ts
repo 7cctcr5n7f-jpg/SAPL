@@ -293,7 +293,7 @@ export function planSeason(args: {
     // Teams at bottleneck venues (100% utilization) MUST get at least 2 home games.
     // This is computed BEFORE orientation to ensure fairness for constrained venues.
     const minimumHomeGames = new Map<number, number>()
-    const totalFixturesPerTeam = gamesByTeam.get(division.teamSlots[0]?.id) ?? 6
+    const totalFixturesPerTeam = gameCounts.get(division.teamSlots[0]?.id) ?? 6
     
     for (const team of division.teamSlots) {
       const constraint = teamVenuePriority(team.id)
