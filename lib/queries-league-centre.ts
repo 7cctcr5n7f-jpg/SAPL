@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache"
 import { db } from "@/lib/db"
+import { getAccessContext } from "@/lib/access"
 import {
   fixtures,
   teams,
@@ -47,6 +48,8 @@ export type LCStanding = {
   divisionId: number
   teamId: number
   teamName: string | null
+  venueName: string | null
+  venueLogo: string | null
   orgName: string | null
   orgSlug: string | null
   teamLogo: string | null
@@ -320,6 +323,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           teamId: teamEntries.teamId,
           teamName: teams.name,
           teamLogo: teams.logoUrl,
+          venueName: clubs.name,
+          venueLogo: clubs.logoUrl,
           orgName: organisations.name,
           orgSlug: organisations.slug,
           orgLogo: organisations.logoUrl,
@@ -337,6 +342,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         })
         .from(teamEntries)
         .innerJoin(teams, eq(teamEntries.teamId, teams.id))
+        .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
         .leftJoin(organisations, eq(teams.organisationId, organisations.id))
         .leftJoin(
           standings,
@@ -379,6 +385,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           divisionLevel: divisions.level,
           regionId: divisions.regionId,
           regionName: regions.name,
+          venueClubId: fixtures.venueClubId,
           homeTeamId: fixtures.homeTeamId,
           awayTeamId: fixtures.awayTeamId,
           homeName: home.name,
@@ -408,6 +415,13 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))
         .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.published, true), inArray(fixtures.divisionId, usedDivisionIds)))
         .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
+    : []
+
+  const fixtureVenueRows = usedDivisionIds.length
+    ? await db
+        .select({ venueClubId: fixtures.venueClubId })
+        .from(fixtures)
+        .where(and(eq(fixtures.seasonId, season.id), inArray(fixtures.divisionId, usedDivisionIds)))
     : []
 
   // Pairings — player names + LI for all teams in these fixtures.
@@ -642,7 +656,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   }))
 
   const teamCount = regionsOut.reduce((sum, r) => sum + r.teamCount, 0)
-  const clubCount = regionsOut.reduce((sum, r) => sum + r.clubCount, 0)
+  const clubCount = new Set(fixtureVenueRows.map((f) => f.venueClubId).filter((id): id is number => id != null)).size
   const matchesPlayed = sharedFixtures.filter((f) => f.status === "completed").length
   const matchesRemaining = sharedFixtures.length - matchesPlayed
 

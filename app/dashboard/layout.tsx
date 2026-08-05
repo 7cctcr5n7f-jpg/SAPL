@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation"
-import { getCurrentUser } from "@/lib/session"
-import { getAccessContext } from "@/lib/access"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { UserMenu } from "@/components/dashboard/user-menu"
+import { getAccessContext } from "@/lib/access"
+import { getCurrentUser } from "@/lib/session"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser()

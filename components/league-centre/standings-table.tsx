@@ -6,10 +6,12 @@ export function StandingsTable({
   rows,
   qualifierByTeamId = new Map<number, "direct" | "wildcard">(),
   qualificationRule,
+  showRelegation = false,
 }: {
   rows: LCStanding[]
   qualifierByTeamId?: Map<number, "direct" | "wildcard">
   qualificationRule?: string
+  showRelegation?: boolean
 }) {
   if (!rows.length) {
     return (
@@ -50,33 +52,38 @@ export function StandingsTable({
         {rows.map((r, i) => {
           const pos = r.rank ?? i + 1
           const qualifier = qualifierByTeamId.get(r.teamId) ?? null
-          const releg = pos >= total - 1 && total > 4
           return (
             <li
               key={r.teamId}
               className={cn(
                 "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
                 qualifier && "bg-sky-50/70",
-                releg && "bg-red-50/60",
+                showRelegation && pos >= total - 1 && total > 4 && "bg-red-50/60",
               )}
             >
               <span
                 aria-hidden
                 className={cn(
                   "absolute left-0 top-0 h-full w-1",
-                  qualifier ? (qualifier === "wildcard" ? "bg-violet-500" : "bg-sky-500") : releg ? "bg-red-400" : "bg-transparent",
+                  qualifier
+                    ? qualifier === "wildcard"
+                      ? "bg-violet-500"
+                      : "bg-sky-500"
+                    : showRelegation && pos >= total - 1 && total > 4
+                      ? "bg-red-400"
+                      : "bg-transparent",
                 )}
               />
               <span className="text-center text-sm font-bold tabular-nums text-slate-800">{pos}</span>
               <div className="flex min-w-0 items-center gap-2.5">
-                <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.orgLogo} size="sm" />
+                <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.venueLogo ?? r.orgLogo} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900">{r.teamName ?? "—"}</p>
                   <p className="truncate text-[11px] text-slate-500 md:hidden">
                     {r.played}P · {r.wins}W · {r.points}pts
                   </p>
                   <div className="hidden items-center gap-2 md:flex">
-                    {r.orgName ? <p className="truncate text-[11px] text-slate-500">{r.orgName}</p> : null}
+                    {r.venueName ? <p className="truncate text-[11px] text-slate-500">{r.venueName}</p> : null}
                     {qualifier ? (
                       <span
                         className={cn(
@@ -118,7 +125,7 @@ export function StandingsTable({
           )
         })}
       </ul>
-      {anyPlayed && (
+      {anyPlayed && showRelegation && (
         <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Playoff qualification</span>
           {hasWildcards ? (

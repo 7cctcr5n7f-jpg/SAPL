@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { fmtDate } from "@/lib/format"
+import { SegmentedTabs, StatGrid } from "@/components/shared/dense"
 import { toast } from "sonner"
 import { FIXTURE_TIMESLOTS } from "@/lib/constants"
 import {
@@ -41,11 +41,11 @@ function teamLabel(name: string | null, slot: number | null) {
   return { text: "TBD", placeholder: true }
 }
 
-function fmtWhen(value: Date | string | null): string {
-  if (!value) return "—"
+function fmtShortDate(value: Date | string | null) {
+  if (!value) return "TBD"
   const d = typeof value === "string" ? new Date(value) : value
-  if (Number.isNaN(d.getTime())) return "—"
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  if (Number.isNaN(d.getTime())) return "TBD"
+  return new Intl.DateTimeFormat("en-ZA", { day: "2-digit", month: "2-digit" }).format(d)
 }
 
 function resultsEntered(f: DashboardFixture): number {
@@ -119,6 +119,7 @@ export function OpsConsole({
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [showActionRequired, setShowActionRequired] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -160,6 +161,16 @@ export function OpsConsole({
       icon: Trophy,
     },
   ].filter((a) => a.count > 0)
+
+  const statusTabs = [
+    { value: "all", label: "All" },
+    { value: "draft", label: "Drafts" },
+    { value: "planned", label: "Planned" },
+    { value: "missing_links", label: "Missing Links" },
+    { value: "awaiting_result", label: "Awaiting Result" },
+    { value: "completed", label: "Completed" },
+    { value: "published", label: "Published" },
+  ]
 
   const activeDivisions = regionId === "all" ? divisionOptions : divisionOptions.filter((d) => d.regionId === regionId)
   const selectedVenueName = venueId === "all" ? null : venueOptions.find((option) => option.id === venueId)?.name ?? null
@@ -206,42 +217,62 @@ export function OpsConsole({
 
   return (
     <div className="space-y-5">
-      {/* Fixture Health */}
-      <section aria-label="Fixture health" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <HealthTile label="Total Fixtures" value={health.total} active={status === "all"} onClick={() => setStatus("all")} />
-        <HealthTile label="Drafts" value={health.draft} tone="text-violet-400" active={status === "draft"} onClick={() => setStatus("draft")} />
-        <HealthTile label="Completed" value={health.completed} tone="text-emerald-400" active={status === "completed"} onClick={() => setStatus("completed")} />
-        <HealthTile label="Awaiting Results" value={health.awaitingResults} tone="text-amber-400" active={status === "awaiting_result"} onClick={() => setStatus("awaiting_result")} />
-        <HealthTile label="Missing Booking" value={health.missingLinks} tone="text-orange-400" active={status === "needs_attention"} onClick={() => setStatus("needs_attention")} />
-        <HealthTile label="Published" value={health.published} tone="text-primary" active={status === "published"} onClick={() => setStatus("published")} />
+      <section aria-label="Fixture overview" className="space-y-2">
+        <StatGrid
+          columns={3}
+          stats={[
+            { label: "Total fixtures", value: health.total },
+            { label: "Published", value: health.published },
+            { label: "Need attention", value: health.missingLinks },
+          ]}
+        />
+        <SegmentedTabs
+          value={status}
+          onChange={(v) => setStatus(v as StatusFilter)}
+          options={statusTabs}
+          className="w-full"
+        />
       </section>
 
       {/* Action Required */}
       {actionItems.length > 0 && (
         <section aria-label="Action required" className="rounded-lg border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Action Required</h2>
-          </div>
-          <ul className="divide-y divide-border">
-            {actionItems.map((a) => (
-              <li key={a.key}>
-                <button
-                  onClick={() => setStatus(a.key)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
-                >
-                  <span className="flex items-center gap-2.5 text-sm">
-                    <a.icon className={cn("h-4 w-4", a.tone)} />
-                    {a.label}
-                  </span>
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="font-mono font-bold text-foreground tabular-nums">{a.count}</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            onClick={() => setShowActionRequired((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
+            aria-expanded={showActionRequired}
+          >
+            <span className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Action Required</span>
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                {actionItems.length}
+              </span>
+            </span>
+            <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", showActionRequired && "rotate-90")} />
+          </button>
+          {showActionRequired && (
+            <ul className="divide-y divide-border border-t border-border">
+              {actionItems.map((a) => (
+                <li key={a.key}>
+                  <button
+                    onClick={() => setStatus(a.key)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
+                  >
+                    <span className="flex items-center gap-2.5 text-sm">
+                      <a.icon className={cn("h-4 w-4", a.tone)} />
+                      {a.label}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span className="font-mono font-bold text-foreground tabular-nums">{a.count}</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
@@ -341,33 +372,6 @@ export function OpsConsole({
   )
 }
 
-function HealthTile({
-  label,
-  value,
-  tone,
-  active,
-  onClick,
-}: {
-  label: string
-  value: number
-  tone?: string
-  active?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-2.5 text-left transition-colors",
-        active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-muted-foreground/40",
-      )}
-    >
-      <div className={cn("font-mono text-2xl font-bold tabular-nums", tone ?? "text-foreground")}>{value}</div>
-      <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-    </button>
-  )
-}
-
 function FilterSelect<T extends number>({
   value,
   onChange,
@@ -428,11 +432,11 @@ function ConsoleRow({
 
   return (
     <div className={cn("border-b border-border last:border-b-0", expanded && "bg-secondary/30")}>
-      <div className="flex items-start gap-2 px-4 py-3">
+      <div className="flex items-start gap-2 px-4 py-1.5">
         <button
           onClick={onToggle}
           aria-expanded={expanded}
-          className="grid min-w-0 flex-1 grid-cols-[1.25rem_1fr] items-start gap-3 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
+          className="grid min-w-0 flex-1 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-2.5 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
         >
           <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden", expanded && "rotate-90")} />
           <span className={cn("hidden rounded-full px-2 py-0.5 text-center text-[11px] font-semibold lg:inline-block", info.tone)}>
@@ -442,17 +446,9 @@ function ConsoleRow({
           <div className="min-w-0 lg:contents">
             <span className="hidden text-sm text-muted-foreground lg:inline">{f.week}</span>
 
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 lg:block lg:min-w-0">
+            <div className="flex min-w-0 flex-col gap-0.5 lg:block">
               <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
-              <span className="text-xs text-muted-foreground lg:hidden">vs</span>
               <span className={cn("truncate text-sm font-semibold lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
-              {done && (
-                <span className="font-mono text-xs font-bold tabular-nums lg:hidden">
-                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
-                  <span className="text-muted-foreground">–</span>
-                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
-                </span>
-              )}
             </div>
             <span className={cn("hidden truncate text-sm font-semibold lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
 
@@ -461,18 +457,22 @@ function ConsoleRow({
               <span className="truncate">{venueName ?? "TBD"}</span>
             </span>
 
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground lg:hidden">
               <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", info.tone)}>{info.label}</span>
               <span>Wk {f.week}</span>
-              {f.divisionName && <span>{f.divisionName}</span>}
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
                 {venueName ?? "TBD"}
               </span>
+              {done && (
+                <span className="font-mono text-xs font-bold tabular-nums">
+                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
+                  <span className="text-muted-foreground">–</span>
+                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
+                </span>
+              )}
             </div>
 
-            <CountPill count={info.readyCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="courts booked" />
-            <CountPill count={resCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="results entered" resultStyle />
           </div>
         </button>
 
@@ -485,39 +485,6 @@ function ConsoleRow({
 
       {expanded && <FixtureDetail f={f} canManageVenue={canManageVenue} clubs={clubs} divisionTeams={divisionTeams} editing={editing} />}
     </div>
-  )
-}
-
-function CountPill({
-  count,
-  total,
-  className,
-  label,
-  resultStyle,
-}: {
-  count: number
-  total: number
-  className?: string
-  label: string
-  resultStyle?: boolean
-}) {
-  const complete = count === total
-  return (
-    <span
-      title={`${count} of ${total} ${label}`}
-      className={cn(
-        "mx-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium tabular-nums",
-        complete
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-          : resultStyle
-            ? "border-border bg-secondary text-muted-foreground"
-            : "border-orange-500/30 bg-orange-500/10 text-orange-400",
-        className,
-      )}
-    >
-      {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-      {count}/{total}
-    </span>
   )
 }
 
@@ -545,55 +512,18 @@ function FixtureDetail({
   }, [f.matches])
 
   return (
-    <div className="space-y-4 border-t border-border bg-background/40 px-4 py-4">
-      {/* Detail + audit */}
-      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-          <Field label="Region" value={f.regionName} />
-          <Field label="Division" value={f.divisionName} />
-          <Field label="Week" value={`Week ${f.week}`} />
-          <Field label="Date" value={f.matchDate ? fmtDate(f.matchDate) : null} />
-          <Field label="Venue" value={f.venueClubName ?? f.venue} />
-          <Field label="Night Time" value={f.timeslot} />
-        </dl>
-        <div className="flex flex-col items-start gap-2 md:items-end">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold",
-              f.published ? "bg-emerald-500/15 text-emerald-400" : "bg-violet-500/15 text-violet-400",
-            )}
-          >
-            {f.published ? "Published" : "Draft"}
-          </span>
-        </div>
-      </div>
-
-      {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
-
-      {/* Audit trail */}
-      <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-md bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
-        <span>Created by <span className="text-foreground">System (Season Generator)</span></span>
-        <span>Updated by <span className="text-foreground">{f.updatedByName ?? "—"}</span> {f.updatedAt ? `· ${fmtWhen(f.updatedAt)}` : ""}</span>
-        <span>Published by <span className="text-foreground">{f.publishedByName ?? "—"}</span> {f.publishedAt ? `· ${fmtWhen(f.publishedAt)}` : ""}</span>
-        <span>Result by <span className="text-foreground">{f.resultEnteredByName ?? "—"}</span> {f.resultEnteredAt ? `· ${fmtWhen(f.resultEnteredAt)}` : ""}</span>
-      </div>
-
-      {/* Category child table */}
-      <div className="overflow-hidden rounded-md border border-border">
-        <div className="hidden grid-cols-[1fr_4rem_6rem_1fr_7rem] items-center gap-3 border-b border-border bg-secondary/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
-          <span>Category</span>
-          <span>Court</span>
-          <span>Time</span>
-          <span>Booking Link</span>
-          <span className="text-right">Status</span>
-        </div>
+    <div className="space-y-2 border-t border-border bg-background/40 px-4 py-2">
+      {/* Categories list */}
+      <div className="space-y-0.5 rounded-md border border-border overflow-hidden">
         {CATEGORIES.map((c) => (
           <CategoryEditor
             key={c.category}
             fixtureId={f.id}
+            matchDate={f.matchDate}
             category={c.category}
             isFeature={c.isFeatureCourt}
             canEdit={canEdit}
+            editing={editing}
             assignment={f.courtAssignments?.[c.category] ?? defaultCourtAssignments(f.venueCourts)[c.category]}
             link={f.courtLinks?.[c.category] ?? ""}
             match={f.matches.find((m) => m.category === c.category)}
@@ -604,6 +534,8 @@ function FixtureDetail({
       </div>
 
       {/* Result entry */}
+      {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
+
       {bothTeams && (
         <div className="rounded-md border border-border">
           <button
@@ -764,20 +696,13 @@ function DraftScheduleEditor({
   )
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-0.5 text-sm", value ? "text-foreground" : "italic text-muted-foreground")}>{value || "Not set"}</dd>
-    </div>
-  )
-}
-
 function CategoryEditor({
   fixtureId,
+  matchDate,
   category,
   isFeature,
   canEdit,
+  editing,
   assignment,
   link,
   match,
@@ -785,9 +710,11 @@ function CategoryEditor({
   awayName,
 }: {
   fixtureId: number
+  matchDate: Date | string | null
   category: string
   isFeature: boolean
   canEdit: boolean
+  editing: boolean
   assignment: { court: string | null; time: string | null }
   link: string
   match?: DashboardFixture["matches"][number]
@@ -818,90 +745,94 @@ function CategoryEditor({
     )
   }
 
+  const linkReady = Boolean(url)
   return (
-    <div className="grid grid-cols-1 gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{category}</span>
-          {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
+    <div className="border-b border-border px-3 py-2 last:border-b-0">
+      {/* Header: Category + date/time/court + link status */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold shrink-0">{category}</span>
+          {isFeature && <Badge variant="secondary" className="text-[10px] shrink-0">Feature</Badge>}
+          <span className="text-xs text-muted-foreground shrink-0">
+            {fmtShortDate(matchDate)} {assignment?.time ?? "TBD"} · Court {assignment?.court ?? "TBD"}
+          </span>
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{homeName}</span>
-          <span className="mx-1.5 text-muted-foreground">vs</span>
-          <span className="font-medium text-foreground">{awayName}</span>
+        <div className="shrink-0">
+          {linkReady ? (
+            <a
+              href={/^https?:\/\//i.test(url) ? url : `https://${url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500 hover:bg-emerald-500/15"
+              aria-label={`Open ${category} booking`}
+            >
+              <ExternalLink className="h-3 w-3" />
+              Link
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-500">
+              <AlertTriangle className="h-3 w-3" />
+              Pending
+            </span>
+          )}
         </div>
       </div>
 
-      <Input
-        value={court}
-        onChange={(e) => setCourt(e.target.value)}
-        disabled={!canEdit}
-        inputMode="numeric"
-        placeholder="—"
-        className="h-8 text-center text-sm"
-        aria-label={`${category} court number`}
-      />
+      {/* Match: Home vs Away */}
+      <div className="flex items-center justify-center gap-2 text-sm font-medium">
+        <div className="flex-1 text-left truncate">{homeName}</div>
+        <span className="shrink-0 text-muted-foreground mx-1.5">vs</span>
+        <div className="flex-1 text-right truncate">{awayName}</div>
+      </div>
 
-      <select
-        value={time ?? ""}
-        onChange={(e) => setTime(e.target.value)}
-        disabled={!canEdit}
-        className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-        aria-label={`${category} start time`}
-      >
-        <option value="">Time</option>
-        {FIXTURE_TIMESLOTS.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
-
-      <div className="flex items-center gap-1.5">
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          disabled={!canEdit}
-          placeholder="playtomic.io/…"
-          className="h-8 text-sm"
-          aria-label={`${category} booking link`}
-        />
-        {url && !canEdit && (
-          <a
-            href={/^https?:\/\//i.test(url) ? url : `https://${url}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={`Open ${category} booking`}
+      {/* Edit mode: inputs */}
+      {editing && canEdit && (
+        <div className="mt-2 grid grid-cols-[4rem_5rem_minmax(0,1fr)_auto] gap-1.5 text-sm">
+          <Input
+            value={court}
+            onChange={(e) => setCourt(e.target.value)}
+            disabled={!canEdit}
+            inputMode="numeric"
+            placeholder="Court"
+            className="h-7 text-center text-xs"
+            aria-label={`${category} court number`}
+          />
+          <select
+            value={time ?? ""}
+            onChange={(e) => setTime(e.target.value)}
+            disabled={!canEdit}
+            className="h-7 rounded-md border border-input bg-background px-1.5 text-xs disabled:opacity-60"
+            aria-label={`${category} start time`}
           >
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        )}
-      </div>
-
-      <div className="flex items-center justify-end gap-1.5">
-        {match?.winnerTeamId != null && match.scoreDetail && (
-          <span className="mr-auto font-mono text-[11px] text-muted-foreground sm:mr-0">{match.scoreDetail}</span>
-        )}
-        {canEdit && url && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyLink} aria-label="Copy link">
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        )}
-        {canEdit && dirty ? (
-          <Button size="sm" className="h-8" onClick={save} disabled={pending}>
-            {pending ? "…" : "Save"}
-          </Button>
-        ) : ready ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Ready
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-md bg-orange-500/15 px-2 py-1 text-[11px] font-medium text-orange-400">
-            <AlertTriangle className="h-3.5 w-3.5" /> Pending
-          </span>
-        )}
-      </div>
+            <option value="">Time</option>
+            {FIXTURE_TIMESLOTS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={!canEdit}
+            placeholder="playtomic.io/…"
+            className="h-7 text-xs"
+            aria-label={`${category} booking link`}
+          />
+          <div className="flex items-center justify-end gap-1">
+            {canEdit && url && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyLink} aria-label="Copy link">
+                <Copy className="h-3 w-3" />
+              </Button>
+            )}
+            {canEdit && dirty ? (
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={save} disabled={pending}>
+                {pending ? "…" : "Save"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

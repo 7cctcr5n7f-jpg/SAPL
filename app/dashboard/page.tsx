@@ -1,4 +1,5 @@
 import React from "react"
+import { getAccessContext } from "@/lib/access"
 import { getCurrentUser } from "@/lib/session"
 import {
   getPlayerByUserId,
@@ -22,7 +23,6 @@ import { MyTeamCard } from "@/components/dashboard/my-team-card"
 import { PlayerSelfService } from "@/components/dashboard/player-self-service"
 import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
-import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { TeamOwnerFeeCard } from "@/components/dashboard/team-owner-fee-card"
 import { fmtZAR } from "@/lib/format"

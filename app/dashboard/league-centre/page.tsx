@@ -24,7 +24,7 @@ export default async function DashboardLeagueCentrePage() {
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Teams" value={data.stats.teamCount} />
-        <StatCard label="Clubs" value={data.stats.clubCount} />
+        <StatCard label="Venues" value={data.stats.clubCount} />
         <StatCard label="Played" value={data.stats.matchesPlayed} />
         <StatCard label="Remaining" value={data.stats.matchesRemaining} />
       </div>

@@ -10,6 +10,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  turbopack: {
+    root: process.cwd(),
+  },
   // Better Auth pulls in the kysely adapter (with sqlite dialects) that Turbopack
   // cannot statically bundle. Keep these on the Node runtime instead of bundling.
   serverExternalPackages: ["better-auth", "@better-auth/kysely-adapter", "kysely", "pg"],
