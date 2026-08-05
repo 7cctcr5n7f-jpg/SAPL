@@ -433,11 +433,11 @@ function ConsoleRow({
 
   return (
     <div className={cn("border-b border-border last:border-b-0", expanded && "bg-secondary/30")}>
-      <div className="flex items-start gap-2 px-4 py-3">
+      <div className="flex items-start gap-2 px-4 py-2.5">
         <button
           onClick={onToggle}
           aria-expanded={expanded}
-          className="grid min-w-0 flex-1 grid-cols-[1.25rem_1fr] items-start gap-3 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
+          className="grid min-w-0 flex-1 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-2.5 text-left lg:grid-cols-[7rem_3rem_1fr_1fr_10rem_5rem_5rem] lg:items-center"
         >
           <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden", expanded && "rotate-90")} />
           <span className={cn("hidden rounded-full px-2 py-0.5 text-center text-[11px] font-semibold lg:inline-block", info.tone)}>
@@ -447,17 +447,9 @@ function ConsoleRow({
           <div className="min-w-0 lg:contents">
             <span className="hidden text-sm text-muted-foreground lg:inline">{f.week}</span>
 
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 lg:block lg:min-w-0">
+            <div className="flex min-w-0 flex-col gap-0.5 lg:block">
               <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
-              <span className="text-xs text-muted-foreground lg:hidden">vs</span>
               <span className={cn("truncate text-sm font-semibold lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
-              {done && (
-                <span className="font-mono text-xs font-bold tabular-nums lg:hidden">
-                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
-                  <span className="text-muted-foreground">–</span>
-                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
-                </span>
-              )}
             </div>
             <span className={cn("hidden truncate text-sm font-semibold lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
 
@@ -466,14 +458,20 @@ function ConsoleRow({
               <span className="truncate">{venueName ?? "TBD"}</span>
             </span>
 
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground lg:hidden">
               <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", info.tone)}>{info.label}</span>
               <span>Wk {f.week}</span>
-              {f.divisionName && <span>{f.divisionName}</span>}
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
                 {venueName ?? "TBD"}
               </span>
+              {done && (
+                <span className="font-mono text-xs font-bold tabular-nums">
+                  <span className={cn(homeWon && "text-primary")}>{f.homePoints ?? 0}</span>
+                  <span className="text-muted-foreground">–</span>
+                  <span className={cn(!homeWon && "text-primary")}>{f.awayPoints ?? 0}</span>
+                </span>
+              )}
             </div>
 
             <CountPill count={info.readyCount} total={CATEGORY_COUNT} className="hidden lg:flex" label="courts booked" />
@@ -550,9 +548,9 @@ function FixtureDetail({
   }, [f.matches])
 
   return (
-    <div className="space-y-4 border-t border-border bg-background/40 px-4 py-4">
+    <div className="space-y-3 border-t border-border bg-background/40 px-4 py-3">
       {/* Detail + audit */}
-      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
           <Field label="Region" value={f.regionName} />
           <Field label="Division" value={f.divisionName} />
@@ -576,7 +574,7 @@ function FixtureDetail({
       {canManageVenue && editing && <DraftScheduleEditor f={f} clubs={clubs} divisionTeams={divisionTeams} />}
 
       {/* Audit trail */}
-      <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-md bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
+      <div className="hidden flex-wrap gap-x-6 gap-y-1 rounded-md bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground md:flex">
         <span>Created by <span className="text-foreground">System (Season Generator)</span></span>
         <span>Updated by <span className="text-foreground">{f.updatedByName ?? "—"}</span> {f.updatedAt ? `· ${fmtWhen(f.updatedAt)}` : ""}</span>
         <span>Published by <span className="text-foreground">{f.publishedByName ?? "—"}</span> {f.publishedAt ? `· ${fmtWhen(f.publishedAt)}` : ""}</span>
@@ -824,13 +822,13 @@ function CategoryEditor({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
+    <div className="grid grid-cols-2 gap-2 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
       <div className="col-span-2 min-w-0 sm:col-span-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{category}</span>
           {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">
+        <div className="mt-0.5 text-xs leading-4 text-muted-foreground">
           <span className="font-medium text-foreground">{homeName}</span>
           <span className="mx-1.5 text-muted-foreground">vs</span>
           <span className="font-medium text-foreground">{awayName}</span>
