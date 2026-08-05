@@ -100,7 +100,7 @@ export function deriveSlotCounts(modes: CourtSlotMode[]): {
 }
 
 // League night fixture slots. A venue can host one fixture per slot.
-export const FIXTURE_TIMESLOTS = ["17:00", "18:30"] as const
+export const FIXTURE_TIMESLOTS = ["18:30", "17:00"] as const
 export type FixtureTimeslot = (typeof FIXTURE_TIMESLOTS)[number]
 // Max fixtures a venue can host on one league night (one per slot).
 export const MAX_FIXTURES_PER_VENUE_NIGHT = FIXTURE_TIMESLOTS.length
