@@ -100,7 +100,7 @@ export function deriveSlotCounts(modes: CourtSlotMode[]): {
 }
 
 // League night fixture slots. A venue can host one fixture per slot.
-export const FIXTURE_TIMESLOTS = ["17:00", "18:30"] as const
+export const FIXTURE_TIMESLOTS = ["18:30", "17:00"] as const
 export type FixtureTimeslot = (typeof FIXTURE_TIMESLOTS)[number]
 // Max fixtures a venue can host on one league night (one per slot).
 export const MAX_FIXTURES_PER_VENUE_NIGHT = FIXTURE_TIMESLOTS.length
@@ -152,7 +152,8 @@ export function normaliseSlotTimeslots(
 
 /**
  * Expand a per-court time-slot array into the distinct league-night slots the
- * venue is willing to host, ordered 17:00 then 18:30. "both" expands to both.
+ * venue is willing to host, ordered by FIXTURE_TIMESLOTS priority (18:30 then 17:00).
+ * "both" expands to both.
  */
 export function deriveHostTimeslots(slotTimeslots: string[]): FixtureTimeslot[] {
   let early = false
@@ -162,8 +163,9 @@ export function deriveHostTimeslots(slotTimeslots: string[]): FixtureTimeslot[] 
     if (t === "18:30" || t === "both") late = true
   }
   const out: FixtureTimeslot[] = []
-  if (early) out.push("17:00")
+  // Order by FIXTURE_TIMESLOTS priority
   if (late) out.push("18:30")
+  if (early) out.push("17:00")
   return out
 }
 

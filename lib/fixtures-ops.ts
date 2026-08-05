@@ -20,7 +20,7 @@ export function defaultTimeForSession(session: number): string {
 
 /**
  * Suggests court numbers + start times from the host club's court count.
- * Session 1 categories start at 17:00, session 2 at 18:30; courts wrap onto the
+ * Session 1 categories start at 18:30, session 2 at 17:00; courts wrap onto the
  * available count so a 2-court venue staggers sessions. This is a non-destructive
  * suggestion used only to prefill the editor when nothing has been saved yet.
  */

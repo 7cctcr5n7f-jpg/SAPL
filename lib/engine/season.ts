@@ -152,7 +152,9 @@ function venueNightCapacity(club: PlannerClub): number {
 
 function venueAvailableTimeslots(club: PlannerClub): FixtureTimeslot[] {
   if ((club.courts ?? 0) < CATEGORY_LAYOUT.length) {
-    return club.hostTimeslots.length >= 2 ? [FIXTURE_TIMESLOTS[0]] : []
+    // Venue with < 4 courts can host only 1 fixture per night.
+    // Return the first available timeslot from the club's configured slots.
+    return club.hostTimeslots.length > 0 ? [club.hostTimeslots[0]] : []
   }
   return club.hostTimeslots
 }
@@ -183,17 +185,21 @@ function chooseKickoffForVenue(
 
   const current = venueUsageForWeek(usage, week, club.id)
   if ((club.courts ?? 0) < CATEGORY_LAYOUT.length) {
-    return current.total === 0 ? FIXTURE_TIMESLOTS[0] : null
+    // Venue with < 4 courts can host only 1 fixture per night.
+    // Return the first available timeslot if this is the first fixture this week.
+    return current.total === 0 ? available[0] : null
   }
 
   const preferred = club.preferredTimeslot
+  const timeslotIndex = (slot: FixtureTimeslot): number => FIXTURE_TIMESLOTS.indexOf(slot)
   const ordered = [...available].sort((a, b) => {
     if (preferred && a === preferred && b !== preferred) return -1
     if (preferred && b === preferred && a !== preferred) return 1
     const aUsed = current.slots.has(a) ? 1 : 0
     const bUsed = current.slots.has(b) ? 1 : 0
     if (aUsed !== bUsed) return aUsed - bUsed
-    return a.localeCompare(b)
+    // Sort by FIXTURE_TIMESLOTS order (priority)
+    return timeslotIndex(a) - timeslotIndex(b)
   })
 
   for (const slot of ordered) {
@@ -283,18 +289,41 @@ export function planSeason(args: {
       return current.total < venueNightCapacity(club)
     }
 
-    // Count how many teams share each venue so we can prioritise pairs from
-    // busier venues. A venue with more teams fills up faster, so scheduling
-    // those pairs first minimises TBD (venue-less) fixtures.
+    // Prioritize venues by capacity utilization. Venues at or above 100% capacity
+    // MUST host every week and are the bottleneck. These are scheduled first.
+    // Venues with slack capacity are scheduled last when more flexibility exists.
+    //
+    // Capacity Utilization Ranking:
+    // - 4 teams + 4 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
+    // - 2 teams + 2 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
+    // - 4 teams + 2 courts = 2.0  (200% - OVER-SUBSCRIBED: impossible to fit all)
+    // - 3 teams + 2 courts = 1.5  (150% - OVER-SUBSCRIBED: very constrained)
+    // - 2 teams + 4 courts = 0.5  (50% - SLACK: lots of flexibility)
+    // - 1 team + 4 courts = 0.25  (25% - SLACK: maximum flexibility)
     const venueTeamCount = new Map<number, number>()
     for (const team of division.teamSlots) {
       if (team.homeClubId != null) {
         venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
       }
     }
+    
+    const venueConstraintScore = (clubId: number): number => {
+      const club = clubById.get(clubId)
+      if (!club) return 0
+      const teamCount = venueTeamCount.get(clubId) ?? 0
+      const courts = club.courts ?? 0
+      
+      // Score = teams / courts (utilization ratio)
+      // Higher score = more constrained = schedule first
+      const utilization = courts > 0 ? teamCount / courts : teamCount * 100
+      
+      // Return raw utilization to allow fine-grained sorting
+      return utilization
+    }
+    
     const teamVenuePriority = (teamId: number): number => {
       const team = teamById.get(teamId)
-      return team?.homeClubId != null ? (venueTeamCount.get(team.homeClubId) ?? 0) : 0
+      return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
     }
 
     for (let weekIndex = 0; weekIndex < rounds.length; weekIndex++) {
