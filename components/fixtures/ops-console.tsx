@@ -512,14 +512,9 @@ function FixtureDetail({
   }, [f.matches])
 
   return (
-    <div className="space-y-3 border-t border-border bg-background/40 px-4 py-3">
-      {/* Category child table */}
-      <div className="overflow-hidden rounded-md border border-border">
-        <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
-          <span>Date</span>
-          <span>Category</span>
-          <span className="text-right">Link</span>
-        </div>
+    <div className="space-y-2 border-t border-border bg-background/40 px-4 py-2">
+      {/* Categories list */}
+      <div className="space-y-0.5 rounded-md border border-border overflow-hidden">
         {CATEGORIES.map((c) => (
           <CategoryEditor
             key={c.category}
@@ -753,72 +748,60 @@ function CategoryEditor({
   const linkReady = Boolean(url)
   return (
     <div className="border-b border-border px-3 py-2 last:border-b-0">
-      <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-start gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {fmtShortDate(matchDate)}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span>{assignment?.time ?? "TBD"}</span>
-            <span>·</span>
-            <span>Court {assignment?.court ?? "TBD"}</span>
-          </div>
+      {/* Header: Category + date/time/court + link status */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold shrink-0">{category}</span>
+          {isFeature && <Badge variant="secondary" className="text-[10px] shrink-0">Feature</Badge>}
+          <span className="text-xs text-muted-foreground shrink-0">
+            {fmtShortDate(matchDate)} {assignment?.time ?? "TBD"} · Court {assignment?.court ?? "TBD"}
+          </span>
         </div>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{category}</span>
-            {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
-          </div>
-          <div className="mt-0.5 text-sm leading-4">
-            <span className="font-medium text-foreground">{homeName}</span>
-            <span className="mx-1.5 text-muted-foreground">vs</span>
-            <span className="font-medium text-foreground">{awayName}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-end gap-1">
+        <div className="shrink-0">
           {linkReady ? (
             <a
               href={/^https?:\/\//i.test(url) ? url : `https://${url}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-500 hover:bg-emerald-500/15"
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500 hover:bg-emerald-500/15"
               aria-label={`Open ${category} booking`}
             >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Playtomic
+              <ExternalLink className="h-3 w-3" />
+              Link
             </a>
           ) : (
-            <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-500">
-              <AlertTriangle className="h-3.5 w-3.5" />
+            <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-500">
+              <AlertTriangle className="h-3 w-3" />
               Pending
-            </span>
-          )}
-          {canEdit && (
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              {match?.winnerTeamId != null && match.scoreDetail ? match.scoreDetail : ""}
             </span>
           )}
         </div>
       </div>
 
-      {editing && canEdit ? (
-        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-[4rem_6rem_minmax(0,1fr)_auto]">
+      {/* Match: Home vs Away */}
+      <div className="flex items-center justify-center gap-2 text-sm font-medium">
+        <div className="flex-1 text-left truncate">{homeName}</div>
+        <span className="shrink-0 text-muted-foreground mx-1.5">vs</span>
+        <div className="flex-1 text-right truncate">{awayName}</div>
+      </div>
+
+      {/* Edit mode: inputs */}
+      {editing && canEdit && (
+        <div className="mt-2 grid grid-cols-[4rem_5rem_minmax(0,1fr)_auto] gap-1.5 text-sm">
           <Input
             value={court}
             onChange={(e) => setCourt(e.target.value)}
             disabled={!canEdit}
             inputMode="numeric"
             placeholder="Court"
-            className="h-8 text-center text-sm"
+            className="h-7 text-center text-xs"
             aria-label={`${category} court number`}
           />
           <select
             value={time ?? ""}
             onChange={(e) => setTime(e.target.value)}
             disabled={!canEdit}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+            className="h-7 rounded-md border border-input bg-background px-1.5 text-xs disabled:opacity-60"
             aria-label={`${category} start time`}
           >
             <option value="">Time</option>
@@ -833,23 +816,23 @@ function CategoryEditor({
             onChange={(e) => setUrl(e.target.value)}
             disabled={!canEdit}
             placeholder="playtomic.io/…"
-            className="h-8 text-sm"
+            className="h-7 text-xs"
             aria-label={`${category} booking link`}
           />
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex items-center justify-end gap-1">
             {canEdit && url && (
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyLink} aria-label="Copy link">
-                <Copy className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyLink} aria-label="Copy link">
+                <Copy className="h-3 w-3" />
               </Button>
             )}
             {canEdit && dirty ? (
-              <Button size="sm" className="h-8" onClick={save} disabled={pending}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={save} disabled={pending}>
                 {pending ? "…" : "Save"}
               </Button>
             ) : null}
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   )
 }
