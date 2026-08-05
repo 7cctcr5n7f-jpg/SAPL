@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
+import { SegmentedTabs, StatGrid } from "@/components/shared/dense"
 import { toast } from "sonner"
 import { FIXTURE_TIMESLOTS } from "@/lib/constants"
 import {
@@ -119,6 +120,7 @@ export function OpsConsole({
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [showActionRequired, setShowActionRequired] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -160,6 +162,16 @@ export function OpsConsole({
       icon: Trophy,
     },
   ].filter((a) => a.count > 0)
+
+  const statusTabs = [
+    { value: "all", label: "All" },
+    { value: "draft", label: "Drafts" },
+    { value: "planned", label: "Planned" },
+    { value: "missing_links", label: "Missing Links" },
+    { value: "awaiting_result", label: "Awaiting Result" },
+    { value: "completed", label: "Completed" },
+    { value: "published", label: "Published" },
+  ]
 
   const activeDivisions = regionId === "all" ? divisionOptions : divisionOptions.filter((d) => d.regionId === regionId)
   const selectedVenueName = venueId === "all" ? null : venueOptions.find((option) => option.id === venueId)?.name ?? null
@@ -206,42 +218,62 @@ export function OpsConsole({
 
   return (
     <div className="space-y-5">
-      {/* Fixture Health */}
-      <section aria-label="Fixture health" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <HealthTile label="Total Fixtures" value={health.total} active={status === "all"} onClick={() => setStatus("all")} />
-        <HealthTile label="Drafts" value={health.draft} tone="text-violet-400" active={status === "draft"} onClick={() => setStatus("draft")} />
-        <HealthTile label="Completed" value={health.completed} tone="text-emerald-400" active={status === "completed"} onClick={() => setStatus("completed")} />
-        <HealthTile label="Awaiting Results" value={health.awaitingResults} tone="text-amber-400" active={status === "awaiting_result"} onClick={() => setStatus("awaiting_result")} />
-        <HealthTile label="Missing Booking" value={health.missingLinks} tone="text-orange-400" active={status === "needs_attention"} onClick={() => setStatus("needs_attention")} />
-        <HealthTile label="Published" value={health.published} tone="text-primary" active={status === "published"} onClick={() => setStatus("published")} />
+      <section aria-label="Fixture overview" className="space-y-2">
+        <StatGrid
+          columns={3}
+          stats={[
+            { label: "Total fixtures", value: health.total },
+            { label: "Published", value: health.published },
+            { label: "Need attention", value: health.missingLinks },
+          ]}
+        />
+        <SegmentedTabs
+          value={status}
+          onChange={(v) => setStatus(v as StatusFilter)}
+          options={statusTabs}
+          className="w-full"
+        />
       </section>
 
       {/* Action Required */}
       {actionItems.length > 0 && (
         <section aria-label="Action required" className="rounded-lg border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Action Required</h2>
-          </div>
-          <ul className="divide-y divide-border">
-            {actionItems.map((a) => (
-              <li key={a.key}>
-                <button
-                  onClick={() => setStatus(a.key)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
-                >
-                  <span className="flex items-center gap-2.5 text-sm">
-                    <a.icon className={cn("h-4 w-4", a.tone)} />
-                    {a.label}
-                  </span>
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="font-mono font-bold text-foreground tabular-nums">{a.count}</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            onClick={() => setShowActionRequired((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
+            aria-expanded={showActionRequired}
+          >
+            <span className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Action Required</span>
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                {actionItems.length}
+              </span>
+            </span>
+            <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", showActionRequired && "rotate-90")} />
+          </button>
+          {showActionRequired && (
+            <ul className="divide-y divide-border border-t border-border">
+              {actionItems.map((a) => (
+                <li key={a.key}>
+                  <button
+                    onClick={() => setStatus(a.key)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
+                  >
+                    <span className="flex items-center gap-2.5 text-sm">
+                      <a.icon className={cn("h-4 w-4", a.tone)} />
+                      {a.label}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span className="font-mono font-bold text-foreground tabular-nums">{a.count}</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
@@ -338,33 +370,6 @@ export function OpsConsole({
         {filtered.length} of {fixtures.length} fixtures shown. Players only see a fixture in League Centre once it is published.
       </p>
     </div>
-  )
-}
-
-function HealthTile({
-  label,
-  value,
-  tone,
-  active,
-  onClick,
-}: {
-  label: string
-  value: number
-  tone?: string
-  active?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-2.5 text-left transition-colors",
-        active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-muted-foreground/40",
-      )}
-    >
-      <div className={cn("font-mono text-2xl font-bold tabular-nums", tone ?? "text-foreground")}>{value}</div>
-      <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-    </button>
   )
 }
 
@@ -548,7 +553,7 @@ function FixtureDetail({
     <div className="space-y-4 border-t border-border bg-background/40 px-4 py-4">
       {/* Detail + audit */}
       <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
           <Field label="Region" value={f.regionName} />
           <Field label="Division" value={f.divisionName} />
           <Field label="Week" value={`Week ${f.week}`} />
@@ -819,8 +824,8 @@ function CategoryEditor({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
-      <div className="min-w-0">
+    <div className="grid grid-cols-2 gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[1fr_4rem_6rem_1fr_7rem] sm:items-center sm:gap-3">
+      <div className="col-span-2 min-w-0 sm:col-span-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{category}</span>
           {isFeature && <Badge variant="secondary" className="text-[10px]">Feature</Badge>}
@@ -857,7 +862,7 @@ function CategoryEditor({
         ))}
       </select>
 
-      <div className="flex items-center gap-1.5">
+      <div className="col-span-2 flex items-center gap-1.5 sm:col-span-1">
         <Input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -879,7 +884,7 @@ function CategoryEditor({
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-1.5">
+      <div className="col-span-2 flex items-center justify-end gap-1.5 sm:col-span-1">
         {match?.winnerTeamId != null && match.scoreDetail && (
           <span className="mr-auto font-mono text-[11px] text-muted-foreground sm:mr-0">{match.scoreDetail}</span>
         )}
