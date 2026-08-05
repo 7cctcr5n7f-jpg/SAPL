@@ -1,5 +1,5 @@
 import { requirePermissionPage } from "@/lib/access"
-import { getAdminSummary, getSeasonsWithDivisions, getRegions } from "@/lib/queries-admin"
+import { getAdminSummary, getSeasonsWithDivisions, getRegions, getSeasonFixturePlanning } from "@/lib/queries-admin"
 import { getCurrentSeason } from "@/lib/queries"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { PageHeader } from "@/components/dashboard/page-header"
@@ -20,6 +20,10 @@ export default async function AdminSeasonsPage() {
     getCurrentSeason(),
   ])
   const readiness = currentSeason ? await getSeasonReadiness(currentSeason.id) : null
+  const planningBySeason = new Map<number, Awaited<ReturnType<typeof getSeasonFixturePlanning>>>()
+  for (const season of seasons) {
+    planningBySeason.set(season.id, await getSeasonFixturePlanning(season.id))
+  }
 
   return (
     <div className="space-y-6">
@@ -57,6 +61,9 @@ export default async function AdminSeasonsPage() {
             regionId: d.regionId,
           })),
         }))}
+        planningBySeason={Object.fromEntries(
+          [...planningBySeason.entries()].map(([seasonId, planning]) => [seasonId, planning]),
+        )}
         defaultRegionNames={regions.map((r) => r.name)}
         currentSeasonReadiness={
           currentSeason && readiness

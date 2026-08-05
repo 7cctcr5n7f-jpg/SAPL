@@ -13,6 +13,7 @@ import {
   teamMembers,
   matches,
   teamPairings,
+  teamInvites,
   user as userTable,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
@@ -117,8 +118,10 @@ export type LCFixture = {
   published: boolean
   mine: boolean
   assignedToFixture: boolean
-  homePlayers: Record<string, string[]>
-  awayPlayers: Record<string, string[]>
+  canSeeBookingLinks: boolean
+  canSubmitResult: boolean
+  homePlayers: Record<string, { name: string; rating: number | null }[]>
+  awayPlayers: Record<string, { name: string; rating: number | null }[]>
   rubbers: LCRubber[]
 }
 
@@ -189,7 +192,7 @@ const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
  * overlay to derive joinUrl / joinUrlByCategory for assigned players.
  * Not exported or surfaced on the public LCFixture type.
  */
-type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory"> & {
+type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory" | "canSeeBookingLinks" | "canSubmitResult"> & {
   _categoryLinks: Record<string, string>
 }
 
@@ -371,6 +374,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   const away = alias(teams, "away")
   const homeOrg = alias(organisations, "homeOrg")
   const awayOrg = alias(organisations, "awayOrg")
+  const homeClub = alias(clubs, "homeClub")
+  const awayClub = alias(clubs, "awayClub")
 
   const fixtureRows = usedDivisionIds.length
     ? await db
@@ -390,8 +395,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           awayTeamId: fixtures.awayTeamId,
           homeName: home.name,
           awayName: away.name,
-          homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeOrg.logoUrl})`,
-          awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayOrg.logoUrl})`,
+          homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeClub.logoUrl}, ${homeOrg.logoUrl})`,
+          awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayClub.logoUrl}, ${awayOrg.logoUrl})`,
           venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
           playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
           published: fixtures.published,
@@ -408,6 +413,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .from(fixtures)
         .leftJoin(home, eq(fixtures.homeTeamId, home.id))
         .leftJoin(away, eq(fixtures.awayTeamId, away.id))
+        .leftJoin(homeClub, eq(home.homeClubId, homeClub.id))
+        .leftJoin(awayClub, eq(away.homeClubId, awayClub.id))
         .leftJoin(homeOrg, eq(home.organisationId, homeOrg.id))
         .leftJoin(awayOrg, eq(away.organisationId, awayOrg.id))
         .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
@@ -433,34 +440,61 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   type PairingRow = {
     teamId: number
     category: string
+    pairIndex: number
+    slotIndex: number
     playerId: string | null
     firstName: string
     lastName: string
     currentLi: number
+    playtomicRating: number | null
   }
   const pairingRows: PairingRow[] = allTeamIds.length
     ? await db
         .select({
           teamId: teamPairings.teamId,
           category: teamPairings.category,
+          pairIndex: teamPairings.pairIndex,
+          slotIndex: teamPairings.slotIndex,
           playerId: teamPairings.playerId,
           firstName: userTable.firstName,
           lastName: userTable.lastName,
           currentLi: userTable.currentLi,
+          playtomicRating: userTable.playtomicRating,
         })
         .from(teamPairings)
         .innerJoin(userTable, eq(teamPairings.playerId, userTable.id))
         .where(inArray(teamPairings.teamId, allTeamIds))
     : []
 
-  const teamPlayerMap = new Map<number, Record<string, string[]>>()
+  const inviteRows = allTeamIds.length
+    ? await db
+        .select({
+          teamId: teamInvites.teamId,
+          category: teamInvites.category,
+          pairIndex: teamInvites.pairIndex,
+          slotIndex: teamInvites.slotIndex,
+          invitedName: teamInvites.invitedName,
+          invitedRating: teamInvites.invitedRating,
+        })
+        .from(teamInvites)
+        .where(
+          and(
+            inArray(teamInvites.teamId, allTeamIds),
+            eq(teamInvites.status, "pending"),
+          ),
+        )
+    : []
+
+  const teamPlayerMap = new Map<number, Record<string, { name: string; rating: number | null }[]>>()
   const pairLiMap = new Map<string, { sum: number; count: number }>()
+  const occupiedSlots = new Set<string>()
   for (const row of pairingRows) {
+    occupiedSlots.add(`${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`)
     let catMap = teamPlayerMap.get(row.teamId)
     if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
     const arr = catMap[row.category] ?? []
     const name = `${row.firstName} ${row.lastName}`.trim()
-    if (!arr.includes(name)) arr.push(name)
+    if (!arr.some((player) => player.name === name)) arr.push({ name, rating: row.playtomicRating })
     catMap[row.category] = arr
 
     const key = `${row.teamId}:${row.category}`
@@ -468,6 +502,27 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     entry.sum += row.currentLi ?? 0
     entry.count += 1
     pairLiMap.set(key, entry)
+  }
+
+  for (const row of inviteRows) {
+    if (!row.invitedName || !row.category || row.pairIndex == null || row.slotIndex == null) continue
+    const slotKey = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
+    if (occupiedSlots.has(slotKey)) continue
+    let catMap = teamPlayerMap.get(row.teamId)
+    if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
+    const arr = catMap[row.category] ?? []
+    if (!arr.some((player) => player.name === row.invitedName)) {
+      arr.push({ name: row.invitedName, rating: row.invitedRating ?? null })
+    }
+    catMap[row.category] = arr
+
+    const key = `${row.teamId}:${row.category}`
+    const entry = pairLiMap.get(key) ?? { sum: 0, count: 0 }
+    if (row.invitedRating != null) {
+      entry.sum += row.invitedRating
+      entry.count += 1
+      pairLiMap.set(key, entry)
+    }
   }
 
   // Rubbers for all fixtures in scope.
@@ -715,6 +770,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         ...f,
         mine: false,
         assignedToFixture: false,
+        canSeeBookingLinks: false,
+        canSubmitResult: false,
         joinUrl: null,
         joinUrlByCategory: {},
       }
@@ -765,9 +822,11 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
     }
     const assignedToFixture = mine || allowedCategories.size > 0
+    const canSeeBookingLinks = mine || allowedCategories.size > 0
+    const canSubmitResult = allowedCategories.size > 0
 
     const joinUrlByCategory: Record<string, string> = {}
-    if (mine) {
+    if (canSeeBookingLinks) {
       const sourceLinks = allowedCategories.size > 0 ? [...allowedCategories] : Object.keys(_categoryLinks)
       for (const cat of sourceLinks) {
         const url = _categoryLinks[cat]
@@ -779,6 +838,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       ...f,
       mine,
       assignedToFixture,
+      canSeeBookingLinks,
+      canSubmitResult,
       joinUrl: Object.values(joinUrlByCategory)[0] ?? null,
       joinUrlByCategory,
     }

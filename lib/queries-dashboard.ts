@@ -1320,6 +1320,7 @@ export type PendingTeamInvite = {
  * can surface them even if the player missed the original email.
  */
 export async function getPendingInvitesForEmail(email: string): Promise<PendingTeamInvite[]> {
+  const normalizedEmail = email.trim().toLowerCase()
   const rows = await db
     .select({
       id: teamInvites.id,
@@ -1328,7 +1329,7 @@ export async function getPendingInvitesForEmail(email: string): Promise<PendingT
       token: teamInvites.token,
     })
     .from(teamInvites)
-    .where(and(eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
+    .where(and(eq(teamInvites.email, normalizedEmail), eq(teamInvites.status, "pending")))
     .orderBy(desc(teamInvites.createdAt))
 
   if (rows.length === 0) return []

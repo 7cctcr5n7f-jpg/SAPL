@@ -9,8 +9,33 @@ if (!process.env.DATABASE_URL) {
   loadEnvConfig(process.cwd())
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-})
+let poolInstance: Pool | null = null
+let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null
 
-export const db = drizzle(pool, { schema })
+export function getPool() {
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    })
+  }
+  return poolInstance
+}
+
+export function getDb() {
+  if (!dbInstance) {
+    dbInstance = drizzle(getPool(), { schema })
+  }
+  return dbInstance
+}
+
+export const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    return Reflect.get(getPool(), prop)
+  },
+}) as Pool
+
+export const db = new Proxy({} as ReturnType<typeof getDb>, {
+  get(_target, prop) {
+    return Reflect.get(getDb(), prop)
+  },
+}) as ReturnType<typeof getDb>

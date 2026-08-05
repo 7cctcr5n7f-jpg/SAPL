@@ -478,6 +478,34 @@ export const fixtures = pgTable(
   }),
 )
 
+// Fixture planning pairings. These represent only the requirement that two teams
+// must play each other in a division. They become real fixtures only once the
+// admin assigns a week and chooses the home/away orientation.
+export const fixturePlanningPairings = pgTable(
+  "ppl_fixture_planning_pairings",
+  {
+    id: serial("id").primaryKey(),
+    seasonId: integer("seasonId").notNull(),
+    divisionId: integer("divisionId").notNull(),
+    pairingOrder: integer("pairingOrder").notNull().default(0),
+    round: integer("round").notNull().default(1),
+    week: integer("week"),
+    teamAId: integer("teamAId").notNull(),
+    teamBId: integer("teamBId").notNull(),
+    homeTeamId: integer("homeTeamId"),
+    awayTeamId: integer("awayTeamId"),
+    timeslot: text("timeslot"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    seasonIdx: index("ppl_fixture_planning_pairings_season_idx").on(t.seasonId),
+    divisionIdx: index("ppl_fixture_planning_pairings_division_idx").on(t.divisionId),
+    weekIdx: index("ppl_fixture_planning_pairings_week_idx").on(t.week),
+    uniquePairIdx: uniqueIndex("ppl_fixture_planning_pairings_unique_pair_idx").on(t.seasonId, t.divisionId, t.teamAId, t.teamBId),
+  }),
+)
+
 // Players a captain has marked unavailable for a specific fixture.
 export const fixtureUnavailable = pgTable(
   "ppl_fixture_unavailable",

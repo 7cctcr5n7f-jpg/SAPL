@@ -7,7 +7,7 @@ import {
   tprHistory,
   divisions,
 } from "@/lib/db/schema"
-import { eq, and } from "drizzle-orm"
+import { eq, and, inArray, asc } from "drizzle-orm"
 import { scoreFixture, tallySets, formatScoreDetail, type MatchResult, type SetScore } from "@/lib/engine/scoring"
 import { calculateTpr } from "@/lib/engine/tpr"
 import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
@@ -178,6 +178,69 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
   await syncTeamLifecycleStatus(fixture.awayTeamId)
 
   return { score, winnerTeamId }
+}
+
+export async function rebuildDivisionStandings(divisionId: number, seasonId: number) {
+  const fixtureRows = await db
+    .select({
+      id: fixtures.id,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      divisionId: fixtures.divisionId,
+      seasonId: fixtures.seasonId,
+    })
+    .from(fixtures)
+    .where(and(eq(fixtures.divisionId, divisionId), eq(fixtures.seasonId, seasonId), eq(fixtures.status, "completed")))
+    .orderBy(asc(fixtures.week), asc(fixtures.id))
+
+  const teamIds = Array.from(
+    new Set(fixtureRows.flatMap((row) => [row.homeTeamId, row.awayTeamId].filter((id): id is number => id != null))),
+  )
+
+  await db.delete(standings).where(and(eq(standings.divisionId, divisionId), eq(standings.seasonId, seasonId)))
+  if (teamIds.length === 0) return
+
+  for (const row of fixtureRows) {
+    const categoryRows = await db
+      .select({
+        category: matches.category,
+        homeSetsWon: matches.homeSetsWon,
+        awaySetsWon: matches.awaySetsWon,
+        homeGames: matches.homeGames,
+        awayGames: matches.awayGames,
+      })
+      .from(matches)
+      .where(eq(matches.fixtureId, row.id))
+
+    if (row.homeTeamId == null || row.awayTeamId == null || categoryRows.length === 0) continue
+    const score = scoreFixture(categoryRows)
+    await bumpStanding({
+      seasonId,
+      divisionId,
+      teamId: row.homeTeamId,
+      points: score.homePoints,
+      setsWon: score.homeSetsWon,
+      setsLost: score.awaySetsWon,
+      gamesFor: score.homeGames,
+      gamesAgainst: score.awayGames,
+      won: score.winnerSide === "home",
+      lost: score.winnerSide === "away",
+    })
+    await bumpStanding({
+      seasonId,
+      divisionId,
+      teamId: row.awayTeamId,
+      points: score.awayPoints,
+      setsWon: score.awaySetsWon,
+      setsLost: score.homeSetsWon,
+      gamesFor: score.awayGames,
+      gamesAgainst: score.homeGames,
+      won: score.winnerSide === "away",
+      lost: score.winnerSide === "home",
+    })
+  }
+
+  await recomputeRanks(divisionId)
 }
 
 async function bumpStanding(args: {

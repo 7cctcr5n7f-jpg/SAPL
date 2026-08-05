@@ -14,7 +14,7 @@ import {
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { applyFixtureResult } from "@/lib/engine/apply-result"
+import { applyFixtureResult, rebuildDivisionStandings } from "@/lib/engine/apply-result"
 import { tallySets } from "@/lib/engine/scoring"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getPlayerSeasonTeamConflict } from "@/lib/queries-dashboard"
@@ -22,18 +22,68 @@ import { getAccessContext } from "@/lib/access"
 import { notifyTeam } from "@/lib/notify"
 
 async function getFixtureForUser(user: CurrentUser, fixtureId: number, isAdmin: boolean) {
-  const [fixture] = await db.select({ id: fixtures.id }).from(fixtures).where(eq(fixtures.id, fixtureId)).limit(1)
+  const [fixture] = await db
+    .select({
+      id: fixtures.id,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      divisionId: fixtures.divisionId,
+      seasonId: fixtures.seasonId,
+      status: fixtures.status,
+    })
+    .from(fixtures)
+    .where(eq(fixtures.id, fixtureId))
+    .limit(1)
   if (!fixture) return null
-  // Super admins can edit any fixture's result.
   if (isAdmin) return fixture
-  // Template fixtures with no teams assigned yet cannot have a result.
   if (fixture.homeTeamId == null || fixture.awayTeamId == null) return null
-  // Anyone who can manage either team (captain, team owner, or team/club manager
-  // with captain_hub access) may record the result.
+
   const canHome = await canManageTeam(user, fixture.homeTeamId)
   const canAway = await canManageTeam(user, fixture.awayTeamId)
-  if (!canHome && !canAway) return null
-  return fixture
+  if (canHome || canAway) return fixture
+
+  const playerId = user.playerId ?? user.id
+  const assignedHome = await db
+    .select({ id: teamPairings.id })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, fixture.homeTeamId), eq(teamPairings.playerId, playerId)))
+    .limit(1)
+  if (assignedHome.length > 0) return fixture
+
+  const assignedAway = await db
+    .select({ id: teamPairings.id })
+    .from(teamPairings)
+    .where(and(eq(teamPairings.teamId, fixture.awayTeamId), eq(teamPairings.playerId, playerId)))
+    .limit(1)
+  if (assignedAway.length > 0) return fixture
+
+  const rosterHome = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.teamId, fixture.homeTeamId),
+        eq(teamMembers.playerId, playerId),
+        eq(teamMembers.status, "active"),
+      ),
+    )
+    .limit(1)
+  if (rosterHome.length > 0) return fixture
+
+  const rosterAway = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.teamId, fixture.awayTeamId),
+        eq(teamMembers.playerId, playerId),
+        eq(teamMembers.status, "active"),
+      ),
+    )
+    .limit(1)
+  if (rosterAway.length > 0) return fixture
+
+  return null
 }
 
 export type SubmittedCategory = {
@@ -103,6 +153,37 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   revalidatePath("/standings")
   revalidatePath("/league-centre")
   return { success: wasCompleted ? "Result updated." : "Result recorded. Standings updated." }
+}
+
+export async function clearResult(fixtureId: number) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const fixture = await getFixtureForUser(me, fixtureId, me.isSuperAdmin)
+  if (!fixture) return { error: "You do not manage a team in this fixture." }
+  if (fixture.divisionId == null) return { error: "Fixture division missing." }
+
+  await db.delete(matches).where(eq(matches.fixtureId, fixtureId))
+  await db.delete(results).where(eq(results.fixtureId, fixtureId))
+  await db
+    .update(fixtures)
+    .set({
+      status: "scheduled",
+      homePoints: null,
+      awayPoints: null,
+      homeSetsWon: null,
+      awaySetsWon: null,
+      winnerTeamId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(fixtures.id, fixtureId))
+
+  await rebuildDivisionStandings(fixture.divisionId, fixture.seasonId)
+
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/admin/fixtures")
+  revalidatePath("/standings")
+  revalidatePath("/league-centre")
+  return { success: "Result cleared. You can submit the corrected score now." }
 }
 
 /** Can this user manage the given team's lineup (captain, owner, club/team manager, or league admin)? */
