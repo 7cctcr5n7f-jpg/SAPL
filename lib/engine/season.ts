@@ -290,17 +290,39 @@ export function planSeason(args: {
     }
 
     // Count how many teams share each venue so we can prioritise pairs from
-    // busier venues. A venue with more teams fills up faster, so scheduling
-    // those pairs first minimises TBD (venue-less) fixtures.
+    // constrained venues. A venue with fewer courts or more teams per court needs
+    // scheduling first to avoid conflicts. We score venues by constraint level:
+    // - Venues with 2 courts are most constrained (can fit ~2 fixtures)
+    // - Venues with 4+ courts are most flexible (can fit multiple fixtures)
+    // - More teams per court also increases constraint
     const venueTeamCount = new Map<number, number>()
     for (const team of division.teamSlots) {
       if (team.homeClubId != null) {
         venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
       }
     }
+    
+    const venueConstraintScore = (clubId: number): number => {
+      const club = clubById.get(clubId)
+      if (!club) return 0
+      const teamCount = venueTeamCount.get(clubId) ?? 0
+      const courts = club.courts ?? 0
+      
+      // Score higher for more constrained venues.
+      // Venues with fewer courts per team are harder to schedule.
+      // Base score: more teams = higher priority (harder to fit).
+      // Multiplier: fewer courts = higher priority (less flexibility).
+      const teamsPerCourt = courts > 0 ? teamCount / courts : teamCount * 100
+      
+      // Return a score where higher = more constrained = process first
+      // Example: 4 teams in 2 courts = 2.0 per court (high priority)
+      //          1 team in 2 courts = 0.5 per court (low priority)
+      return teamsPerCourt * 10
+    }
+    
     const teamVenuePriority = (teamId: number): number => {
       const team = teamById.get(teamId)
-      return team?.homeClubId != null ? (venueTeamCount.get(team.homeClubId) ?? 0) : 0
+      return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
     }
 
     for (let weekIndex = 0; weekIndex < rounds.length; weekIndex++) {
