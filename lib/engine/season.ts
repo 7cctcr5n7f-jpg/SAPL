@@ -344,11 +344,21 @@ export function planSeason(args: {
         const bCanHost = teamCanHostWeek(pair.b, week)
 
         // Score each orientation: orientation balance penalty + venue availability bonus.
-        // Lower score wins. Not being able to host adds 25 points so the engine strongly
-        // prefers listing the team that can actually host as "home".
+        // Lower score wins. For constrained venues (high utilization), boost the penalty
+        // for NOT being able to host, scaled by the venue constraint score.
         const scoreAsHome = (homeId: number, awayId: number, canHostThisWeek: boolean): number => {
           const max = maxPerSide.get(homeId) ?? Number.MAX_SAFE_INTEGER
           const awayMax = maxPerSide.get(awayId) ?? Number.MAX_SAFE_INTEGER
+          
+          // Get venue constraint score to boost penalty for constrained venues
+          const homeTeam = teamById.get(homeId)
+          const homeConstraint = homeTeam?.homeClubId != null ? venueConstraintScore(homeTeam.homeClubId) : 0
+          
+          // Hosting penalty: base 25 + venue constraint bonus
+          // Venues at 100% capacity (score 1.0) get +25 bonus = 50 total penalty
+          // Venues at 200% capacity (score 2.0) get +50 bonus = 75 total penalty
+          const hostingPenalty = canHostThisWeek ? 0 : (25 + homeConstraint * 25)
+          
           return (
             orientationPenalty({
               teamId: homeId,
@@ -366,7 +376,7 @@ export function planSeason(args: {
               history: histories.get(awayId) ?? "",
               maxPerSide: awayMax,
             }) +
-            (canHostThisWeek ? 0 : 25)
+            hostingPenalty
           )
         }
 
