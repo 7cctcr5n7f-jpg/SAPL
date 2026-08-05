@@ -289,6 +289,53 @@ export function planSeason(args: {
       return current.total < venueNightCapacity(club)
     }
 
+    // Compute minimum home games required per team based on venue constraint.
+    // Teams at bottleneck venues (100% utilization) MUST get at least 2 home games.
+    // This is computed BEFORE orientation to ensure fairness for constrained venues.
+    const minimumHomeGames = new Map<number, number>()
+    const totalFixturesPerTeam = gamesByTeam.get(division.teamSlots[0]?.id) ?? 6
+    
+    for (const team of division.teamSlots) {
+      const constraint = teamVenuePriority(team.id)
+      let minimum = Math.floor(totalFixturesPerTeam / 2) // Default: 3 home for 6 games
+      
+      // Bottleneck venues (constraint >= 1.0): guarantee at least 2 home
+      // This ensures Padel Parq Kimiad A/B get home games despite capacity limits
+      if (constraint >= 1.0) {
+        minimum = Math.max(2, minimum)
+      }
+      
+      minimumHomeGames.set(team.id, minimum)
+    }
+    
+    // Pre-allocate home games for constrained teams to satisfy minimum requirements.
+    // This builds a set of (pair, orientation) that MUST be home for that team.
+    const preAllocatedHome = new Map<number, Set<number>>() // teamId -> set of opponent teamIds where this team must be HOME
+    
+    for (const team of division.teamSlots) {
+      const minimumForThisTeam = minimumHomeGames.get(team.id) ?? 0
+      if (minimumForThisTeam <= 0) continue
+      
+      // Find all pairs involving this team
+      const pairsForThisTeam: Array<{ opponent: number; round: number }> = []
+      for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
+        for (const pair of rounds[roundIdx]) {
+          if (pair.a === team.id) pairsForThisTeam.push({ opponent: pair.b, round: roundIdx })
+          if (pair.b === team.id) pairsForThisTeam.push({ opponent: pair.a, round: roundIdx })
+        }
+      }
+      
+      // Pre-allocate the first N matches as HOME (N = minimum home games)
+      const allocated = new Set<number>()
+      for (let i = 0; i < Math.min(minimumForThisTeam, pairsForThisTeam.length); i++) {
+        allocated.add(pairsForThisTeam[i].opponent)
+      }
+      
+      if (allocated.size > 0) {
+        preAllocatedHome.set(team.id, allocated)
+      }
+    }
+
     // Prioritize venues by capacity utilization. Venues at or above 100% capacity
     // MUST host every week and are the bottleneck. These are scheduled first.
     // Venues with slack capacity are scheduled last when more flexibility exists.
@@ -343,57 +390,73 @@ export function planSeason(args: {
         const aCanHost = teamCanHostWeek(pair.a, week)
         const bCanHost = teamCanHostWeek(pair.b, week)
 
-        // Score each orientation: orientation balance penalty + venue availability bonus.
-        // Lower score wins. For constrained venues (high utilization), boost the penalty
-        // for NOT being able to host, scaled by the venue constraint score.
-        const scoreAsHome = (homeId: number, awayId: number, canHostThisWeek: boolean): number => {
-          const max = maxPerSide.get(homeId) ?? Number.MAX_SAFE_INTEGER
-          const awayMax = maxPerSide.get(awayId) ?? Number.MAX_SAFE_INTEGER
-          
-          // Get venue constraint score to boost penalty for constrained venues
-          const homeTeam = teamById.get(homeId)
-          const homeConstraint = homeTeam?.homeClubId != null ? venueConstraintScore(homeTeam.homeClubId) : 0
-          
-          // Hosting penalty: base 25 + venue constraint bonus
-          // Venues at 100% capacity (score 1.0) get +25 bonus = 50 total penalty
-          // Venues at 200% capacity (score 2.0) get +50 bonus = 75 total penalty
-          const hostingPenalty = canHostThisWeek ? 0 : (25 + homeConstraint * 25)
-          
-          return (
-            orientationPenalty({
-              teamId: homeId,
-              side: "H",
-              homeCount: homeCounts.get(homeId) ?? 0,
-              awayCount: awayCounts.get(homeId) ?? 0,
-              history: histories.get(homeId) ?? "",
-              maxPerSide: max,
-            }) +
-            orientationPenalty({
-              teamId: awayId,
-              side: "A",
-              homeCount: homeCounts.get(awayId) ?? 0,
-              awayCount: awayCounts.get(awayId) ?? 0,
-              history: histories.get(awayId) ?? "",
-              maxPerSide: awayMax,
-            }) +
-            hostingPenalty
-          )
+        // Check if this pair has a pre-allocated home assignment (hard constraint for bottleneck venues)
+        const aPreAllocated = preAllocatedHome.get(pair.a)?.has(pair.b) ?? false
+        const bPreAllocated = preAllocatedHome.get(pair.b)?.has(pair.a) ?? false
+
+        let homeTeamId: number
+        let awayTeamId: number
+
+        // If one team has pre-allocated home, use that orientation
+        if (aPreAllocated && !bPreAllocated) {
+          homeTeamId = pair.a
+          awayTeamId = pair.b
+        } else if (bPreAllocated && !aPreAllocated) {
+          homeTeamId = pair.b
+          awayTeamId = pair.a
+        } else {
+          // No pre-allocation: use scoring to determine home/away
+          // Score each orientation: orientation balance penalty + venue availability bonus.
+          // Lower score wins. For constrained venues (high utilization), boost the penalty
+          // for NOT being able to host, scaled by the venue constraint score.
+          const scoreAsHome = (homeId: number, awayId: number, canHostThisWeek: boolean): number => {
+            const max = maxPerSide.get(homeId) ?? Number.MAX_SAFE_INTEGER
+            const awayMax = maxPerSide.get(awayId) ?? Number.MAX_SAFE_INTEGER
+              
+            // Get venue constraint score to boost penalty for constrained venues
+            const homeTeam = teamById.get(homeId)
+            const homeConstraint = homeTeam?.homeClubId != null ? venueConstraintScore(homeTeam.homeClubId) : 0
+              
+            // Hosting penalty: base 25 + venue constraint bonus
+            // Venues at 100% capacity (score 1.0) get +25 bonus = 50 total penalty
+            // Venues at 200% capacity (score 2.0) get +50 bonus = 75 total penalty
+            const hostingPenalty = canHostThisWeek ? 0 : (25 + homeConstraint * 25)
+              
+            const balancePenalty = orientationPenalty({
+                teamId: homeId,
+                side: "H",
+                homeCount: homeCounts.get(homeId) ?? 0,
+                awayCount: awayCounts.get(homeId) ?? 0,
+                history: histories.get(homeId) ?? "",
+                maxPerSide: max,
+              }) +
+              orientationPenalty({
+                teamId: awayId,
+                side: "A",
+                homeCount: homeCounts.get(awayId) ?? 0,
+                awayCount: awayCounts.get(awayId) ?? 0,
+                history: histories.get(awayId) ?? "",
+                maxPerSide: awayMax,
+              })
+              
+            return balancePenalty + hostingPenalty
+          }
+
+          const scoreAHome = scoreAsHome(pair.a, pair.b, aCanHost)
+          const scoreBHome = scoreAsHome(pair.b, pair.a, bCanHost)
+
+          homeTeamId = scoreAHome <= scoreBHome ? pair.a : pair.b
+          awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
         }
-
-        const scoreAHome = scoreAsHome(pair.a, pair.b, aCanHost)
-        const scoreBHome = scoreAsHome(pair.b, pair.a, bCanHost)
-
-        const homeTeamId = scoreAHome <= scoreBHome ? pair.a : pair.b
-        const awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
 
         // Pick venue: home team's venue first, then away team's venue.
-        // Never assign an unrelated venue — if neither team's venue is available
-        // this week the fixture is left without a venue (TBD) so the admin can
-        // assign one manually.
-        let venuePick: { club: PlannerClub | null; kickoff: FixtureTimeslot | null } = {
-          club: null,
-          kickoff: null,
-        }
+         // Never assign an unrelated venue — if neither team's venue is available
+         // this week the fixture is left without a venue (TBD) so the admin can
+         // assign one manually.
+         let venuePick: { club: PlannerClub | null; kickoff: FixtureTimeslot | null } = {
+           club: null,
+           kickoff: null,
+         }
 
         const tryTeamVenue = (teamId: number): boolean => {
           const team = teamById.get(teamId)
