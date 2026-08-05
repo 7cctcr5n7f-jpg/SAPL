@@ -22,7 +22,6 @@ import { MyTeamCard } from "@/components/dashboard/my-team-card"
 import { PlayerSelfService } from "@/components/dashboard/player-self-service"
 import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
 import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
-import { getAccessContext } from "@/lib/access"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { TeamOwnerFeeCard } from "@/components/dashboard/team-owner-fee-card"
 import { fmtZAR } from "@/lib/format"
@@ -63,6 +62,7 @@ export default async function DashboardOverview({
 }) {
   const me = await getCurrentUser()
   if (!me) return null
+  const { getAccessContext } = await import("@/lib/access")
   const { payment } = await searchParams
   const access = await getAccessContext(me)
   // Load player data for everyone — admins also have LI, ratings, and teams.
