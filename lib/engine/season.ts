@@ -289,12 +289,17 @@ export function planSeason(args: {
       return current.total < venueNightCapacity(club)
     }
 
-    // Count how many teams share each venue so we can prioritise pairs from
-    // constrained venues. A venue with fewer courts or more teams per court needs
-    // scheduling first to avoid conflicts. We score venues by constraint level:
-    // - Venues with 2 courts are most constrained (can fit ~2 fixtures)
-    // - Venues with 4+ courts are most flexible (can fit multiple fixtures)
-    // - More teams per court also increases constraint
+    // Prioritize venues by capacity utilization. Venues at or above 100% capacity
+    // MUST host every week and are the bottleneck. These are scheduled first.
+    // Venues with slack capacity are scheduled last when more flexibility exists.
+    //
+    // Capacity Utilization Ranking:
+    // - 4 teams + 4 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
+    // - 2 teams + 2 courts = 1.0  (100% - ALL CRITICAL: every team needs home every week)
+    // - 4 teams + 2 courts = 2.0  (200% - OVER-SUBSCRIBED: impossible to fit all)
+    // - 3 teams + 2 courts = 1.5  (150% - OVER-SUBSCRIBED: very constrained)
+    // - 2 teams + 4 courts = 0.5  (50% - SLACK: lots of flexibility)
+    // - 1 team + 4 courts = 0.25  (25% - SLACK: maximum flexibility)
     const venueTeamCount = new Map<number, number>()
     for (const team of division.teamSlots) {
       if (team.homeClubId != null) {
@@ -308,16 +313,12 @@ export function planSeason(args: {
       const teamCount = venueTeamCount.get(clubId) ?? 0
       const courts = club.courts ?? 0
       
-      // Score higher for more constrained venues.
-      // Venues with fewer courts per team are harder to schedule.
-      // Base score: more teams = higher priority (harder to fit).
-      // Multiplier: fewer courts = higher priority (less flexibility).
-      const teamsPerCourt = courts > 0 ? teamCount / courts : teamCount * 100
+      // Score = teams / courts (utilization ratio)
+      // Higher score = more constrained = schedule first
+      const utilization = courts > 0 ? teamCount / courts : teamCount * 100
       
-      // Return a score where higher = more constrained = process first
-      // Example: 4 teams in 2 courts = 2.0 per court (high priority)
-      //          1 team in 2 courts = 0.5 per court (low priority)
-      return teamsPerCourt * 10
+      // Return raw utilization to allow fine-grained sorting
+      return utilization
     }
     
     const teamVenuePriority = (teamId: number): number => {
