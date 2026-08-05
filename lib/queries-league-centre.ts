@@ -383,6 +383,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           divisionLevel: divisions.level,
           regionId: divisions.regionId,
           regionName: regions.name,
+          venueClubId: fixtures.venueClubId,
           homeTeamId: fixtures.homeTeamId,
           awayTeamId: fixtures.awayTeamId,
           homeName: home.name,
@@ -646,7 +647,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   }))
 
   const teamCount = regionsOut.reduce((sum, r) => sum + r.teamCount, 0)
-  const clubCount = regionsOut.reduce((sum, r) => sum + r.clubCount, 0)
+  const clubCount = new Set(fixtureRows.map((f) => f.venueClubId).filter((id): id is number => id != null)).size
   const matchesPlayed = sharedFixtures.filter((f) => f.status === "completed").length
   const matchesRemaining = sharedFixtures.length - matchesPlayed
 
