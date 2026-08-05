@@ -1,7 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import { teams, teamMembers, teamInvites, divisions, clubs, user, payments, fixtures, standings, categories, teamPairings } from "@/lib/db/schema"
-import { and, eq, ne, or, desc, inArray } from "drizzle-orm"
+import { and, eq, ne, or, desc, inArray, sql } from "drizzle-orm"
 import { getTeamReadiness, suggestDivision, type TeamReadiness } from "@/lib/team-readiness"
 import { getPlayerFee } from "@/lib/queries"
 
@@ -124,6 +124,13 @@ const SQUAD_SIZE = 8
  * for owners who were added before they registered an account.
  */
 export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean; managedTeamIds?: number[] }): Promise<MyTeamView | null> {
+  const [currentUser] = await db
+    .select({ email: user.email })
+    .from(user)
+    .where(eq(user.id, playerId))
+    .limit(1)
+  const currentEmail = currentUser?.email?.trim().toLowerCase() ?? ""
+
   // Active memberships, newest first.
   const memberships = await db
     .select({ teamId: teamMembers.teamId, name: teams.name })
@@ -166,23 +173,30 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     teamId = chosen.id
     otherTeams = selectableTeams.filter((t) => t.id !== teamId)
   } else {
-    // No active memberships — check if this user manages any teams by email.
+    // No active memberships — check if this user manages any teams by email or via passed scope.
     const managed = opts?.managedTeamIds ?? []
-    if (managed.length === 0) return null
+    const ownedRows = currentEmail
+      ? await db
+          .select({ id: teams.id, name: teams.name })
+          .from(teams)
+          .where(or(sql`lower(${teams.ownerEmail}) = ${currentEmail}`, sql`lower(${teams.coOwnerEmail}) = ${currentEmail}`))
+      : []
+    const managedIds = [...new Set([...managed, ...ownedRows.map((r) => r.id)])]
+    if (managedIds.length === 0) return null
 
     // Fetch names for all managed teams so the team switcher works.
     const managedRows = await db
       .select({ id: teams.id, name: teams.name })
       .from(teams)
-      .where(inArray(teams.id, managed))
+      .where(inArray(teams.id, managedIds))
 
     if (managedRows.length === 0) return null
 
     // Pick the preferred team if it's in scope, otherwise the first managed one.
     const chosenId =
-      (opts?.preferredTeamId && managed.includes(opts.preferredTeamId))
+      (opts?.preferredTeamId && managedIds.includes(opts.preferredTeamId))
         ? opts.preferredTeamId
-        : managed[0]
+        : managedIds[0]
 
     teamId = chosenId
     otherTeams = managedRows.filter((r) => r.id !== chosenId).map((r) => ({ id: r.id, name: r.name }))
