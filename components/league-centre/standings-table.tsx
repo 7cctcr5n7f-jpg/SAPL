@@ -83,11 +83,7 @@ export function StandingsTable({
                     {r.played}P · {r.wins}W · {r.points}pts
                   </p>
                   <div className="hidden items-center gap-2 md:flex">
-                    {r.venueName || r.orgName ? (
-                      <p className="truncate text-[11px] text-slate-500">
-                        Venue: {r.venueName ?? r.orgName}
-                      </p>
-                    ) : null}
+                    {r.venueName ? <p className="truncate text-[11px] text-slate-500">{r.venueName}</p> : null}
                     {qualifier ? (
                       <span
                         className={cn(

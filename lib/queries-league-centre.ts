@@ -48,6 +48,7 @@ export type LCStanding = {
   divisionId: number
   teamId: number
   teamName: string | null
+  venueName: string | null
   orgName: string | null
   orgSlug: string | null
   teamLogo: string | null

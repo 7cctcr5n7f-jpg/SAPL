@@ -187,7 +187,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
         </section>
 
         {/* ── Division Selector ────────────────────────────────────────── */}
-        {regionDivisions.length > 0 && (
+        {regionDivisions.length > 1 && (
           <section className="mb-6">
             <SectionLabel icon={<ListOrdered className="h-3.5 w-3.5" />} text="Division" />
             <div className="mt-3 flex flex-wrap gap-2">
