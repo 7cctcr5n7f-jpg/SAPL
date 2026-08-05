@@ -268,104 +268,101 @@ export function balanceTimeslots(fixtures: { homeSlot: number; awaySlot: number 
 }
 
 /**
- * Pre-assign home roles for teams that share a venue whose nightly capacity is
- * less than the number of teams using it in this division.
+ * Pre-assign home weeks for all teams that share a venue across ALL divisions.
  *
- * For each such venue, the teams that share it are sorted by slot, then given
- * alternating home weeks such that:
- *   - At most `capacity` teams are home in any single week.
- *   - Every team ends up home exactly ceil(games/2) times across the season.
+ * Teams from different divisions can share the same physical venue. Since the
+ * venue's nightly capacity is global (not per-division), this pre-pass must see
+ * every division at once to distribute home weeks fairly before the per-division
+ * orientation pass runs.
  *
- * Returns a Map<teamId, Set<week>> containing the weeks each sharing team MUST
- * be home. The orientation pass treats these as hard pre-commits.
+ * For each venue whose total teams across all divisions exceeds its nightly
+ * capacity, teams are sorted by (divisionId, slot) and given home weeks in a
+ * round-robin pattern, capped at `capacity` home slots per week, until each
+ * team accumulates ceil(games/2) forced-home weeks.
+ *
+ * Returns a Map<teamId, Set<week>> used as hard pre-commits in planSeason.
  */
-function preAssignSharedVenueHome(
-  rounds: RoundPair[][],
-  division: PlannerDivision,
+function preAssignSharedVenueHomeGlobal(
+  divisionRounds: Map<number, RoundPair[][]>,
+  allDivisions: PlannerDivision[],
   clubById: Map<number, PlannerClub>,
 ): Map<number, Set<number>> {
   const forcedHome = new Map<number, Set<number>>()
 
-  // Group teams by homeClubId
-  const teamsByClub = new Map<number, number[]>()
-  for (const team of division.teamSlots) {
-    if (team.homeClubId == null) continue
-    const bucket = teamsByClub.get(team.homeClubId) ?? []
-    bucket.push(team.id)
-    teamsByClub.set(team.homeClubId, bucket)
+  // Build a flat list of all teams across all divisions, grouped by homeClubId
+  const teamsByClub = new Map<number, Array<{ teamId: number; divisionId: number; slot: number }>>()
+  for (const division of allDivisions) {
+    for (const team of division.teamSlots) {
+      if (team.homeClubId == null) continue
+      const bucket = teamsByClub.get(team.homeClubId) ?? []
+      bucket.push({ teamId: team.id, divisionId: division.id, slot: team.slot })
+      teamsByClub.set(team.homeClubId, bucket)
+    }
   }
 
-  for (const [clubId, sharingTeamIds] of teamsByClub.entries()) {
+  for (const [clubId, sharingTeams] of teamsByClub.entries()) {
     const club = clubById.get(clubId)
     if (!club) continue
     const capacity = venueNightCapacity(club)
-    // Only intervene when the venue is over-subscribed or perfectly subscribed
-    // with more than 1 team (i.e. teams > capacity → can't all be home same night)
-    if (sharingTeamIds.length <= capacity) continue
+    // Only intervene when more teams share this venue than it can host per night
+    if (sharingTeams.length <= capacity) continue
 
-    // Sort teams by slot for deterministic ordering
-    const sorted = [...sharingTeamIds].sort((a, b) => {
-      const sa = division.teamSlots.find((t) => t.id === a)?.slot ?? 999
-      const sb = division.teamSlots.find((t) => t.id === b)?.slot ?? 999
-      return sa - sb
-    })
+    // Sort deterministically: by divisionId then slot
+    const sorted = [...sharingTeams].sort(
+      (a, b) => a.divisionId - b.divisionId || a.slot - b.slot,
+    )
 
-    const gameCounts = countGamesByTeam(rounds)
-
-    // For each team, compute how many home games they need
+    // For each team, find how many games they play (from their division's rounds)
+    // and how many home games they need
     const homeTarget = new Map<number, number>()
-    for (const id of sorted) {
-      homeTarget.set(id, Math.ceil((gameCounts.get(id) ?? 0) / 2))
+    for (const { teamId, divisionId } of sorted) {
+      const rounds = divisionRounds.get(divisionId) ?? []
+      const counts = countGamesByTeam(rounds)
+      homeTarget.set(teamId, Math.ceil((counts.get(teamId) ?? 0) / 2))
     }
 
-    // Track which weeks this venue is already allocated (up to `capacity` per week)
-    const venueWeekUsage = new Map<number, number>()
-
-    // For each round (week), figure out who could be home at this venue.
-    // In each week, at most `capacity` teams from this group can be home.
-    // We assign home slots greedily, cycling through the sorted team list,
-    // ensuring each team eventually hits their homeTarget.
-
-    // First pass: find which rounds contain a pair involving a sharing team
-    // (i.e. weeks where this team plays at all — bye weeks don't count)
+    // Build active-weeks per team: weeks where that team has a fixture (no bye)
     const teamActiveWeeks = new Map<number, number[]>()
-    for (const id of sorted) teamActiveWeeks.set(id, [])
-
-    for (let wi = 0; wi < rounds.length; wi++) {
-      const week = wi + 1
-      for (const pair of rounds[wi]) {
-        if (sorted.includes(pair.a)) teamActiveWeeks.get(pair.a)!.push(week)
-        if (sorted.includes(pair.b)) teamActiveWeeks.get(pair.b)!.push(week)
+    for (const { teamId, divisionId } of sorted) {
+      const rounds = divisionRounds.get(divisionId) ?? []
+      const weeks: number[] = []
+      for (let wi = 0; wi < rounds.length; wi++) {
+        for (const pair of rounds[wi]) {
+          if (pair.a === teamId || pair.b === teamId) weeks.push(wi + 1)
+        }
       }
+      teamActiveWeeks.set(teamId, weeks)
     }
 
-    // Assign home weeks: iterate through weeks in order; for each week,
-    // up to `capacity` teams from this group may be home. Rotate fairly.
-    // We use a round-robin pointer so no team monopolises early weeks.
-    let pointer = 0
-    for (let wi = 0; wi < rounds.length; wi++) {
-      const week = wi + 1
-      const venueUsedThisWeek = venueWeekUsage.get(week) ?? 0
-      if (venueUsedThisWeek >= capacity) continue
+    // Determine the total number of weeks (max rounds across involved divisions)
+    const totalWeeks = Math.max(
+      ...[...divisionRounds.values()].map((r) => r.length),
+    )
 
-      let slotsRemaining = capacity - venueUsedThisWeek
+    // Assign home weeks: walk every week, grant up to `capacity` slots, cycling
+    // through sorted teams so each gets a fair share.
+    const venueWeekUsage = new Map<number, number>()
+    let pointer = 0
+
+    for (let wi = 0; wi < totalWeeks; wi++) {
+      const week = wi + 1
+      const usedThisWeek = venueWeekUsage.get(week) ?? 0
+      if (usedThisWeek >= capacity) continue
+
+      let slotsRemaining = capacity - usedThisWeek
       let checked = 0
 
       while (slotsRemaining > 0 && checked < sorted.length) {
-        const teamId = sorted[pointer % sorted.length]
+        const { teamId } = sorted[pointer % sorted.length]
         pointer++
         checked++
 
-        const team = division.teamSlots.find((t) => t.id === teamId)
-        if (!team) continue
+        // Skip if this team doesn't play this week
+        if (!(teamActiveWeeks.get(teamId) ?? []).includes(week)) continue
 
-        // Only assign home for this week if the team actually plays this week
-        const activeWeeks = teamActiveWeeks.get(teamId) ?? []
-        if (!activeWeeks.includes(week)) continue
-
-        const alreadyForcedHome = (forcedHome.get(teamId)?.size ?? 0)
-        const target = homeTarget.get(teamId) ?? 0
-        if (alreadyForcedHome >= target) continue
+        // Skip if this team already has enough forced-home weeks
+        const alreadyForced = forcedHome.get(teamId)?.size ?? 0
+        if (alreadyForced >= (homeTarget.get(teamId) ?? 0)) continue
 
         const set = forcedHome.get(teamId) ?? new Set<number>()
         set.add(week)
@@ -386,181 +383,214 @@ export function planSeason(args: {
 }): PlannedFixture[] {
   const firstNight = nextThursday(args.startDate)
   const clubById = new Map(args.clubs.map((club) => [club.id, club]))
+  // Shared venue-usage map across all divisions and weeks.
   const usage: UsageByWeek = new Map()
   const planned: PlannedFixture[] = []
 
-  for (const division of [...args.divisions].sort((a, b) => a.id - b.id)) {
-    const teamById = new Map(division.teamSlots.map((team) => [team.id, team]))
-    const orderedTeamIds = [...division.teamSlots]
+  const sortedDivisions = [...args.divisions].sort((a, b) => a.id - b.id)
+
+  // Build all round-robin schedules upfront.
+  const divisionRoundsMap = new Map<number, RoundPair[][]>()
+  for (const division of sortedDivisions) {
+    const orderedIds = [...division.teamSlots]
       .sort((a, b) => a.slot - b.slot || a.id - b.id)
-      .map((team) => team.id)
+      .map((t) => t.id)
+    divisionRoundsMap.set(division.id, buildRoundRobinRounds(orderedIds))
+  }
 
-    const rounds = buildRoundRobinRounds(orderedTeamIds)
+  // Global pre-pass: pre-assign forced-home weeks for teams sharing a venue
+  // across ANY division so they never compete for the same venue in the same week.
+  const forcedHomeWeeks = preAssignSharedVenueHomeGlobal(divisionRoundsMap, sortedDivisions, clubById)
+
+  // Global venue team count across all divisions (used for priority scoring).
+  const globalVenueTeamCount = new Map<number, number>()
+  for (const division of sortedDivisions) {
+    for (const team of division.teamSlots) {
+      if (team.homeClubId != null) {
+        globalVenueTeamCount.set(team.homeClubId, (globalVenueTeamCount.get(team.homeClubId) ?? 0) + 1)
+      }
+    }
+  }
+
+  // Per-division tracking state (home/away counts, history).
+  const divisionState = new Map<
+    number,
+    {
+      teamById: Map<number, PlannerTeam>
+      maxHomeGames: Map<number, number>
+      maxAwayGames: Map<number, number>
+      homeCounts: Map<number, number>
+      awayCounts: Map<number, number>
+      histories: Map<number, string>
+    }
+  >()
+
+  for (const division of sortedDivisions) {
+    const rounds = divisionRoundsMap.get(division.id)!
     const gameCounts = countGamesByTeam(rounds)
-
-    // Hard home/away caps: each team is home exactly ceil(N/2) times.
     const maxHomeGames = new Map<number, number>()
     const maxAwayGames = new Map<number, number>()
     for (const [teamId, games] of gameCounts.entries()) {
       maxHomeGames.set(teamId, Math.ceil(games / 2))
       maxAwayGames.set(teamId, Math.floor(games / 2))
     }
+    divisionState.set(division.id, {
+      teamById: new Map(division.teamSlots.map((t) => [t.id, t])),
+      maxHomeGames,
+      maxAwayGames,
+      homeCounts: new Map(),
+      awayCounts: new Map(),
+      histories: new Map(),
+    })
+  }
 
-    // Pre-assign shared-venue teams so they don't deadlock each other.
-    const forcedHomeWeeks = preAssignSharedVenueHome(rounds, division, clubById)
+  // Helpers that resolve against the live shared usage map.
+  const venueConstraintScore = (clubId: number): number => {
+    const club = clubById.get(clubId)
+    if (!club) return 0
+    const teamCount = globalVenueTeamCount.get(clubId) ?? 0
+    const capacity = venueNightCapacity(club)
+    return capacity > 0 ? teamCount / capacity : teamCount * 100
+  }
 
-    const homeCounts = new Map<number, number>()
-    const awayCounts = new Map<number, number>()
-    const histories = new Map<number, string>()
+  const teamVenuePriorityGlobal = (teamId: number, divId: number): number => {
+    const state = divisionState.get(divId)
+    const team = state?.teamById.get(teamId)
+    return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
+  }
 
-    // Venue constraint score for scheduling priority within a week.
-    const venueTeamCount = new Map<number, number>()
-    for (const team of division.teamSlots) {
-      if (team.homeClubId != null) {
-        venueTeamCount.set(team.homeClubId, (venueTeamCount.get(team.homeClubId) ?? 0) + 1)
+  const teamCanHostWeek = (teamId: number, divId: number, week: number): boolean => {
+    const state = divisionState.get(divId)
+    const team = state?.teamById.get(teamId)
+    if (!team?.homeClubId) return false
+    const club = clubById.get(team.homeClubId)
+    if (!club || venueNightCapacity(club) <= 0) return false
+    return venueUsageForWeek(usage, week, club.id).total < venueNightCapacity(club)
+  }
+
+  // Process week-by-week across ALL divisions simultaneously so the shared
+  // usage map is updated before the next division's pairs for the same week.
+  const totalWeeks = Math.max(...[...divisionRoundsMap.values()].map((r) => r.length))
+
+  for (let weekIndex = 0; weekIndex < totalWeeks; weekIndex++) {
+    const week = weekIndex + 1
+    const matchDate = new Date(firstNight.getTime() + weekIndex * 7 * MS_PER_DAY)
+
+    // Collect all pairs this week across all divisions, tagged with divisionId.
+    // Sort so pairs involving constrained (over-subscribed) venues are resolved first.
+    const allPairsThisWeek: Array<{ divisionId: number; pair: RoundPair }> = []
+    for (const division of sortedDivisions) {
+      const rounds = divisionRoundsMap.get(division.id)!
+      if (weekIndex >= rounds.length) continue
+      for (const pair of rounds[weekIndex]) {
+        allPairsThisWeek.push({ divisionId: division.id, pair })
       }
     }
 
-    const venueConstraintScore = (clubId: number): number => {
-      const club = clubById.get(clubId)
-      if (!club) return 0
-      const teamCount = venueTeamCount.get(clubId) ?? 0
-      const capacity = venueNightCapacity(club)
-      return capacity > 0 ? teamCount / capacity : teamCount * 100
-    }
+    allPairsThisWeek.sort((x, y) => {
+      const px = Math.max(teamVenuePriorityGlobal(x.pair.a, x.divisionId), teamVenuePriorityGlobal(x.pair.b, x.divisionId))
+      const py = Math.max(teamVenuePriorityGlobal(y.pair.a, y.divisionId), teamVenuePriorityGlobal(y.pair.b, y.divisionId))
+      return py - px
+    })
 
-    const teamVenuePriority = (teamId: number): number => {
-      const team = teamById.get(teamId)
-      return team?.homeClubId != null ? venueConstraintScore(team.homeClubId) : 0
-    }
+    for (const { divisionId, pair } of allPairsThisWeek) {
+      const state = divisionState.get(divisionId)!
+      const { teamById, maxHomeGames, maxAwayGames, homeCounts, awayCounts, histories } = state
 
-    const teamCanHostWeek = (teamId: number, week: number): boolean => {
-      const team = teamById.get(teamId)
-      if (!team?.homeClubId) return false
-      const club = clubById.get(team.homeClubId)
-      if (!club || venueNightCapacity(club) <= 0) return false
-      const current = venueUsageForWeek(usage, week, club.id)
-      return current.total < venueNightCapacity(club)
-    }
+      const aHomeCount = homeCounts.get(pair.a) ?? 0
+      const bHomeCount = homeCounts.get(pair.b) ?? 0
+      const aAwayCount = awayCounts.get(pair.a) ?? 0
+      const bAwayCount = awayCounts.get(pair.b) ?? 0
+      const aMaxHome = maxHomeGames.get(pair.a) ?? Number.MAX_SAFE_INTEGER
+      const bMaxHome = maxHomeGames.get(pair.b) ?? Number.MAX_SAFE_INTEGER
+      const aMaxAway = maxAwayGames.get(pair.a) ?? Number.MAX_SAFE_INTEGER
+      const bMaxAway = maxAwayGames.get(pair.b) ?? Number.MAX_SAFE_INTEGER
 
-    for (let weekIndex = 0; weekIndex < rounds.length; weekIndex++) {
-      const week = weekIndex + 1
+      // Pre-committed home weeks from the global pre-pass (highest priority).
+      const aForcedHome = forcedHomeWeeks.get(pair.a)?.has(week) ?? false
+      const bForcedHome = forcedHomeWeeks.get(pair.b)?.has(week) ?? false
 
-      // Process pairs involving constrained (shared-venue) teams first.
-      const sortedPairs = [...rounds[weekIndex]].sort((a, b) => {
-        const pa = Math.max(teamVenuePriority(a.a), teamVenuePriority(a.b))
-        const pb = Math.max(teamVenuePriority(b.a), teamVenuePriority(b.b))
-        return pb - pa
+      const aMustBeAway = aHomeCount >= aMaxHome
+      const bMustBeAway = bHomeCount >= bMaxHome
+
+      // "Must be home" only fires if the venue is actually available this week.
+      const aCanHostNow = teamCanHostWeek(pair.a, divisionId, week)
+      const bCanHostNow = teamCanHostWeek(pair.b, divisionId, week)
+      const aMustBeHome = !bForcedHome && !aMustBeAway && aCanHostNow && (aAwayCount >= aMaxAway)
+      const bMustBeHome = !aForcedHome && !bMustBeAway && bCanHostNow && (bAwayCount >= bMaxAway)
+
+      let homeTeamId: number
+      let awayTeamId: number
+
+      if (aForcedHome || aMustBeHome || bMustBeAway) {
+        homeTeamId = pair.a
+        awayTeamId = pair.b
+      } else if (bForcedHome || bMustBeHome || aMustBeAway) {
+        homeTeamId = pair.b
+        awayTeamId = pair.a
+      } else {
+        const scoreAsHome = (homeId: number, awayId: number, canHostThisWeek: boolean): number => {
+          const homeH = homeCounts.get(homeId) ?? 0
+          const homeA = awayCounts.get(homeId) ?? 0
+          const awayH = homeCounts.get(awayId) ?? 0
+          const awayA = awayCounts.get(awayId) ?? 0
+          const balance =
+            orientationPenalty({ side: "H", homeCount: homeH, awayCount: homeA, history: histories.get(homeId) ?? "" }) +
+            orientationPenalty({ side: "A", homeCount: awayH, awayCount: awayA, history: histories.get(awayId) ?? "" })
+          return balance + (canHostThisWeek ? 0 : 15)
+        }
+
+        homeTeamId = scoreAsHome(pair.a, pair.b, aCanHostNow) <= scoreAsHome(pair.b, pair.a, bCanHostNow) ? pair.a : pair.b
+        awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
+      }
+
+      // If home team's venue is now blocked (used by an earlier pair this week
+      // from another division) but the away team can host, flip — unless doing
+      // so would push the new home team over their max-home cap.
+      const homeCanHostNow = teamCanHostWeek(homeTeamId, divisionId, week)
+      const awayCanHostNow = teamCanHostWeek(awayTeamId, divisionId, week)
+      if (!homeCanHostNow && awayCanHostNow) {
+        const newHomeWouldExceedCap = (homeCounts.get(awayTeamId) ?? 0) >= (maxHomeGames.get(awayTeamId) ?? 0)
+        if (!newHomeWouldExceedCap) {
+          ;[homeTeamId, awayTeamId] = [awayTeamId, homeTeamId]
+        }
+      }
+
+      // Pick venue.
+      let venuePick: { club: PlannerClub | null; kickoff: FixtureTimeslot | null } = { club: null, kickoff: null }
+      const tryTeamVenue = (teamId: number): boolean => {
+        const team = teamById.get(teamId)
+        if (!team?.homeClubId) return false
+        const club = clubById.get(team.homeClubId)
+        if (!club) return false
+        const kickoff = chooseKickoffForVenue(club, week, usage)
+        if (!kickoff) return false
+        venuePick = { club, kickoff }
+        return true
+      }
+      if (!tryTeamVenue(homeTeamId)) tryTeamVenue(awayTeamId)
+      if (venuePick.club && venuePick.kickoff) {
+        markVenueUsage(usage, week, venuePick.club, venuePick.kickoff)
+      }
+
+      homeCounts.set(homeTeamId, (homeCounts.get(homeTeamId) ?? 0) + 1)
+      awayCounts.set(awayTeamId, (awayCounts.get(awayTeamId) ?? 0) + 1)
+      histories.set(homeTeamId, pushHistory(histories.get(homeTeamId) ?? "", "H"))
+      histories.set(awayTeamId, pushHistory(histories.get(awayTeamId) ?? "", "A"))
+
+      planned.push({
+        divisionId,
+        week,
+        homeTeamId,
+        awayTeamId,
+        homeSlot: teamById.get(homeTeamId)?.slot ?? 0,
+        awaySlot: teamById.get(awayTeamId)?.slot ?? 0,
+        matchDate,
+        venueClubId: venuePick.club?.id ?? null,
+        venue: venuePick.club?.name ?? null,
+        timeslot: venuePick.kickoff,
+        courtAssignments: buildCourtAssignments(venuePick.club?.courts ?? 0, venuePick.kickoff),
       })
-
-      for (const pair of sortedPairs) {
-        const aHomeCount = homeCounts.get(pair.a) ?? 0
-        const bHomeCount = homeCounts.get(pair.b) ?? 0
-        const aAwayCount = awayCounts.get(pair.a) ?? 0
-        const bAwayCount = awayCounts.get(pair.b) ?? 0
-
-        const aMaxHome = maxHomeGames.get(pair.a) ?? Number.MAX_SAFE_INTEGER
-        const bMaxHome = maxHomeGames.get(pair.b) ?? Number.MAX_SAFE_INTEGER
-        const aMaxAway = maxAwayGames.get(pair.a) ?? Number.MAX_SAFE_INTEGER
-        const bMaxAway = maxAwayGames.get(pair.b) ?? Number.MAX_SAFE_INTEGER
-
-        // Pre-committed home weeks from the shared-venue pre-pass take highest
-        // priority. If a team is pre-committed home this week, it IS home.
-        const aForcedHome = forcedHomeWeeks.get(pair.a)?.has(week) ?? false
-        const bForcedHome = forcedHomeWeeks.get(pair.b)?.has(week) ?? false
-
-        // Hard cap constraints (fallback if not pre-committed)
-        const aMustBeHome = !bForcedHome && (aAwayCount >= aMaxAway)
-        const bMustBeHome = !aForcedHome && (bAwayCount >= bMaxAway)
-        const aMustBeAway = aHomeCount >= aMaxHome
-        const bMustBeAway = bHomeCount >= bMaxHome
-
-        let homeTeamId: number
-        let awayTeamId: number
-
-        if (aForcedHome || aMustBeHome || bMustBeAway) {
-          homeTeamId = pair.a
-          awayTeamId = pair.b
-        } else if (bForcedHome || bMustBeHome || aMustBeAway) {
-          homeTeamId = pair.b
-          awayTeamId = pair.a
-        } else {
-          // Neither side is forced — use scoring to pick the better orientation.
-          const aCanHost = teamCanHostWeek(pair.a, week)
-          const bCanHost = teamCanHostWeek(pair.b, week)
-
-          const scoreAsHome = (
-            homeId: number,
-            awayId: number,
-            canHostThisWeek: boolean,
-          ): number => {
-            const homeHistory = histories.get(homeId) ?? ""
-            const awayHistory = histories.get(awayId) ?? ""
-            const homeH = homeCounts.get(homeId) ?? 0
-            const homeA = awayCounts.get(homeId) ?? 0
-            const awayH = homeCounts.get(awayId) ?? 0
-            const awayA = awayCounts.get(awayId) ?? 0
-
-            const balance =
-              orientationPenalty({ side: "H", homeCount: homeH, awayCount: homeA, history: homeHistory }) +
-              orientationPenalty({ side: "A", homeCount: awayH, awayCount: awayA, history: awayHistory })
-
-            const venuePenalty = canHostThisWeek ? 0 : 15
-            return balance + venuePenalty
-          }
-
-          const scoreAHome = scoreAsHome(pair.a, pair.b, aCanHost)
-          const scoreBHome = scoreAsHome(pair.b, pair.a, bCanHost)
-
-          homeTeamId = scoreAHome <= scoreBHome ? pair.a : pair.b
-          awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
-        }
-
-        // Pick venue: home team's venue first, then away team's venue.
-        let venuePick: { club: PlannerClub | null; kickoff: FixtureTimeslot | null } = {
-          club: null,
-          kickoff: null,
-        }
-
-        const tryTeamVenue = (teamId: number): boolean => {
-          const team = teamById.get(teamId)
-          if (!team?.homeClubId) return false
-          const club = clubById.get(team.homeClubId)
-          if (!club) return false
-          const kickoff = chooseKickoffForVenue(club, week, usage)
-          if (!kickoff) return false
-          venuePick = { club, kickoff }
-          return true
-        }
-
-        if (!tryTeamVenue(homeTeamId)) tryTeamVenue(awayTeamId)
-
-        if (venuePick.club && venuePick.kickoff) {
-          markVenueUsage(usage, week, venuePick.club, venuePick.kickoff)
-        }
-
-        homeCounts.set(homeTeamId, (homeCounts.get(homeTeamId) ?? 0) + 1)
-        awayCounts.set(awayTeamId, (awayCounts.get(awayTeamId) ?? 0) + 1)
-        histories.set(homeTeamId, pushHistory(histories.get(homeTeamId) ?? "", "H"))
-        histories.set(awayTeamId, pushHistory(histories.get(awayTeamId) ?? "", "A"))
-
-        const matchDate = new Date(firstNight.getTime() + weekIndex * 7 * MS_PER_DAY)
-        const venueCourts = venuePick.club?.courts ?? 0
-
-        planned.push({
-          divisionId: division.id,
-          week,
-          homeTeamId,
-          awayTeamId,
-          homeSlot: teamById.get(homeTeamId)?.slot ?? 0,
-          awaySlot: teamById.get(awayTeamId)?.slot ?? 0,
-          matchDate,
-          venueClubId: venuePick.club?.id ?? null,
-          venue: venuePick.club?.name ?? null,
-          timeslot: venuePick.kickoff,
-          courtAssignments: buildCourtAssignments(venueCourts, venuePick.kickoff),
-        })
-      }
     }
   }
 
