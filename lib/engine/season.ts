@@ -522,10 +522,16 @@ export function planSeason(args: {
       let homeTeamId: number
       let awayTeamId: number
 
-      if (aForcedHome || aMustBeHome || bMustBeAway) {
+      // If both teams are must-away (both at home cap), the hard caps have been
+      // exhausted — this can happen when cross-division forced-home assignments
+      // drift out of sync with per-team caps. Fall through to scoring in that
+      // case rather than blindly picking pair.a, which would over-count home games.
+      const bothMustAway = aMustBeAway && bMustBeAway
+
+      if (!bothMustAway && (aForcedHome || aMustBeHome || bMustBeAway)) {
         homeTeamId = pair.a
         awayTeamId = pair.b
-      } else if (bForcedHome || bMustBeHome || aMustBeAway) {
+      } else if (!bothMustAway && (bForcedHome || bMustBeHome || aMustBeAway)) {
         homeTeamId = pair.b
         awayTeamId = pair.a
       } else {
@@ -540,7 +546,16 @@ export function planSeason(args: {
           return balance + (canHostThisWeek ? 0 : 15)
         }
 
-        homeTeamId = scoreAsHome(pair.a, pair.b, aCanHostNow) <= scoreAsHome(pair.b, pair.a, bCanHostNow) ? pair.a : pair.b
+        const scoreA = scoreAsHome(pair.a, pair.b, aCanHostNow)
+        const scoreB = scoreAsHome(pair.b, pair.a, bCanHostNow)
+        if (scoreA !== scoreB) {
+          homeTeamId = scoreA < scoreB ? pair.a : pair.b
+        } else {
+          // Break ties by fewest home games so far (favour the under-hosted team).
+          const aH = homeCounts.get(pair.a) ?? 0
+          const bH = homeCounts.get(pair.b) ?? 0
+          homeTeamId = aH <= bH ? pair.a : pair.b
+        }
         awayTeamId = homeTeamId === pair.a ? pair.b : pair.a
       }
 
