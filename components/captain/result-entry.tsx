@@ -168,30 +168,37 @@ export function ResultEntry({
                       
                       {isExpanded && (
                         <div className="border-t border-border bg-secondary/20 px-3 py-2">
-                          <div className="flex items-center justify-center gap-2">
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              max={99}
-                              value={r.home === 0 ? "" : r.home}
-                              placeholder="0"
-                              onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
-                              className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
-                              aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
-                            />
-                            <span className="text-sm text-muted-foreground">–</span>
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              max={99}
-                              value={r.away === 0 ? "" : r.away}
-                              placeholder="0"
-                              onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
-                              className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
-                              aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
-                            />
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-3 items-center gap-2 text-xs font-semibold text-muted-foreground">
+                              <span className="text-left truncate">{homeName}</span>
+                              <span className="text-center">–</span>
+                              <span className="text-right truncate">{awayName}</span>
+                            </div>
+                            <div className="flex items-center justify-center gap-2">
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                max={99}
+                                value={r.home === 0 ? "" : r.home}
+                                placeholder="0"
+                                onChange={(e) => setGame(c.category, i, "home", Number(e.target.value))}
+                                className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
+                                aria-label={`${homeName} games in ${c.category} set ${i + 1}`}
+                              />
+                              <span className="text-sm text-muted-foreground">–</span>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                max={99}
+                                value={r.away === 0 ? "" : r.away}
+                                placeholder="0"
+                                onChange={(e) => setGame(c.category, i, "away", Number(e.target.value))}
+                                className="h-8 w-20 px-2 text-center text-sm font-semibold tabular-nums"
+                                aria-label={`${awayName} games in ${c.category} set ${i + 1}`}
+                              />
+                            </div>
                           </div>
                         </div>
                       )}
