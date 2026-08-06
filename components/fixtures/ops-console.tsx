@@ -62,7 +62,7 @@ function resultsEntered(f: DashboardFixture): number {
   return f.matches.filter((m) => m.winnerTeamId != null).length
 }
 
-function formatPairingNames(names: { name: string; playtomicUrl: string | null }[] | undefined) {
+function formatPairingNames(names: { name: string; email: string | null; playtomicUrl: string | null }[] | undefined) {
   const players = names ?? []
   const playerNames = players.map((player) => player.name)
   if (playerNames.length >= 2) return playerNames.slice(0, 2).join(" / ")
@@ -78,11 +78,12 @@ function sanitizePlaytomicUrl(url: string | null | undefined) {
   return (end >= 0 ? trimmedStart.slice(0, end) : trimmedStart).trim()
 }
 
-function exportPlayerCell(player: { name: string; playtomicUrl: string | null } | undefined) {
+function exportPlayerCell(player: { name: string; email: string | null; playtomicUrl: string | null } | undefined) {
   if (!player) return { v: "TBC" }
+  const label = player.email ? `${player.name} (${player.email})` : player.name
   const cleanUrl = sanitizePlaytomicUrl(player.playtomicUrl)
-  if (!cleanUrl) return { v: player.name, hyperlink: null }
-  return { v: player.name, hyperlink: cleanUrl }
+  if (!cleanUrl) return { v: label, hyperlink: null }
+  return { v: label, hyperlink: cleanUrl }
 }
 
 function exportBookingCell(link: string | null | undefined) {
@@ -227,7 +228,7 @@ export function OpsConsole({
         return [
           fixture.week,
           fixture.matchDate ? fmtExportDate(fixture.matchDate) : "",
-          fixture.timeslot ?? "",
+          assignment?.time ?? fixture.timeslot ?? "",
           assignment?.court ?? "",
           category.category,
           fixture.venueClubName ?? fixture.venue ?? "",
@@ -906,13 +907,15 @@ function CategoryEditor({
   homeName: string
   awayName: string
 }) {
-  const [court, setCourt] = useState(assignment?.court ?? "")
-  const [time, setTime] = useState(assignment?.time ?? "")
+  const normalizedCourt = typeof assignment?.court === "string" ? assignment.court : assignment?.court == null ? "" : String(assignment.court)
+  const normalizedTime = typeof assignment?.time === "string" ? assignment.time : assignment?.time == null ? "" : String(assignment.time)
+  const [court, setCourt] = useState(normalizedCourt)
+  const [time, setTime] = useState(normalizedTime)
   const [url, setUrl] = useState(link ?? "")
   const [pending, start] = useTransition()
 
   const ready = categoryReady({ court, time }, url)
-  const dirty = (assignment?.court ?? "") !== court || (assignment?.time ?? "") !== time || (link ?? "") !== url
+  const dirty = normalizedCourt !== court || normalizedTime !== time || (link ?? "") !== url
 
   function save() {
     start(async () => {

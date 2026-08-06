@@ -16,7 +16,11 @@ import { validateSeason, type SeasonValidation } from "@/lib/engine/validation"
 const COURTS_PER_FIXTURE = CATEGORY_RULES.length
 
 function revalidateFixtureSurfaces() {
-  revalidateFixtureSurfaces()
+  revalidatePath("/admin")
+  revalidatePath("/admin/fixtures")
+  revalidatePath("/dashboard/fixtures")
+  revalidatePath("/dashboard/league-centre")
+  revalidatePath("/league-centre")
   revalidateTag("league-centre-shared")
 }
 
