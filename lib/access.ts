@@ -57,7 +57,7 @@ export type AccessContext = {
  *  - Team-member scope: active team memberships (non-captain) for visibility.
  */
 async function _getAccessContext(user: CurrentUser): Promise<AccessContext> {
-  const isLeagueAdmin = user.role === "super_admin"
+  const isLeagueAdmin = user.realRole === "super_admin" && !user.actingRole && !user.actingUserId
   const permissions = isLeagueAdmin ? new Set<Permission>(PERMISSIONS) : new Set<Permission>()
 
   const email = user.email.trim().toLowerCase()

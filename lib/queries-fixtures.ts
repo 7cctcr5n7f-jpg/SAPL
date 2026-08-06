@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { fixtures, teams, divisions, clubs, regions, user, results, matches, seasons, teamPairings, teamInvites } from "@/lib/db/schema"
+import { organisations } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
 import { asc, eq, inArray, and, isNotNull } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
@@ -32,12 +33,15 @@ export type DashboardFixture = {
   awayTeamId: number | null
   homeName: string | null
   awayName: string | null
+  homeLogo: string | null
+  awayLogo: string | null
   homeSlot: number | null
   awaySlot: number | null
   timeslot: string | null
   venue: string | null
   venueClubId: number | null
   venueClubName: string | null
+  venueClubLogo: string | null
   venueCourts: number | null
   playtomicUrl: string | null
   courtLinks: CourtLinks
@@ -86,6 +90,8 @@ export type DashboardFixturesResult = {
 async function baseFixtures(seasonId: number) {
   const home = alias(teams, "home")
   const away = alias(teams, "away")
+  const homeOrg = alias(organisations, "homeOrg")
+  const awayOrg = alias(organisations, "awayOrg")
   const publisher = alias(user, "publisher")
   const updater = alias(user, "updater")
   const submitter = alias(user, "submitter")
@@ -104,12 +110,15 @@ async function baseFixtures(seasonId: number) {
       awayTeamId: fixtures.awayTeamId,
       homeName: home.name,
       awayName: away.name,
+      homeLogo: home.logoUrl,
+      awayLogo: away.logoUrl,
       homeSlot: fixtures.homeSlot,
       awaySlot: fixtures.awaySlot,
       timeslot: fixtures.timeslot,
       venue: fixtures.venue,
       venueClubId: fixtures.venueClubId,
       venueClubName: clubs.name,
+      venueClubLogo: clubs.logoUrl,
       venueCourts: clubs.courts,
       playtomicUrl: fixtures.playtomicUrl,
       courtLinks: fixtures.courtLinks,
@@ -128,6 +137,8 @@ async function baseFixtures(seasonId: number) {
     .from(fixtures)
     .leftJoin(home, eq(fixtures.homeTeamId, home.id))
     .leftJoin(away, eq(fixtures.awayTeamId, away.id))
+    .leftJoin(homeOrg, eq(home.organisationId, homeOrg.id))
+    .leftJoin(awayOrg, eq(away.organisationId, awayOrg.id))
     .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
     .leftJoin(regions, eq(divisions.regionId, regions.id))
     .leftJoin(clubs, eq(fixtures.venueClubId, clubs.id))

@@ -105,6 +105,16 @@ export type MyTeamView = {
   canManage: boolean
 }
 
+export type MyTeamResolutionDebug = {
+  userId: string
+  email: string
+  membershipTeamIds: number[]
+  captainTeamIds: number[]
+  ownerTeamIds: number[]
+  managedTeamIds: number[]
+  selectableTeams: { teamId: number; name: string; source: "membership" | "captain" | "owner" | "managed" }[]
+}
+
 const SQUAD_SIZE = 8
 
 /**
@@ -123,7 +133,16 @@ const SQUAD_SIZE = 8
  * even without an active roster membership. Used to surface the "My Team" view
  * for owners who were added before they registered an account.
  */
-export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean; managedTeamIds?: number[] }): Promise<MyTeamView | null> {
+type MyTeamScope = {
+  teamId: number
+  name: string
+  source: "membership" | "captain" | "owner" | "managed"
+}
+
+async function resolveMyTeamScope(
+  playerId: string,
+  managedTeamIds: number[] = [],
+): Promise<MyTeamScope[]> {
   const [currentUser] = await db
     .select({ email: user.email })
     .from(user)
@@ -131,7 +150,6 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .limit(1)
   const currentEmail = currentUser?.email?.trim().toLowerCase() ?? ""
 
-  // Active memberships, newest first.
   const memberships = await db
     .select({ teamId: teamMembers.teamId, name: teams.name })
     .from(teamMembers)
@@ -139,68 +157,104 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
     .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
     .orderBy(desc(teamMembers.updatedAt))
 
-  // Determine the team to show. When the user has memberships, prefer the
-  // preferred team or the most-recently-updated active one.
-  // When the user has no memberships (e.g. owner added before registering),
-  // fall back to teams they manage via email ownership / captaincy.
-  let teamId: number
-  let otherTeams: { id: number; name: string }[]
+  const captainRows = await db
+    .select({ teamId: teams.id, name: teams.name })
+    .from(teams)
+    .where(eq(teams.captainUserId, playerId))
 
-  const managedIds = opts?.managedTeamIds ?? []
   const ownedRows = currentEmail
     ? await db
         .select({ teamId: teams.id, name: teams.name })
         .from(teams)
         .where(or(sql`lower(${teams.ownerEmail}) = ${currentEmail}`, sql`lower(${teams.coOwnerEmail}) = ${currentEmail}`))
     : []
-  const scopedTeamIds = [...new Set([...managedIds, ...ownedRows.map((r) => r.teamId)])]
 
-  if (memberships.length > 0) {
-    const managedRows = scopedTeamIds.length > 0
-      ? await db
-          .select({ teamId: teams.id, name: teams.name })
-          .from(teams)
-          .where(inArray(teams.id, scopedTeamIds))
-      : []
+  const managedRows = managedTeamIds.length > 0
+    ? await db
+        .select({ teamId: teams.id, name: teams.name })
+        .from(teams)
+        .where(inArray(teams.id, managedTeamIds))
+    : []
 
-    // Team switcher scope is the union of active memberships and managed teams.
-    // This prevents falling back to the first membership when a user switches to
-    // a team they manage but are not an active player on.
-    const byId = new Map<number, { id: number; name: string }>()
-    for (const m of memberships) byId.set(m.teamId, { id: m.teamId, name: m.name })
-    for (const m of managedRows) {
-      if (!byId.has(m.teamId)) byId.set(m.teamId, { id: m.teamId, name: m.name })
-    }
-    const selectableTeams = [...byId.values()]
-    if (selectableTeams.length === 0) return null
-
-    const preferred = opts?.preferredTeamId
-    const chosen =
-      (preferred != null && selectableTeams.find((t) => t.id === preferred)) ??
-      selectableTeams[0]
-    teamId = chosen.id
-    otherTeams = selectableTeams.filter((t) => t.id !== teamId)
-  } else {
-    // No active memberships — check if this user manages any teams by email or via passed scope.
-    if (scopedTeamIds.length === 0) return null
-
-    // Fetch names for all managed teams so the team switcher works.
-    const managedRows = await db
-      .select({ id: teams.id, name: teams.name })
-      .from(teams)
-      .where(inArray(teams.id, scopedTeamIds))
-
-    if (managedRows.length === 0) return null
-
-    // Pick the preferred team if it's in scope, otherwise the first managed one.
-    const chosenId =
-      (opts?.preferredTeamId && scopedTeamIds.includes(opts.preferredTeamId))
-        ? opts.preferredTeamId
-        : scopedTeamIds[0]
-
-    teamId = chosenId
-    otherTeams = managedRows.filter((r) => r.id !== chosenId).map((r) => ({ id: r.id, name: r.name }))
+  const byId = new Map<number, MyTeamScope>()
+  for (const row of memberships) {
+    byId.set(row.teamId, { teamId: row.teamId, name: row.name, source: "membership" })
   }
+  for (const row of captainRows) {
+    if (!byId.has(row.teamId)) byId.set(row.teamId, { teamId: row.teamId, name: row.name, source: "captain" })
+  }
+  for (const row of ownedRows) {
+    if (!byId.has(row.teamId)) byId.set(row.teamId, { teamId: row.teamId, name: row.name, source: "owner" })
+  }
+  for (const row of managedRows) {
+    if (!byId.has(row.teamId)) byId.set(row.teamId, { teamId: row.teamId, name: row.name, source: "managed" })
+  }
+
+  return [...byId.values()]
+}
+
+export async function getMyTeamScope(
+  playerId: string,
+  managedTeamIds: number[] = [],
+): Promise<{ id: number; name: string; source: "membership" | "captain" | "owner" | "managed" }[]> {
+  const rows = await resolveMyTeamScope(playerId, managedTeamIds)
+  return rows.map((row) => ({ id: row.teamId, name: row.name, source: row.source }))
+}
+
+export async function getMyTeamResolutionDebug(
+  playerId: string,
+  managedTeamIds: number[] = [],
+): Promise<MyTeamResolutionDebug> {
+  const [currentUser] = await db
+    .select({ email: user.email })
+    .from(user)
+    .where(eq(user.id, playerId))
+    .limit(1)
+  const email = currentUser?.email?.trim().toLowerCase() ?? ""
+
+  const memberships = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, playerId), eq(teamMembers.status, "active")))
+
+  const captainRows = await db
+    .select({ teamId: teams.id })
+    .from(teams)
+    .where(eq(teams.captainUserId, playerId))
+
+  const ownerRows = email
+    ? await db
+        .select({ teamId: teams.id, name: teams.name })
+        .from(teams)
+        .where(or(sql`lower(${teams.ownerEmail}) = ${email}`, sql`lower(${teams.coOwnerEmail}) = ${email}`))
+    : []
+
+  const selectableTeams = await resolveMyTeamScope(playerId, managedTeamIds)
+
+  return {
+    userId: playerId,
+    email,
+    membershipTeamIds: memberships.map((row) => row.teamId),
+    captainTeamIds: captainRows.map((row) => row.teamId),
+    ownerTeamIds: ownerRows.map((row) => row.teamId),
+    managedTeamIds,
+    selectableTeams,
+  }
+}
+
+export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?: number; canManage?: boolean; managedTeamIds?: number[] }): Promise<MyTeamView | null> {
+  const selectableTeams = await resolveMyTeamScope(playerId, opts?.managedTeamIds ?? [])
+  if (selectableTeams.length === 0) return null
+
+  const preferred = opts?.preferredTeamId
+  const chosen =
+    (preferred != null && selectableTeams.find((t) => t.teamId === preferred)) ??
+    selectableTeams[0]
+
+  const teamId = chosen.teamId
+  const otherTeams = selectableTeams
+    .filter((t) => t.teamId !== teamId)
+    .map((t) => ({ id: t.teamId, name: t.name }))
 
   const [team] = await db
     .select({

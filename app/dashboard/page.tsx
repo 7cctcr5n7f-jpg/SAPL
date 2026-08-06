@@ -6,6 +6,7 @@ import {
   getPlayerMemberships,
   getPlayerTeamFees,
   getPlayerOverviewTeam,
+  getOwnedOverviewTeam,
   getFixtureDetails,
   getPendingInvitesForEmail,
   getPairingPartner,
@@ -70,7 +71,12 @@ export default async function DashboardOverview({
   const player = await getPlayerByUserId(me.id)
   const memberships = player ? await getPlayerMemberships(me.id) : []
   const teamFees = player ? await getPlayerTeamFees(me.id) : []
-  const overviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
+  const membershipOverviewTeam = player ? await getPlayerOverviewTeam(me.id) : null
+  const ownedOverviewTeam =
+    player && !membershipOverviewTeam && !access.isLeagueAdmin
+      ? await getOwnedOverviewTeam(me.id, me.email)
+      : null
+  const overviewTeam = membershipOverviewTeam ?? ownedOverviewTeam
   const myMatches = player ? (await getDashboardFixtures(me)).fixtures : []
   const detailMap =
     player && myMatches.length
@@ -121,6 +127,11 @@ export default async function DashboardOverview({
     : payment === "cancelled"
     ? "cancelled"
     : null
+  const showLeagueFeesSection = Boolean(
+    paymentStatus ||
+    teamFees.some((fee) => fee.status !== "paid") ||
+    (teamOwnerFee && teamOwnerFee.status !== "paid"),
+  )
 
   if (!player) {
     return (
@@ -168,7 +179,7 @@ export default async function DashboardOverview({
       />
 
       {/* ── League Fees ───────────────────────────────────────────────────── */}
-      {(paymentStatus || teamFees.length > 0 || teamOwnerFee) && (
+      {showLeagueFeesSection && (
         <section id="fees">
           <SectionHeading>League Fees</SectionHeading>
           <div className="space-y-4">
@@ -181,7 +192,7 @@ export default async function DashboardOverview({
 
       {/* ── Matches ──────────────────────────────────────────────────────── */}
       <section>
-        <SectionHeading>Upcoming Matches</SectionHeading>
+        <SectionHeading>My Upcoming Matches</SectionHeading>
         <MatchCentre matches={myMatches} details={fixtureDetails} />
       </section>
 
@@ -193,6 +204,14 @@ export default async function DashboardOverview({
         </section>
       )}
 
+      {/* ── Find a team ──────────────────────────────────────────────────── */}
+      {activeTeams.length === 0 && (
+        <section>
+          <SectionHeading>Find a Team</SectionHeading>
+          <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
+        </section>
+      )}
+
       {/* ── More info ────────────────────────────────────────────────────── */}
       <section>
         <MoreInformation
@@ -201,14 +220,6 @@ export default async function DashboardOverview({
           eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.playtomicRating ?? 0)}
         />
       </section>
-
-      {/* ── Find a team ──────────────────────────────────────────────────── */}
-      {activeTeams.length === 0 && (
-        <section>
-          <SectionHeading>Find a Team</SectionHeading>
-          <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
-        </section>
-      )}
     </div>
   )
 }

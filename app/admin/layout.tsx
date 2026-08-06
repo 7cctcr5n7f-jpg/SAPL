@@ -32,12 +32,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           email={me.email}
           isSuperAdmin={me.isSuperAdmin}
           actingRole={me.actingRole}
+          actingUserId={me.actingUserId}
           permissions={[...access.permissions]}
         />
       </div>
       <main className="flex-1 overflow-y-auto">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-end border-b border-border bg-background/95 px-5 backdrop-blur lg:px-10">
-          <UserMenu name={me.name} email={me.email} role={me.isSuperAdmin && !me.actingRole ? "main admin" : me.role} />
+          <UserMenu name={me.name} email={me.email} role={me.isSuperAdmin && !me.actingRole && !me.actingUserId ? "main admin" : me.role} actingUserId={me.actingUserId} />
         </header>
         <div className="mx-auto max-w-6xl px-5 py-8 pb-24 lg:px-10 lg:pb-8">{children}</div>
       </main>

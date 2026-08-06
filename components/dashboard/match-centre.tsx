@@ -95,6 +95,78 @@ function JoinButton({ url }: { url: string }) {
   )
 }
 
+function playerNames(detail?: FixtureDetail, side?: "home" | "away") {
+  if (!detail?.myCategory) return []
+  const category = detail.categories.find((item) => item.category === detail.myCategory)
+  if (!category) return []
+  return side === "home" ? category.homePlayers : category.awayPlayers
+}
+
+function FixtureHeroCard({
+  f,
+  detail,
+  action,
+}: {
+  f: DashboardFixture
+  detail?: FixtureDetail
+  action?: React.ReactNode
+}) {
+  const home = teamLabel(f.homeName, f.homeSlot)
+  const away = teamLabel(f.awayName, f.awaySlot)
+  const venueName = f.venueClubName ?? f.venue
+  const homeNames = playerNames(detail, "home")
+  const awayNames = playerNames(detail, "away")
+  const url = primaryJoinLink(f, detail)
+  const homeLogo = f.homeLogo ?? f.venueClubLogo
+  const awayLogo = f.awayLogo ?? f.venueClubLogo
+
+  return (
+    <div className={cn("overflow-hidden rounded-xl border border-border bg-card", f.mine && "border-primary/25")}>
+      <div className="flex flex-col gap-2.5 px-3 py-2.5 md:px-3.5">
+        <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Crest name={f.homeName} logoUrl={homeLogo} size="lg" />
+            <div className="min-w-0">
+              <p className={cn("truncate text-base font-bold", home.placeholder && "italic text-muted-foreground")}>{home.text}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{homeNames.length ? homeNames.join(" / ") : "Line-up pending"}</p>
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="font-heading text-xl font-black leading-none">VS</p>
+            <p className="mt-0.5 text-sm font-bold">{f.timeslot ?? "TBD"}</p>
+          </div>
+          <div className="flex min-w-0 items-center justify-end gap-2.5 text-right">
+            <div className="min-w-0">
+              <p className={cn("truncate text-base font-bold", away.placeholder && "italic text-muted-foreground")}>{away.text}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{awayNames.length ? awayNames.join(" / ") : "Line-up pending"}</p>
+            </div>
+            <Crest name={f.awayName} logoUrl={awayLogo} size="lg" />
+          </div>
+          <div className="flex flex-col items-stretch gap-1.5 md:min-w-32">
+            {url ? (
+              <JoinButton url={url} />
+            ) : (
+              <span className="inline-flex items-center justify-center gap-1 rounded-md border border-amber-500/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
+                <Clock className="h-3 w-3" />
+                Link soon
+              </span>
+            )}
+            {action}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] text-muted-foreground">
+          <span className="font-medium text-foreground">{fmtDate(f.matchDate)}</span>
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-3 w-3" />
+            {venueName ?? "Venue TBD"}
+          </span>
+          {f.divisionName ? <span>{f.regionName ? `${f.regionName} · ${f.divisionName}` : f.divisionName}</span> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Expandable team-fixture row (mirrors the Fixtures management view) -----
 
 function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail }) {
@@ -280,41 +352,24 @@ export function MatchCentre({
               <AlertTriangle className="h-4 w-4" />
               To Do
             </h2>
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/[0.03]">
+            <div className="space-y-4">
               {toDoFixtures.map((f) => {
-                const url = primaryJoinLink(f, details[f.id])
-                const hasAssignedCategory = Boolean(details[f.id]?.myCategory)
                 const isAwaiting = groupOf(f) === "awaiting"
                 return (
-                  <ActionItem
+                  <FixtureHeroCard
                     key={f.id}
-                    title={isAwaiting ? "Score needed" : "Upcoming match"}
-                    detail={`${f.homeName ?? "TBD"} vs ${f.awayName ?? "TBD"} · ${fmtDate(f.matchDate)}`}
+                    f={f}
+                    detail={details[f.id]}
                     action={
-                      <div className="flex items-center gap-2">
-                        {url ? (
-                          <JoinButton url={url} />
-                        ) : hasAssignedCategory ? (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
-                            <Clock className="h-3 w-3" />
-                            Link soon
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-300/60 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                            <Clock className="h-3 w-3" />
-                            Not assigned
-                          </span>
-                        )}
-                        {f.mine && (
-                          <button
-                            onClick={() => setScoreFixture(f)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
-                          >
-                            <ClipboardEdit className="h-3 w-3" />
-                            Enter Score
-                          </button>
-                        )}
-                      </div>
+                      f.mine ? (
+                        <button
+                          onClick={() => setScoreFixture(f)}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-500"
+                        >
+                          <ClipboardEdit className="h-3 w-3" />
+                          {isAwaiting ? "Enter score" : "Enter score"}
+                        </button>
+                      ) : null
                     }
                   />
                 )
@@ -381,18 +436,6 @@ export function MatchCentre({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function ActionItem({ title, detail, action }: { title: string; detail: string; action: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="truncate text-xs text-muted-foreground">{detail}</p>
-      </div>
-      <div className="shrink-0">{action}</div>
-    </div>
   )
 }
 
