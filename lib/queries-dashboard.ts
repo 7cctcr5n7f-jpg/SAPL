@@ -21,7 +21,7 @@ import {
   clubs,
   players,
 } from "@/lib/db/schema"
-import { eq, and, or, desc, inArray, ne, isNull, notLike } from "drizzle-orm"
+import { eq, and, or, desc, inArray, ne, isNull, notLike, sql } from "drizzle-orm"
 import type { AccessContext } from "@/lib/access"
 import { parseScoreDetail } from "@/lib/engine/scoring"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
@@ -456,6 +456,64 @@ export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOve
     teamId: row.teamId,
     teamName: row.teamName,
     role: row.role,
+    clubName: row.clubName,
+    divisionName: row.divisionName ?? "Unassigned",
+    regionName: row.regionName,
+    clubPaysFees: row.clubPaysFees,
+    position: standing?.rank ?? null,
+    wins: standing?.wins ?? 0,
+    losses: standing?.losses ?? 0,
+    played: standing?.played ?? 0,
+  }
+}
+
+export async function getOwnedOverviewTeam(
+  userId: string,
+  email: string,
+): Promise<PlayerOverviewTeam | null> {
+  const normalizedEmail = email.trim().toLowerCase()
+  const [row] = await db
+    .select({
+      teamId: teams.id,
+      teamName: teams.name,
+      clubPaysFees: teams.clubPaysFees,
+      divisionName: divisions.name,
+      seasonId: teams.seasonId,
+      regionName: regions.name,
+      clubName: clubs.name,
+    })
+    .from(teams)
+    .leftJoin(divisions, eq(teams.divisionId, divisions.id))
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
+    .where(
+      or(
+        eq(teams.captainUserId, userId),
+        sql`lower(${teams.ownerEmail}) = ${normalizedEmail}`,
+        sql`lower(${teams.coOwnerEmail}) = ${normalizedEmail}`,
+      ),
+    )
+    .orderBy(desc(teams.updatedAt))
+    .limit(1)
+
+  if (!row) return null
+
+  const [standing] = await db
+    .select({
+      rank: standings.rank,
+      wins: standings.wins,
+      losses: standings.losses,
+      played: standings.played,
+    })
+    .from(standings)
+    .where(eq(standings.teamId, row.teamId))
+    .limit(1)
+
+  return {
+    membershipId: -row.teamId,
+    teamId: row.teamId,
+    teamName: row.teamName,
+    role: "captain",
     clubName: row.clubName,
     divisionName: row.divisionName ?? "Unassigned",
     regionName: row.regionName,
@@ -1489,13 +1547,18 @@ export async function getOwnedTeamForFee(
   userId: string,
   email: string,
 ): Promise<{ teamId: number; clubPaysFees: boolean } | null> {
+  const normalizedEmail = email.trim().toLowerCase()
   const [team] = await db
     .select({ id: teams.id, clubPaysFees: teams.clubPaysFees })
     .from(teams)
     .where(
       and(
         eq(teams.clubPaysFees, true),
-        or(eq(teams.captainUserId, userId), eq(teams.ownerEmail, email)),
+        or(
+          eq(teams.captainUserId, userId),
+          sql`lower(${teams.ownerEmail}) = ${normalizedEmail}`,
+          sql`lower(${teams.coOwnerEmail}) = ${normalizedEmail}`,
+        ),
       ),
     )
     .orderBy(desc(teams.updatedAt))

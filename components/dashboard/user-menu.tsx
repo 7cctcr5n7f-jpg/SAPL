@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { User, LogOut, UserCog, Bell } from "lucide-react"
+import { setActingMember } from "@/lib/actions/view-as"
 
 function initials(name: string) {
   return name
@@ -26,16 +27,23 @@ export function UserMenu({
   name,
   email,
   role,
+  actingUserId,
 }: {
   name: string
   email: string
   role: string
+  actingUserId?: string | null
 }) {
   const router = useRouter()
 
   async function signOut() {
     await authClient.signOut()
     router.push("/")
+    router.refresh()
+  }
+
+  async function exitViewAs() {
+    await setActingMember("self")
     router.refresh()
   }
 
@@ -64,6 +72,12 @@ export function UserMenu({
           <UserCog className="h-4 w-4" />
           Update profile
         </DropdownMenuItem>
+        {actingUserId ? (
+          <DropdownMenuItem onClick={exitViewAs}>
+            <User className="h-4 w-4" />
+            Exit view as player
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={signOut}>
           <LogOut className="h-4 w-4" />

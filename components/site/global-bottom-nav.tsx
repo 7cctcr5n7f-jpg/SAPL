@@ -69,6 +69,7 @@ export type NavUser = {
   role: string
   isSuperAdmin: boolean
   actingRole: string | null
+  actingUserId?: string | null
 }
 
 // Routes where the bottom nav should never appear (auth + onboarding flows).
@@ -162,7 +163,7 @@ export function GlobalBottomNav({ model, user }: { model: NavModel; user: NavUse
 
             {user?.isSuperAdmin ? (
               <div className="mt-3 px-4">
-                <RoleSwitcher actingRole={user.actingRole} />
+                <RoleSwitcher actingRole={user.actingRole} actingUserId={user.actingUserId ?? null} />
               </div>
             ) : null}
 

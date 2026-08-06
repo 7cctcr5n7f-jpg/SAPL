@@ -8,6 +8,7 @@ import { cookies, headers } from "next/headers"
 export type Role = "player" | "captain" | "org_admin" | "super_admin"
 
 export const ACTING_ROLE_COOKIE = "sapl_acting_role"
+export const ACTING_USER_COOKIE = "sapl_acting_user"
 
 // Roles a super admin is allowed to impersonate (everything except themselves).
 export const IMPERSONATABLE_ROLES: Role[] = ["org_admin", "captain", "player"]
@@ -24,6 +25,8 @@ export type CurrentUser = {
   isSuperAdmin: boolean
   /** The role currently being previewed, or null when viewing as themselves. */
   actingRole: Role | null
+  /** The user currently being previewed, or null when viewing as themselves. */
+  actingUserId: string | null
   isPlayer: boolean
   onMarketplace: boolean
 }
@@ -44,47 +47,75 @@ async function _getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getSession()
   if (!session?.user) return null
 
-  const [meta] = await db
-    .select({ id: userMeta.id, role: userMeta.role, phone: userMeta.phone })
+  const [sessionMeta] = await db
+    .select({ id: userMeta.id, role: userMeta.role })
     .from(userMeta)
     .where(eq(userMeta.userId, session.user.id))
     .limit(1)
 
-  // Try to fetch player status, but gracefully handle missing columns during migration
+  const realRole = (sessionMeta?.role as Role) ?? "player"
+  const isSuperAdmin = realRole === "super_admin"
+
+  let effectiveUserId = session.user.id
+  let actingRole: Role | null = null
+  let actingUserId: string | null = null
+
+  if (isSuperAdmin) {
+    const jar = await cookies()
+    const cookieUserId = jar.get(ACTING_USER_COOKIE)?.value?.trim() ?? ""
+    if (cookieUserId && cookieUserId !== session.user.id) {
+      effectiveUserId = cookieUserId
+      actingUserId = cookieUserId
+    } else {
+      const cookieRole = jar.get(ACTING_ROLE_COOKIE)?.value as Role | undefined
+      if (cookieRole && IMPERSONATABLE_ROLES.includes(cookieRole)) {
+        actingRole = cookieRole
+      }
+    }
+  }
+
+  const [effectiveMeta] = await db
+    .select({ id: userMeta.id, role: userMeta.role })
+    .from(userMeta)
+    .where(eq(userMeta.userId, effectiveUserId))
+    .limit(1)
+
+  let effectiveName = session.user.name
+  let effectiveEmail = session.user.email
   let isPlayer = false
   let onMarketplace = false
+
   try {
     const [userData] = await db
-      .select({ isPlayer: user.isPlayer, onMarketplace: user.onMarketplace })
+      .select({
+        name: user.name,
+        email: user.email,
+        isPlayer: user.isPlayer,
+        onMarketplace: user.onMarketplace,
+      })
       .from(user)
-      .where(eq(user.id, session.user.id))
+      .where(eq(user.id, effectiveUserId))
       .limit(1)
+    effectiveName = userData?.name ?? effectiveName
+    effectiveEmail = userData?.email ?? effectiveEmail
     isPlayer = userData?.isPlayer ?? false
     onMarketplace = userData?.onMarketplace ?? false
   } catch {
     // Columns may not exist yet if migration hasn't run — silently default to false
   }
 
-  const realRole = (meta?.role as Role) ?? "player"
-  const isSuperAdmin = realRole === "super_admin"
-
-  // Only super admins may impersonate, and only into one of the previewable roles.
-  let actingRole: Role | null = null
-  if (isSuperAdmin) {
-    const cookieRole = (await cookies()).get(ACTING_ROLE_COOKIE)?.value as Role | undefined
-    if (cookieRole && IMPERSONATABLE_ROLES.includes(cookieRole)) {
-      actingRole = cookieRole
-    }
-  }
+  const effectiveRoleFromUser = (effectiveMeta?.role as Role) ?? "player"
+  const role = actingUserId ? effectiveRoleFromUser : (actingRole ?? realRole)
 
   return {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-    role: actingRole ?? realRole,
+    id: effectiveUserId,
+    name: effectiveName,
+    email: effectiveEmail,
+    role,
     realRole,
     isSuperAdmin,
     actingRole,
+    actingUserId,
     isPlayer,
     onMarketplace,
   }

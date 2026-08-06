@@ -22,6 +22,7 @@ export async function GlobalBottomNavServer() {
         role: me.role,
         isSuperAdmin: me.isSuperAdmin,
         actingRole: me.actingRole,
+        actingUserId: me.actingUserId,
       }
     : null
 

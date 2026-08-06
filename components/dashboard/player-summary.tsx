@@ -73,61 +73,68 @@ export function PlayerSummary({
       ))}
 
       {/* ── Identity block ───────────────────────────────────────────────── */}
-      <div className="flex items-center gap-5">
-        <div className="shrink-0">
-          <PlayerPhotoUploader
-            value={avatarUrl}
-            onChange={onPhotoChange || (() => {})}
-            isCapitan={team?.role === "captain"}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_auto_auto] xl:items-center">
+        <div className="flex min-w-0 items-center gap-5">
+          <div className="shrink-0">
+            <PlayerPhotoUploader
+              value={avatarUrl}
+              onChange={onPhotoChange || (() => {})}
+              isCapitan={team?.role === "captain"}
+            />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-0.5">
+              {feesPaid ? (
+                <span className="inline-flex items-center gap-1 text-emerald-500">
+                  <CheckCircle2 className="h-3 w-3" /> All fees settled
+                </span>
+              ) : (
+                "Welcome back"
+              )}
+            </p>
+            <h1 className="font-heading text-4xl font-bold tracking-tight text-foreground leading-none text-balance">
+              {firstName}
+            </h1>
+            {team ? (
+              <Link
+                href="/dashboard/my-team"
+                className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                <span className="font-semibold">{team.teamName}</span>
+                {team.role === "captain" && (
+                  <span className="rounded-sm bg-primary/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-primary">
+                    Captain
+                  </span>
+                )}
+                <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </Link>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">Not on a team yet</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start justify-center text-left xl:justify-self-center">
+          <StatPill label="PR Rating" value={playtomicRating ?? "—"} highlight={!!playtomicRating} compact />
+          <StatPill
+            label="Combined PR"
+            value={combinedAvg ?? "—"}
+            highlight={!!combinedAvg}
+            compact
           />
         </div>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-0.5">
-            {feesPaid ? (
-              <span className="inline-flex items-center gap-1 text-emerald-500">
-                <CheckCircle2 className="h-3 w-3" /> All fees settled
-              </span>
-            ) : (
-              "Welcome back"
-            )}
-          </p>
-          <h1 className="font-heading text-4xl font-bold tracking-tight text-foreground leading-none text-balance">
-            {firstName}
-          </h1>
-          {team ? (
-            <Link
-              href="/dashboard/my-team"
-              className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <Users className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-semibold">{team.teamName}</span>
-              {team.role === "captain" && (
-                <span className="rounded-sm bg-primary/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-primary">
-                  Captain
-                </span>
-              )}
-              <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-            </Link>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">Not on a team yet</p>
-          )}
+        <div className="flex min-w-44 flex-col justify-center text-left xl:justify-self-end">
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Playing Partner</span>
+          <span className="font-heading text-2xl font-bold leading-none text-foreground">
+            {partner?.name ? partner.name.split(" ")[0] : "—"}
+          </span>
+          {partner?.name && partner.name.includes(" ") ? (
+            <span className="mt-1 text-sm text-muted-foreground">{partner.name.split(" ").slice(1).join(" ")}</span>
+          ) : null}
         </div>
-      </div>
-
-      {/* ── Horizontal stats strip ───────────────────────────────────────── */}
-      <div className="flex items-stretch divide-x divide-border">
-        <StatPill label="PR Rating" value={playtomicRating ?? "—"} highlight={!!playtomicRating} />
-        <StatPill
-          label="Playing Partner"
-          value={partner?.name ? partner.name.split(" ")[0] : "—"}
-          sub={partner?.name && partner.name.includes(" ") ? partner.name.split(" ").slice(1).join(" ") : undefined}
-        />
-        <StatPill
-          label="Combined PR"
-          value={combinedAvg ?? "—"}
-          highlight={!!combinedAvg}
-        />
       </div>
 
 
@@ -140,18 +147,23 @@ function StatPill({
   value,
   highlight,
   sub,
+  compact,
 }: {
   label: string
   value: string
   highlight?: boolean
   sub?: string
+  compact?: boolean
 }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-3 py-3 text-center first:pl-0 last:pr-0">
+    <div className={cn(
+      "flex flex-col justify-center px-0 py-1 text-left",
+      compact ? "min-h-0" : "min-h-24",
+    )}>
       <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">{label}</span>
       <span
         className={cn(
-          "font-heading text-xl font-bold tabular-nums leading-none",
+          "font-heading text-2xl font-bold tabular-nums leading-none",
           highlight ? "text-primary" : "text-foreground",
         )}
       >

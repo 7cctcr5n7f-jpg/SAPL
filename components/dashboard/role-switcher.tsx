@@ -2,28 +2,29 @@
 
 import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { setActingRole } from "@/lib/actions/view-as"
+import { listViewAsMembers, setActingMember } from "@/lib/actions/view-as"
 import { cn } from "@/lib/utils"
 import { Eye, Check, ChevronsUpDown, Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
-type Option = { value: "self" | "org_admin" | "captain" | "player"; label: string; hint: string }
+type MemberOption = { userId: string; label: string; role: string; hint: string }
 
-const OPTIONS: Option[] = [
-  { value: "self", label: "Main Admin", hint: "Full control" },
-  { value: "org_admin", label: "Team Manager", hint: "Manage teams and clubs" },
-  { value: "captain", label: "Captain", hint: "Run a team" },
-  { value: "player", label: "Player", hint: "Compete" },
-]
-
-export function RoleSwitcher({ actingRole }: { actingRole: string | null }) {
+export function RoleSwitcher({ actingRole, actingUserId }: { actingRole: string | null; actingUserId?: string | null }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
+  const [members, setMembers] = useState<MemberOption[]>([])
+  const [loadedMembers, setLoadedMembers] = useState(false)
+  const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
 
-  const currentValue = actingRole ?? "self"
-  const current = OPTIONS.find((o) => o.value === currentValue) ?? OPTIONS[0]
-  const impersonating = currentValue !== "self"
+  const impersonating = Boolean(actingUserId || actingRole)
+  const selectedMember = actingUserId ? members.find((member) => member.userId === actingUserId) ?? null : null
+  const filteredMembers = members.filter((member) => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return member.label.toLowerCase().includes(q) || member.hint.toLowerCase().includes(q)
+  })
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -33,11 +34,17 @@ export function RoleSwitcher({ actingRole }: { actingRole: string | null }) {
     return () => document.removeEventListener("mousedown", onClick)
   }, [])
 
-  function choose(value: Option["value"]) {
+  async function ensureMembers() {
+    if (loadedMembers) return
+    const rows = await listViewAsMembers()
+    setMembers(rows)
+    setLoadedMembers(true)
+  }
+
+  function chooseMember(userId: string | "self") {
     setOpen(false)
-    if (value === currentValue) return
     startTransition(async () => {
-      await setActingRole(value)
+      await setActingMember(userId)
       router.refresh()
     })
   }
@@ -46,7 +53,10 @@ export function RoleSwitcher({ actingRole }: { actingRole: string | null }) {
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v)
+          void ensureMembers()
+        }}
         disabled={pending}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
@@ -65,7 +75,7 @@ export function RoleSwitcher({ actingRole }: { actingRole: string | null }) {
           )}
           <span className="flex flex-col leading-tight">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Viewing as</span>
-            <span className="font-semibold">{current.label}</span>
+            <span className="font-semibold">{selectedMember?.label ?? "Main Admin"}</span>
           </span>
         </span>
         <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -76,28 +86,53 @@ export function RoleSwitcher({ actingRole }: { actingRole: string | null }) {
           role="listbox"
           className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border border-border bg-popover p-1 shadow-lg"
         >
-          {OPTIONS.map((o) => {
-            const selected = o.value === currentValue
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onClick={() => choose(o.value)}
-                className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
-                  selected ? "bg-secondary" : "hover:bg-secondary/60",
-                )}
-              >
-                <span className="flex flex-col leading-tight">
-                  <span className="font-medium text-popover-foreground">{o.label}</span>
-                  <span className="text-xs text-muted-foreground">{o.hint}</span>
-                </span>
-                {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
-              </button>
-            )
-          })}
+          <div className="px-2 pb-2 pt-1">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search member..."
+              className="h-9"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => chooseMember("self")}
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
+              !actingUserId ? "bg-secondary" : "hover:bg-secondary/60",
+            )}
+          >
+            <span className="flex flex-col leading-tight">
+              <span className="font-medium text-popover-foreground">Main Admin</span>
+              <span className="text-xs text-muted-foreground">Return to your own account</span>
+            </span>
+            {!actingUserId && <Check className="h-4 w-4 shrink-0 text-primary" />}
+          </button>
+          <div className="max-h-72 overflow-y-auto">
+            {filteredMembers.map((member) => {
+              const selected = actingUserId === member.userId
+              return (
+                <button
+                  key={member.userId}
+                  type="button"
+                  onClick={() => chooseMember(member.userId)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
+                    selected ? "bg-secondary" : "hover:bg-secondary/60",
+                  )}
+                >
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate font-medium text-popover-foreground">{member.label}</span>
+                    <span className="truncate text-xs text-muted-foreground">{member.hint}</span>
+                  </span>
+                  {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              )
+            })}
+            {filteredMembers.length === 0 ? (
+              <div className="px-2.5 py-3 text-sm text-muted-foreground">No members match that search.</div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

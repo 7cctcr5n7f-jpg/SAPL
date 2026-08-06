@@ -51,6 +51,7 @@ export function DashboardNav({
   email,
   isSuperAdmin = false,
   actingRole = null,
+  actingUserId = null,
   permissions,
 }: {
   role: string
@@ -58,6 +59,7 @@ export function DashboardNav({
   email: string
   isSuperAdmin?: boolean
   actingRole?: string | null
+  actingUserId?: string | null
   /** Effective granular permissions for the current (possibly impersonated) view. */
   permissions: string[]
 }) {
@@ -123,7 +125,7 @@ export function DashboardNav({
 
       {isSuperAdmin ? (
         <div className="border-b border-sidebar-border px-3 py-3">
-          <RoleSwitcher actingRole={actingRole} />
+        <RoleSwitcher actingRole={actingRole} actingUserId={actingUserId} />
         </div>
       ) : null}
 
