@@ -192,7 +192,7 @@ export async function saveFixtureSchedule(input: {
   const nextAssignments =
     Object.keys(currentAssignments).length > 0
       ? currentAssignments
-      : buildCourtAssignments(venueCourts, input.timeslot === "17:00" || input.timeslot === "18:30" ? input.timeslot : null)
+      : buildCourtAssignments(venueCourts, input.timeslot ?? null)
 
   await db
     .update(fixtures)
