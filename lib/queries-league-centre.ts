@@ -736,7 +736,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
 const getSharedLeagueCentreData = unstable_cache(
   _buildSharedLeagueCentreData,
   ["league-centre-shared"],
-  { revalidate: 60 },
+  { revalidate: 60, tags: ["league-centre-shared"] },
 )
 
 // ---------------------------------------------------------------------------

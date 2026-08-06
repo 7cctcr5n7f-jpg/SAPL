@@ -34,7 +34,7 @@ import {
   Pencil,
 } from "lucide-react"
 
-const FIXTURE_EDIT_TIMESLOTS = [...FIXTURE_TIMESLOTS, "19:00"] as const
+const FIXTURE_EDIT_TIMESLOTS = [...FIXTURE_TIMESLOTS, "19:00", "20:00"] as const
 
 type StatusFilter = "all" | OpsStatus | "needs_attention" | "published"
 

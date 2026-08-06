@@ -5,7 +5,7 @@ import { fixtures, clubs, teams, teamEntries } from "@/lib/db/schema"
 import { and, eq, ne } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { notifyTeam } from "@/lib/notify"
 import { CATEGORY_RULES } from "@/lib/constants"
 import { canPublish, type CourtAssignments, type CourtLinks } from "@/lib/fixtures-ops"
@@ -14,6 +14,11 @@ import { validateSeason, type SeasonValidation } from "@/lib/engine/validation"
 
 // Courts a single fixture (tie) consumes — one per category.
 const COURTS_PER_FIXTURE = CATEGORY_RULES.length
+
+function revalidateFixtureSurfaces() {
+  revalidateFixtureSurfaces()
+  revalidateTag("league-centre-shared")
+}
 
 /**
  * Free courts at `venueClubId` for `week`+`timeslot`, excluding `fixtureId`
@@ -121,8 +126,7 @@ export async function setFixturePlaytomicUrl(fixtureId: number, url: string) {
     )
   }
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
 
@@ -209,9 +213,8 @@ export async function saveFixtureSchedule(input: {
     .where(eq(fixtures.id, input.fixtureId))
 
   const report = await validateSeason(fixture.seasonId)
-  revalidatePath("/dashboard/fixtures")
   revalidatePath("/admin")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true, report }
 }
 
@@ -241,8 +244,7 @@ export async function setFixtureCourtLink(fixtureId: number, category: string, u
     )
   }
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
 
@@ -274,8 +276,7 @@ export async function setFixtureTimeslot(fixtureId: number, timeslot: string | n
     "Fixture time updated",
     value ? `Your match night is now scheduled for ${value}. Tap to view.` : "Your match night time was cleared.",
   )
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
 
@@ -315,8 +316,7 @@ export async function setFixtureVenue(fixtureId: number, venueClubId: number | n
     venue ? `Your match night is now hosted at ${venue}. Tap to view.` : "Your match night venue was cleared.",
   )
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
 
@@ -401,8 +401,7 @@ export async function saveCategoryAssignment(
     )
   }
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
 
@@ -471,8 +470,7 @@ export async function publishFixture(fixtureId: number, options?: { ignoreWarnin
     "Your match night has been published. Tap to view your categories and join.",
   )
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true, report }
 }
 
@@ -492,7 +490,6 @@ export async function unpublishFixture(fixtureId: number) {
     })
     .where(eq(fixtures.id, fixtureId))
 
-  revalidatePath("/dashboard/fixtures")
-  revalidatePath("/league-centre")
+  revalidateFixtureSurfaces()
   return { ok: true }
 }
