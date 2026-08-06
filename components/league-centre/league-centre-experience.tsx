@@ -69,6 +69,14 @@ function averagePairRating(players: { rating: number | null }[]) {
   return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
 }
 
+function fixtureDisplayTime(fixture: LCFixture) {
+  const categoryTimes = Object.values(fixture.courtInfoByCategory ?? {})
+    .map((entry) => entry?.time ?? null)
+    .filter((time): time is string => Boolean(time))
+    .sort((a, b) => slotTimeValue(a) - slotTimeValue(b))
+  return categoryTimes[0] ?? fixture.timeslot
+}
+
 // ─── Main experience ────────────────────────────────────────────────────────
 
 export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
@@ -164,6 +172,15 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
         ),
     [divisionFixtures, activeWeek],
   )
+
+  const byeTeams = useMemo(() => {
+    const scheduledTeamIds = new Set<number>()
+    weekFixtures.forEach((fixture) => {
+      if (fixture.homeTeamId != null) scheduledTeamIds.add(fixture.homeTeamId)
+      if (fixture.awayTeamId != null) scheduledTeamIds.add(fixture.awayTeamId)
+    })
+    return divisionStandings.filter((team) => !scheduledTeamIds.has(team.teamId))
+  }, [weekFixtures, divisionStandings])
 
   if (!data.regions.length) {
     return (
@@ -284,12 +301,38 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                 qualificationRule={playoffQualification.rule}
               />
             ) : (
-              <FixturesByCategory
-                fixtures={activeFixtures}
-                expandedFixtureId={expandedFixtureId}
-                onToggleFixture={toggleFixture}
-                currentPlayerId={data.currentPlayerId}
-              />
+              <div className="space-y-5">
+                {byeTeams.length > 0 ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-amber-700">
+                        Bye week
+                      </span>
+                      <div className="flex flex-wrap gap-3">
+                        {byeTeams.map((team) => (
+                          <div
+                            key={team.teamId}
+                            className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/80 px-3 py-1.5 text-sm text-amber-950"
+                          >
+                            <Crest
+                              name={team.teamName}
+                              logoUrl={team.teamLogo ?? team.venueLogo ?? team.orgLogo}
+                              size="sm"
+                            />
+                            <span className="font-medium">{team.teamName ?? "Unknown team"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <FixturesByCategory
+                  fixtures={activeFixtures}
+                  expandedFixtureId={expandedFixtureId}
+                  onToggleFixture={toggleFixture}
+                  currentPlayerId={data.currentPlayerId}
+                />
+              </div>
             )}
           </div>
         </div>
@@ -471,9 +514,21 @@ function FixtureCard({
   const homeWon = fixture.winnerTeamId != null && fixture.winnerTeamId === fixture.homeTeamId
   const awayWon = fixture.winnerTeamId != null && fixture.winnerTeamId === fixture.awayTeamId
   const hasScore = isCompleted || isLive
+  const displayTime = fixtureDisplayTime(fixture)
 
   // Get players for the fixture's own division category
   const category = fixture.divisionName ?? ""
+  const categoryJoinUrl = category ? fixture.joinUrlByCategory?.[category] ?? null : null
+  const playerIsShownInCategory =
+    currentPlayerId != null &&
+    fixture.rubbers.some((rubber) =>
+      rubber.category === category &&
+      [...(rubber.homePlayerIds ?? []), ...(rubber.awayPlayerIds ?? [])].includes(currentPlayerId),
+    )
+  const joinUrl =
+    categoryJoinUrl && (playerIsShownInCategory || fixture.myCategories.includes(category))
+      ? categoryJoinUrl
+      : fixture.myCategories.map((myCategory) => fixture.joinUrlByCategory?.[myCategory]).find(Boolean) ?? fixture.joinUrl ?? null
   const homePlayers = fixture.homePlayers?.[category] ?? []
   const awayPlayers = fixture.awayPlayers?.[category] ?? []
 
@@ -487,10 +542,10 @@ function FixtureCard({
             {shortDate(fixture.matchDate)}
           </span>
         )}
-        {fixture.timeslot && (
+        {displayTime && (
           <span className="inline-flex items-center gap-1 font-medium">
             <Clock className="h-3 w-3" />
-            {fixture.timeslot}
+            {displayTime}
           </span>
         )}
         {fixture.venue && (
@@ -559,9 +614,29 @@ function FixtureCard({
           ) : (
             <span className="text-xl font-bold text-slate-300">VS</span>
           )}
-          {!hasScore && fixture.timeslot && (
-            <span className="text-xs font-semibold tabular-nums text-slate-500">{fixture.timeslot}</span>
+          {!hasScore && displayTime && (
+            <span className="text-xs font-semibold tabular-nums text-slate-500">{displayTime}</span>
           )}
+          {!hasScore && fixture.assignedToFixture && joinUrl ? (
+            <>
+              <a
+                href={joinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-opacity hover:opacity-90"
+              >
+                Join on Playtomic
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <span className="max-w-[11rem] text-center text-[9px] font-medium leading-tight text-slate-400">
+                Playtomic non-premium accounts can usually only join within 12 days of the match.
+              </span>
+            </>
+          ) : fixture.assignedToFixture && fixture.mine && !hasScore ? (
+            <span className="max-w-[11rem] text-center text-[10px] font-semibold leading-tight text-slate-400">
+              Booking link pending. Playtomic non-premium accounts can usually only join within 12 days.
+            </span>
+          ) : null}
         </div>
 
         {/* Away team */}
@@ -764,7 +839,8 @@ function FixtureBreakdown({
 
             const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? null
             const courtInfo = fixture.courtInfoByCategory?.[category]
-            const showJoin = fixture.canSeeBookingLinks && !isCompleted && !!categoryJoinUrl
+            const visibleCategoryBelongsToMine = fixture.mine && (iMyRubber || fixture.myCategories.includes(category))
+            const showJoin = !isCompleted && !!categoryJoinUrl && visibleCategoryBelongsToMine
             const showScore = fixture.canSubmitResult && iMyRubber
 
             return (
@@ -783,9 +859,22 @@ function FixtureBreakdown({
                       </span>
                     )}
                   </div>
-                  {rubber?.scoreDetail && (
-                    <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {rubber?.scoreDetail && (
+                      <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
+                    )}
+                    {showJoin && (
+                      <a
+                        href={categoryJoinUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white shadow-sm transition-colors hover:bg-red-700"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Join Match
+                      </a>
+                    )}
+                  </div>
                 </div>
 
                 {/* Players vs Score vs Players */}
@@ -821,19 +910,64 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Score / vs */}
-                  <div className="flex items-center gap-1.5 tabular-nums">
-                    {hasScore ? (
-                      <>
-                        <span className={cn("text-lg font-extrabold", homeWon ? "text-red-600" : "text-slate-700")}>
-                          {rubber!.homeSetsWon}
-                        </span>
-                        <span className="text-sm text-slate-300">-</span>
-                        <span className={cn("text-lg font-extrabold", awayWon ? "text-red-600" : "text-slate-700")}>
-                          {rubber!.awaySetsWon}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-sm font-bold text-slate-300">vs</span>
+                  <div className="flex flex-col items-center gap-3 tabular-nums">
+                    <div className="flex items-center gap-1.5">
+                      {hasScore ? (
+                        <>
+                          <span className={cn("text-lg font-extrabold", homeWon ? "text-red-600" : "text-slate-700")}>
+                            {rubber!.homeSetsWon}
+                          </span>
+                          <span className="text-sm text-slate-300">-</span>
+                          <span className={cn("text-lg font-extrabold", awayWon ? "text-red-600" : "text-slate-700")}>
+                            {rubber!.awaySetsWon}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-bold text-slate-300">vs</span>
+                      )}
+                    </div>
+                    {(showJoin || showScore) && (
+                      <div className="flex flex-col items-center gap-2">
+                        {showJoin && (
+                          <a
+                            href={categoryJoinUrl!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Join Match
+                          </a>
+                        )}
+                        {showScore && (
+                          <button
+                            onClick={() =>
+                              setScoreRubber(
+                                rubber ?? {
+                                  id: 0,
+                                  category,
+                                  session: 1,
+                                  isFeatureCourt: false,
+                                  homeSetsWon: 0,
+                                  awaySetsWon: 0,
+                                  scoreDetail: null,
+                                  winnerTeamId: null,
+                                  homePlayerIds: [],
+                                  awayPlayerIds: [],
+                                },
+                              )
+                            }
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                              isCompleted
+                                ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                : "border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50",
+                            )}
+                          >
+                            {isCompleted ? "Edit Score" : "Enter Score"}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -868,50 +1002,6 @@ function FixtureBreakdown({
                   </div>
                 </div>
 
-                {/* Action row — sits below the players grid, full-width, right-aligned */}
-                {(showJoin || showScore) && (
-                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-50 pt-2.5">
-                    {showScore && (
-                      <button
-                        onClick={() =>
-                          setScoreRubber(
-                            rubber ?? {
-                              id: 0,
-                              category,
-                              session: 1,
-                              isFeatureCourt: false,
-                              homeSetsWon: 0,
-                              awaySetsWon: 0,
-                              scoreDetail: null,
-                              winnerTeamId: null,
-                              homePlayerIds: [],
-                              awayPlayerIds: [],
-                            },
-                          )
-                        }
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
-                          isCompleted
-                            ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                            : "border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50",
-                        )}
-                      >
-                        {isCompleted ? "Edit Score" : "Enter Score"}
-                      </button>
-                    )}
-                    {showJoin && (
-                      <a
-                        href={categoryJoinUrl!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        Join Match
-                      </a>
-                    )}
-                  </div>
-                )}
               </div>
             )
           })}

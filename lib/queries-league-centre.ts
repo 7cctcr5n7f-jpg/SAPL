@@ -120,6 +120,7 @@ export type LCFixture = {
   assignedToFixture: boolean
   canSeeBookingLinks: boolean
   canSubmitResult: boolean
+  myCategories: string[]
   homePlayers: Record<string, { name: string; rating: number | null }[]>
   awayPlayers: Record<string, { name: string; rating: number | null }[]>
   rubbers: LCRubber[]
@@ -192,7 +193,7 @@ const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
  * overlay to derive joinUrl / joinUrlByCategory for assigned players.
  * Not exported or surfaced on the public LCFixture type.
  */
-type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory" | "canSeeBookingLinks" | "canSubmitResult"> & {
+type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory" | "canSeeBookingLinks" | "canSubmitResult" | "myCategories"> & {
   _categoryLinks: Record<string, string>
 }
 
@@ -668,6 +669,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
       : {},
     published: !!f.published,
+    myCategories: [],
     homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
     awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
     rubbers: rubbersByFixture.get(f.id) ?? [],
@@ -774,6 +776,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         canSubmitResult: false,
         joinUrl: null,
         joinUrlByCategory: {},
+        myCategories: [],
       }
     })
     return {
@@ -833,6 +836,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         if (url) joinUrlByCategory[cat] = url
       }
     }
+    const myCategories = [...allowedCategories]
 
     return {
       ...f,
@@ -840,8 +844,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       assignedToFixture,
       canSeeBookingLinks,
       canSubmitResult,
-      joinUrl: Object.values(joinUrlByCategory)[0] ?? null,
+      joinUrl: myCategories.map((category) => joinUrlByCategory[category]).find(Boolean) ?? null,
       joinUrlByCategory,
+      myCategories,
     }
   })
 
