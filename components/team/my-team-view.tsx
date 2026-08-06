@@ -217,7 +217,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
           value={
             payment.clubPaysFees
               ? "Team"
-              : `${payment.paidCount}/${filledSlots}`
+              : `${payment.paidCount}/8`
           }
           sub={
             payment.clubPaysFees
@@ -283,7 +283,7 @@ export function MyTeamView({ data }: { data: MyTeamViewData }) {
             </div>
             <div className="shrink-0 text-right">
               <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold text-amber-600">
-                {payment.paidCount}/{payment.paidCount + payment.unpaidCount} paid
+                {payment.paidCount}/8 paid
               </span>
             </div>
           </div>

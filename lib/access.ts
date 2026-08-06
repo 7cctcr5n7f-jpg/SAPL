@@ -123,7 +123,6 @@ async function _getAccessContext(user: CurrentUser): Promise<AccessContext> {
   if ((ownerTeamIds.size > 0 || captainTeamIds.size > 0) && !isLeagueAdmin) {
     permissions.add("captain_hub")
     permissions.add("team_management")
-    permissions.add("fixture_management")
   }
 
   // Teams homed at a managed club are manageable by that club owner.

@@ -511,8 +511,8 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
         clubPaysFees: false,
         playerFee,
         paidCount: readiness.paidCount,
-        unpaidCount: readiness.unpaidCount,
-        outstandingAmount: readiness.unpaidCount * playerFee,
+        unpaidCount: Math.max(SQUAD_SIZE - readiness.paidCount, 0),
+        outstandingAmount: Math.max(SQUAD_SIZE - readiness.paidCount, 0) * playerFee,
       }
 
   // Next fixture: earliest scheduled (non-completed) fixture by week.

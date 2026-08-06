@@ -19,11 +19,9 @@ import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { PlayerSummary } from "@/components/dashboard/player-summary"
 import { MatchCentre } from "@/components/dashboard/match-centre"
-import { MoreInformation } from "@/components/dashboard/more-information"
 import { MyTeamCard } from "@/components/dashboard/my-team-card"
 import { PlayerSelfService } from "@/components/dashboard/player-self-service"
 import { TeamOwnerCta } from "@/components/dashboard/team-owner-cta"
-import { eligibleCategoriesForPlayer } from "@/lib/engine/eligibility"
 import { TeamFees } from "@/components/dashboard/team-fees"
 import { TeamOwnerFeeCard } from "@/components/dashboard/team-owner-fee-card"
 import { fmtZAR } from "@/lib/format"
@@ -178,6 +176,8 @@ export default async function DashboardOverview({
         partner={pairingPartner}
       />
 
+      {overviewTeam && <MyTeamCard team={overviewTeam} />}
+
       {/* ── League Fees ───────────────────────────────────────────────────── */}
       {showLeagueFeesSection && (
         <section id="fees">
@@ -196,14 +196,6 @@ export default async function DashboardOverview({
         <MatchCentre matches={myMatches} details={fixtureDetails} />
       </section>
 
-      {/* ── My Team ──────────────────────────────────────────────────────── */}
-      {overviewTeam && (
-        <section>
-          <SectionHeading>My Team</SectionHeading>
-          <MyTeamCard team={overviewTeam} />
-        </section>
-      )}
-
       {/* ── Find a team ──────────────────────────────────────────────────── */}
       {activeTeams.length === 0 && (
         <section>
@@ -211,15 +203,6 @@ export default async function DashboardOverview({
           <PlayerSelfService hasPlayerProfile listed={!!player.lookingForTeam} />
         </section>
       )}
-
-      {/* ── More info ────────────────────────────────────────────────────── */}
-      <section>
-        <MoreInformation
-          playtomicRating={player.playtomicRating}
-          lookingForTeam={!!player.lookingForTeam}
-          eligibleCategories={eligibleCategoriesForPlayer(player.gender === "female" ? "female" : "male", player.playtomicRating ?? 0)}
-        />
-      </section>
     </div>
   )
 }
