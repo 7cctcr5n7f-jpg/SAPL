@@ -60,8 +60,8 @@ export type DashboardFixture = {
   canEditLink: boolean
   /** The four category rubbers with any entered scores, in display order. */
   matches: FixtureCategoryMatch[]
-  homePlayers: Record<string, { name: string; playtomicUrl: string | null }[]>
-  awayPlayers: Record<string, { name: string; playtomicUrl: string | null }[]>
+  homePlayers: Record<string, { name: string; email: string | null; playtomicUrl: string | null }[]>
+  awayPlayers: Record<string, { name: string; email: string | null; playtomicUrl: string | null }[]>
 }
 
 export type FixtureScope = "all" | "club" | "team" | "none"
@@ -180,8 +180,8 @@ async function matchesByFixture(fixtureIds: number[]): Promise<Map<number, Fixtu
   return map
 }
 
-async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<string, { name: string; playtomicUrl: string | null }[]>>> {
-  const map = new Map<number, Record<string, { name: string; playtomicUrl: string | null }[]>>()
+async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<string, { name: string; email: string | null; playtomicUrl: string | null }[]>>> {
+  const map = new Map<number, Record<string, { name: string; email: string | null; playtomicUrl: string | null }[]>>()
   if (teamIds.length === 0) return map
 
   const playerUser = alias(user, "playerUser")
@@ -194,6 +194,7 @@ async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<str
       pairIndex: teamPairings.pairIndex,
       slotIndex: teamPairings.slotIndex,
       playerName: playerUser.name,
+      email: playerUser.email,
       playtomicUrl: playerUser.playtomicUrl,
     })
     .from(teamPairings)
@@ -209,6 +210,7 @@ async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<str
       pairIndex: teamInvites.pairIndex,
       slotIndex: teamInvites.slotIndex,
       invitedName: teamInvites.invitedName,
+      email: teamInvites.email,
     })
     .from(teamInvites)
     .where(
@@ -222,18 +224,18 @@ async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<str
 
   // Build a slot map: "teamId:category:pairIndex:slotIndex" → name
   // Confirmed players take precedence over pending invites for the same slot.
-  const slotMap = new Map<string, { name: string; playtomicUrl: string | null }>()
+  const slotMap = new Map<string, { name: string; email: string | null; playtomicUrl: string | null }>()
 
   for (const row of inviteRows) {
     if (!row.invitedName || !row.category || row.pairIndex == null || row.slotIndex == null) continue
     const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
-    if (!slotMap.has(key)) slotMap.set(key, { name: row.invitedName, playtomicUrl: null })
+    if (!slotMap.has(key)) slotMap.set(key, { name: row.invitedName, email: row.email ?? null, playtomicUrl: null })
   }
 
   for (const row of pairingRows) {
     if (!row.playerName) continue
     const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
-    slotMap.set(key, { name: row.playerName, playtomicUrl: row.playtomicUrl ?? null }) // overwrites invite name when player has joined
+    slotMap.set(key, { name: row.playerName, email: row.email ?? null, playtomicUrl: row.playtomicUrl ?? null }) // overwrites invite name when player has joined
   }
 
   // Collect names per (teamId, category) in slot order: (1,1), (1,2), (2,1), (2,2)
@@ -250,7 +252,7 @@ async function pairingsByTeam(teamIds: number[]): Promise<Map<number, Record<str
     const teamId = Number(tcKey.slice(0, colonIdx))
     const category = tcKey.slice(colonIdx + 1)
 
-    const names: { name: string; playtomicUrl: string | null }[] = []
+    const names: { name: string; email: string | null; playtomicUrl: string | null }[] = []
     for (const pairIndex of [1, 2]) {
       for (const slotIndex of [1, 2]) {
         const name = slotMap.get(`${teamId}:${category}:${pairIndex}:${slotIndex}`)
