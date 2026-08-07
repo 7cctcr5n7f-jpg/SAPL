@@ -117,8 +117,8 @@ function FixtureHeroCard({
   const homeNames = playerNames(detail, "home")
   const awayNames = playerNames(detail, "away")
   const url = primaryJoinLink(f, detail)
-  const homeLogo = f.homeLogo ?? f.venueClubLogo
-  const awayLogo = f.awayLogo ?? f.venueClubLogo
+  const homeLogo = f.homeLogo ?? f.homeVenueLogo
+  const awayLogo = f.awayLogo ?? f.awayVenueLogo
 
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border bg-card", f.mine && "border-primary/25")}>

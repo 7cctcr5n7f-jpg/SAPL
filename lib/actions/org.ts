@@ -190,9 +190,12 @@ export async function updateTeamRegistration(input: {
   ownerPhone?: string | null
   coOwnerEmail?: string | null
 }) {
+  const me = await getCurrentUser()
+  if (!me) return { ok: false, error: "Not authenticated" }
   const [team] = await db
     .select({
       id: teams.id,
+      name: teams.name,
       organisationId: teams.organisationId,
       homeClubId: teams.homeClubId,
       clubPaysFees: teams.clubPaysFees,
@@ -202,14 +205,20 @@ export async function updateTeamRegistration(input: {
     .limit(1)
   if (!team) return { ok: false, error: "Team not found" }
   await requireCanManageTeam(input.teamId)
+  const access = await getAccessContext(me)
 
   const patch: Record<string, unknown> = { updatedAt: new Date() }
-  // Team name and home venue are frozen once a season is active.
-  if ((input.name !== undefined || input.homeClubId !== undefined) && (await isSeasonLocked())) {
+  // Team name and home venue are frozen for non-admins once a season is active.
+  // Keep non-locked edits (like logo and payment model) working even after kickoff.
+  const nextName = input.name !== undefined ? input.name.trim() : undefined
+  const nextHomeClubId = input.homeClubId
+  const nameChanged = nextName !== undefined && nextName !== (team.name ?? "")
+  const homeChanged = nextHomeClubId !== undefined && nextHomeClubId !== team.homeClubId
+  if (!access.isLeagueAdmin && (nameChanged || homeChanged) && (await isSeasonLocked())) {
     return { ok: false, error: "The season has started — team name and home venue are locked." }
   }
   if (input.name !== undefined) {
-    const name = input.name.trim()
+    const name = nextName ?? ""
     if (!name) return { ok: false, error: "Team name is required" }
     patch.name = name
   }
