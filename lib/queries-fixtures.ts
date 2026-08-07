@@ -325,7 +325,7 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
   const seasonName = seasonRow?.name ?? null
 
   const access = await getAccessContext(user)
-  const hasScopedManagerAccess = access.clubIds.length > 0 || access.manageableTeamIds.length > 0
+  const hasScopedManagerAccess = access.clubIds.length > 0 || access.teamIds.length > 0
   if (!access.isLeagueAdmin && !hasScopedManagerAccess) return empty
 
   const rows = await baseFixtures(season.id)
@@ -379,7 +379,7 @@ export async function getDashboardFixtures(user: CurrentUser): Promise<Dashboard
 
   // Club owners and team owners/captains: scoped fixture visibility.
   const clubIds = new Set(access.clubIds)
-  const teamIds = new Set<number>(access.manageableTeamIds)
+  const teamIds = new Set<number>(access.teamIds)
   const visible = rows.filter(
     (f) =>
       f.published &&
