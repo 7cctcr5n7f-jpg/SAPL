@@ -794,6 +794,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   }
 
   // Authenticated users: two small targeted queries for personal fixture flags.
+  const access = await getAccessContext(user)
+  const canSeeAllBookingLinks = access.can("league_management")
   const myTeamIds = await getMyTeamIds(user)
   const myTeamIdsArr = [...myTeamIds]
 
@@ -824,19 +826,23 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     if (f.awayTeamId != null) {
       for (const cat of currentPlayerCategoriesByTeam.get(f.awayTeamId) ?? []) allowedCategories.add(cat)
     }
-    const assignedToFixture = mine || allowedCategories.size > 0
-    const canSeeBookingLinks = mine || allowedCategories.size > 0
+    const assignedToFixture = canSeeAllBookingLinks || mine || allowedCategories.size > 0
+    const canSeeBookingLinks = canSeeAllBookingLinks || mine || allowedCategories.size > 0
     const canSubmitResult = allowedCategories.size > 0
 
     const joinUrlByCategory: Record<string, string> = {}
     if (canSeeBookingLinks) {
-      const sourceLinks = allowedCategories.size > 0 ? [...allowedCategories] : Object.keys(_categoryLinks)
+      const sourceLinks = canSeeAllBookingLinks
+        ? Object.keys(_categoryLinks)
+        : allowedCategories.size > 0
+          ? [...allowedCategories]
+          : Object.keys(_categoryLinks)
       for (const cat of sourceLinks) {
         const url = _categoryLinks[cat]
         if (url) joinUrlByCategory[cat] = url
       }
     }
-    const myCategories = [...allowedCategories]
+    const myCategories = canSeeAllBookingLinks ? Object.keys(joinUrlByCategory) : [...allowedCategories]
 
     return {
       ...f,

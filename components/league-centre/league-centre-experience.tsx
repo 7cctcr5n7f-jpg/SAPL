@@ -617,22 +617,7 @@ function FixtureCard({
           {!hasScore && displayTime && (
             <span className="text-xs font-semibold tabular-nums text-slate-500">{displayTime}</span>
           )}
-          {!hasScore && fixture.assignedToFixture && joinUrl ? (
-            <>
-              <a
-                href={joinUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-opacity hover:opacity-90"
-              >
-                Join on Playtomic
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              <span className="max-w-[11rem] text-center text-[9px] font-medium leading-tight text-slate-400">
-                Playtomic non-premium accounts can usually only join within 12 days of the match.
-              </span>
-            </>
-          ) : fixture.assignedToFixture && fixture.mine && !hasScore ? (
+          {!hasScore && fixture.assignedToFixture && fixture.mine && !joinUrl ? (
             <span className="max-w-[11rem] text-center text-[10px] font-semibold leading-tight text-slate-400">
               Booking link pending. Playtomic non-premium accounts can usually only join within 12 days.
             </span>
@@ -839,50 +824,28 @@ function FixtureBreakdown({
 
             const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? null
             const courtInfo = fixture.courtInfoByCategory?.[category]
-            const visibleCategoryBelongsToMine = fixture.mine && (iMyRubber || fixture.myCategories.includes(category))
+            const visibleCategoryBelongsToMine =
+              fixture.canSeeBookingLinks && (!fixture.mine || iMyRubber || fixture.myCategories.includes(category))
             const showJoin = !isCompleted && !!categoryJoinUrl && visibleCategoryBelongsToMine
             const showScore = fixture.canSubmitResult && iMyRubber
 
             return (
               <div key={category} className="px-4 py-3">
                 {/* Category badge + score detail */}
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
-                      {category}
-                    </span>
-                    {(courtInfo?.court || courtInfo?.time) && (
-                      <span className="text-[10px] font-medium text-slate-500">
-                        {courtInfo.court ? `Court ${courtInfo.court}` : ""}
-                        {courtInfo.court && courtInfo.time ? " · " : ""}
-                        {courtInfo.time ?? ""}
-                      </span>
-                    )}
-                  </div>
+                <div className="mb-2 flex items-center justify-end gap-2">
                   <div className="flex items-center gap-2">
                     {rubber?.scoreDetail && (
                       <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
-                    )}
-                    {showJoin && (
-                      <a
-                        href={categoryJoinUrl!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white shadow-sm transition-colors hover:bg-red-700"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Join Match
-                      </a>
                     )}
                   </div>
                 </div>
 
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                   {/* Home pair */}
                   <div className="space-y-0.5">
                     {homePair.length > 0 ? (
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-center gap-2">
                         {homePairRating != null && (
                           <LiBadge li={homePairRating} tall />
                         )}
@@ -910,7 +873,19 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Score / vs */}
-                  <div className="flex flex-col items-center gap-3 tabular-nums">
+                  <div className="flex flex-col items-center gap-1 tabular-nums">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                        {category}
+                      </span>
+                      {(courtInfo?.court || courtInfo?.time) && (
+                        <span className="text-[10px] font-medium text-slate-500">
+                          {courtInfo.court ? `Court ${courtInfo.court}` : ""}
+                          {courtInfo.court && courtInfo.time ? " · " : ""}
+                          {courtInfo.time ?? ""}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                       {hasScore ? (
                         <>
@@ -927,7 +902,7 @@ function FixtureBreakdown({
                       )}
                     </div>
                     {(showJoin || showScore) && (
-                      <div className="flex flex-col items-center gap-2">
+                      <div className="mt-0 flex flex-col items-center gap-1">
                         {showJoin && (
                           <a
                             href={categoryJoinUrl!}
@@ -974,7 +949,7 @@ function FixtureBreakdown({
                   {/* Away pair */}
                   <div className="space-y-0.5 text-right">
                     {awayPair.length > 0 ? (
-                      <div className="flex items-start justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <div className="space-y-0.5">
                           {awayPair.map((player) => (
                             <p
