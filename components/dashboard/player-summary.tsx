@@ -73,7 +73,7 @@ export function PlayerSummary({
       ))}
 
       {/* ── Identity block ───────────────────────────────────────────────── */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_auto_auto] lg:items-center">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-5">
         <div className="flex min-w-0 items-center gap-5">
           <div className="shrink-0">
             <PlayerPhotoUploader
@@ -116,7 +116,7 @@ export function PlayerSummary({
           </div>
         </div>
 
-        <div className="flex flex-col items-start justify-center text-left lg:justify-self-center">
+        <div className="flex flex-col items-start justify-center text-left justify-self-center">
           <StatPill label="PR Rating" value={playtomicRating ?? "—"} highlight={!!playtomicRating} compact />
           <StatPill
             label="Combined PR"
@@ -126,7 +126,7 @@ export function PlayerSummary({
           />
         </div>
 
-        <div className="flex min-w-44 flex-col justify-center text-left lg:justify-self-end">
+        <div className="flex min-w-44 flex-col justify-center text-left justify-self-end">
           <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Playing Partner</span>
           <span className="font-heading text-2xl font-bold leading-none text-foreground">
             {partner?.name ? partner.name.split(" ")[0] : "—"}
