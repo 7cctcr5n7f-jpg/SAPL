@@ -1147,7 +1147,15 @@ export function MembersTable({
                     </td>
                     <td className="px-2 py-2.5 text-xs text-muted-foreground">—</td>
                     <td className="px-2 py-2.5">
-                      {c.ownedTeamId ? (
+                      {c.source === "team_player_invite" ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Send className="h-3 w-3 text-amber-500" />
+                          <span className="truncate">
+                            {c.ownedTeamName}
+                            {c.inviteCategory ? ` · ${c.inviteCategory}` : ""}
+                          </span>
+                        </span>
+                      ) : c.ownedTeamId ? (
                         <span className="inline-flex items-center gap-1 text-xs">
                           <Crown className="h-3 w-3 text-amber-500" />
                           <span className="truncate">{c.ownedTeamName}</span>
@@ -1233,7 +1241,7 @@ function CompleteAccountDialog({
 }) {
   const [name, setName] = useState(contact.name ?? "")
   const [phone, setPhone] = useState(contact.phone ?? "")
-  const [role, setRole] = useState<Role>("org_admin")
+  const [role, setRole] = useState<Role>(contact.source === "team_player_invite" ? "player" : "org_admin")
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -1241,7 +1249,13 @@ function CompleteAccountDialog({
     e.preventDefault()
     setError(null)
     start(async () => {
-      const res = await createAccountForContact({ name, email: contact.email, phone: phone || null, role })
+      const res = await createAccountForContact({
+        name,
+        email: contact.email,
+        phone: phone || null,
+        role,
+        inviteToken: contact.source === "team_player_invite" ? (contact.inviteToken ?? null) : null,
+      })
       if (res.ok && res.password) {
         onCreated(res.password)
       } else {
@@ -1265,6 +1279,11 @@ function CompleteAccountDialog({
             {contact.clubName && !contact.ownedTeamName && (
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                 <Building2 className="h-3 w-3" /> Contact for {contact.clubName}
+              </p>
+            )}
+            {contact.source === "team_player_invite" && contact.ownedTeamName && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                <Send className="h-3 w-3" /> Pending invite to {contact.ownedTeamName}{contact.inviteCategory ? ` (${contact.inviteCategory})` : ""}
               </p>
             )}
           </div>

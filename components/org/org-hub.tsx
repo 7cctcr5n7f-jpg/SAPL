@@ -20,7 +20,7 @@ import { Stat } from "@/components/brand/bits"
 import { PairingsBoard } from "@/components/team/pairings-board"
 import { TeamLogoUploader } from "@/components/team/team-logo-uploader"
 import { createTeam, updateTeamRegistration, deleteTeam } from "@/lib/actions/org"
-import { resendAllPendingInvites } from "@/lib/actions/pairings"
+import { getPendingInviteResendPreview, resendPendingInvitesFromPreview } from "@/lib/actions/pairings"
 import { AddPlayerDialog } from "@/components/players/add-player-dialog"
 import { toast } from "sonner"
 import {
@@ -164,6 +164,11 @@ export function OrgHub({
   const squadFor = squadForId != null ? (displayTeams.find((t) => t.id === squadForId) ?? null) : null
   const [editFor, setEditFor] = useState<Team | null>(null)
   const [deleteFor, setDeleteFor] = useState<Team | null>(null)
+  const [invitePreviewOpen, setInvitePreviewOpen] = useState(false)
+  const [invitePreviewLoading, setInvitePreviewLoading] = useState(false)
+  const [invitePreviewRows, setInvitePreviewRows] = useState<
+    { inviteId: number; teamName: string; category: string | null; recipientEmail: string; inviterName: string; inviteLink: string; selected: boolean }[]
+  >([])
   // List filters
   const [fType, setFType] = useState<string>("all")
   const [fDivision, setFDivision] = useState<"all" | "assigned" | "unassigned">("all")
@@ -227,20 +232,33 @@ export function OrgHub({
             <Users className="h-5 w-5 text-primary" /> Teams
           </CardTitle>
           {canResendAllInvites && pendingInviteCount > 0 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  const res = await resendAllPendingInvites()
-                  if (res?.error) toast.error(res.error)
-                  else toast.success(res?.success ?? "Invites resent")
-                })
-              }
-            >
-              Resend all pending invites ({pendingInviteCount})
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending || invitePreviewLoading}
+                onClick={() =>
+                  start(async () => {
+                    setInvitePreviewLoading(true)
+                    const res = await getPendingInviteResendPreview()
+                    setInvitePreviewLoading(false)
+                    if ("error" in res) {
+                      toast.error(res.error)
+                      return
+                    }
+                    setInvitePreviewRows(
+                      res.items.map((row) => ({
+                        ...row,
+                        selected: true,
+                      })),
+                    )
+                    setInvitePreviewOpen(true)
+                  })
+                }
+              >
+                Resend pending invites ({pendingInviteCount})
+              </Button>
+            </div>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-3">
@@ -559,6 +577,127 @@ export function OrgHub({
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={pending}>
               {pending ? "Deleting…" : "Delete team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={invitePreviewOpen} onOpenChange={setInvitePreviewOpen}>
+        <DialogContent className="max-h-[95vh] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Preview and resend pending invites</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Review invite links and edit recipient or inviter text before sending. Invite links are fixed and cannot be changed.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending || invitePreviewRows.length === 0}
+                onClick={() => setInvitePreviewRows((prev) => prev.map((row) => ({ ...row, selected: true })))}
+              >
+                Select all
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending || invitePreviewRows.length === 0}
+                onClick={() => setInvitePreviewRows((prev) => prev.map((row) => ({ ...row, selected: false })))}
+              >
+                Deselect all
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {invitePreviewRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No pending invites found.</p>
+              ) : (
+                invitePreviewRows.map((row) => (
+                  <div key={row.inviteId} className="space-y-2 rounded-md border border-border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="inline-flex items-center gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={row.selected}
+                          onChange={(e) =>
+                            setInvitePreviewRows((prev) =>
+                              prev.map((it) => (it.inviteId === row.inviteId ? { ...it, selected: e.target.checked } : it)),
+                            )
+                          }
+                          className="accent-primary"
+                        />
+                        {row.teamName}
+                        {row.category ? <span className="text-xs text-muted-foreground">· {row.category}</span> : null}
+                      </label>
+                      <span className="text-xs text-muted-foreground">Invite #{row.inviteId}</span>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Send email to</Label>
+                        <Input
+                          value={row.recipientEmail}
+                          onChange={(e) =>
+                            setInvitePreviewRows((prev) =>
+                              prev.map((it) => (it.inviteId === row.inviteId ? { ...it, recipientEmail: e.target.value } : it)),
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Inviter name shown in email</Label>
+                        <Input
+                          value={row.inviterName}
+                          onChange={(e) =>
+                            setInvitePreviewRows((prev) =>
+                              prev.map((it) => (it.inviteId === row.inviteId ? { ...it, inviterName: e.target.value } : it)),
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Invite link</Label>
+                      <Input value={row.inviteLink} readOnly />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setInvitePreviewOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || invitePreviewRows.every((row) => !row.selected)}
+              onClick={() =>
+                start(async () => {
+                  const res = await resendPendingInvitesFromPreview({
+                    items: invitePreviewRows.map((row) => ({
+                      inviteId: row.inviteId,
+                      selected: row.selected,
+                      recipientEmail: row.recipientEmail,
+                      inviterName: row.inviterName,
+                    })),
+                  })
+                  if (res?.error) {
+                    toast.error(res.error)
+                    return
+                  }
+                  toast.success(res?.success ?? "Invites resent")
+                  if (res?.failures?.length) {
+                    toast.error(res.failures[0])
+                  } else {
+                    setInvitePreviewOpen(false)
+                  }
+                })
+              }
+            >
+              Send selected invites
             </Button>
           </DialogFooter>
         </DialogContent>

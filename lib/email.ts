@@ -103,23 +103,30 @@ export function resetPasswordEmail(url: string) {
  *  Always returns a bare origin with no trailing slash or path segment.
  */
 export function appBaseUrl(): string {
-  const raw =
-    process.env.BETTER_AUTH_URL ??
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : null) ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    process.env.V0_RUNTIME_URL ??
-    "https://southafricapadelleague.co.za"
+  const candidates = [
+    process.env.APP_BASE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.BETTER_AUTH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    process.env.V0_RUNTIME_URL,
+    "https://southafricapadelleague.co.za",
+  ]
 
-  // Strip any accidental trailing slash or path so callers can safely append
-  // their own paths (e.g. "/sign-up") without producing double segments.
-  try {
-    const url = new URL(raw)
-    return url.origin
-  } catch {
-    return raw.replace(/\/+$/, "")
+  const allowLocal = process.env.ALLOW_LOCAL_EMAIL_LINKS === "true"
+  for (const raw of candidates) {
+    if (!raw) continue
+    try {
+      const url = new URL(raw)
+      const host = url.hostname.toLowerCase()
+      const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1"
+      if (isLocal && !allowLocal) continue
+      return url.origin
+    } catch {
+      continue
+    }
   }
+  return "https://southafricapadelleague.co.za"
 }
 
 /**

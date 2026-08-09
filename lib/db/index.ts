@@ -12,10 +12,26 @@ if (!process.env.DATABASE_URL) {
 let poolInstance: Pool | null = null
 let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null
 
+function normalizedDatabaseUrl(raw: string | undefined): string | undefined {
+  if (!raw) return raw
+  try {
+    const url = new URL(raw)
+    const sslmode = url.searchParams.get("sslmode")
+    if (sslmode === "prefer" || sslmode === "require" || sslmode === "verify-ca") {
+      // Keep today's strict behavior explicit and future-proof against pg v9 changes.
+      url.searchParams.set("sslmode", "verify-full")
+      return url.toString()
+    }
+    return raw
+  } catch {
+    return raw
+  }
+}
+
 export function getPool() {
   if (!poolInstance) {
     poolInstance = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: normalizedDatabaseUrl(process.env.DATABASE_URL),
     })
   }
   return poolInstance
