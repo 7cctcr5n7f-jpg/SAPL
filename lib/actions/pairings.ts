@@ -41,7 +41,10 @@ async function canManageTeam(me: CurrentUser, teamId: number) {
   return access.canManageTeam(teamId) ? team : null
 }
 
-async function sendPendingInviteEmail(inviteId: number, fallbackCaptainName?: string | null) {
+async function sendPendingInviteEmail(
+  inviteId: number,
+  opts?: { fallbackCaptainName?: string | null; overrideTo?: string | null },
+) {
   const [invite] = await db
     .select({
       id: teamInvites.id,
@@ -58,29 +61,46 @@ async function sendPendingInviteEmail(inviteId: number, fallbackCaptainName?: st
     .limit(1)
   if (!invite) return { ok: false as const, error: "Pending invite not found." }
 
-  const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, invite.teamId)).limit(1)
+  const [team] = await db
+    .select({ name: teams.name, ownerName: teams.ownerName, captainUserId: teams.captainUserId })
+    .from(teams)
+    .where(eq(teams.id, invite.teamId))
+    .limit(1)
   const [invitingUser] = invite.invitedByUserId
     ? await db.select({ name: user.name }).from(user).where(eq(user.id, invite.invitedByUserId)).limit(1)
     : [{ name: null }]
+  const [captainUser] = team?.captainUserId
+    ? await db.select({ name: user.name }).from(user).where(eq(user.id, team.captainUserId)).limit(1)
+    : [{ name: null }]
+
+  const teamOwnerName =
+    team?.ownerName && !team.ownerName.includes("@") ? team.ownerName.trim() : null
+  const inviterName =
+    opts?.fallbackCaptainName?.trim() ||
+    teamOwnerName ||
+    captainUser?.name ||
+    invitingUser?.name ||
+    "Your captain"
 
   const base = appBaseUrl()
   const acceptUrl = `${base}/invite/${invite.token}`
   const declineUrl = `${base}/invite/${invite.token}/decline`
   const { subject, html, text } = teamInviteEmail({
     teamName: team?.name ?? "your team",
-    captainName: fallbackCaptainName ?? invitingUser?.name ?? "Your captain",
+    captainName: inviterName,
     acceptUrl,
     declineUrl,
   })
-  const { sent } = await sendEmail({ to: invite.email, subject, html, text })
+  const recipient = opts?.overrideTo?.trim().toLowerCase() || invite.email
+  const { sent } = await sendEmail({ to: recipient, subject, html, text })
   if (!sent) {
-    console.log(`[v0] Team invite resend for ${invite.email} — Accept: ${acceptUrl} | Decline: ${declineUrl}`)
+    console.log(`[v0] Team invite resend for ${recipient} — Accept: ${acceptUrl} | Decline: ${declineUrl}`)
   }
 
   return {
     ok: true as const,
     teamId: invite.teamId,
-    email: invite.email,
+    email: recipient,
     invite: {
       id: invite.id,
       email: invite.email,
@@ -394,7 +414,7 @@ export async function invitePlayerByEmail(input: {
     .limit(1)
 
   if (storedInvite) {
-    await sendPendingInviteEmail(storedInvite.id, me.name)
+    await sendPendingInviteEmail(storedInvite.id, { fallbackCaptainName: me.name })
   }
 
   revalidatePath("/dashboard/captain")
@@ -424,7 +444,7 @@ export async function resendPendingInvite(inviteId: number, teamId?: number) {
   const team = await canManageTeam(me, invite.teamId)
   if (!team) return { error: "You cannot manage this team." }
 
-  const res = await sendPendingInviteEmail(inviteId, me.name)
+  const res = await sendPendingInviteEmail(inviteId)
   if (!res.ok) return { error: res.error }
 
   revalidatePath("/dashboard")
@@ -456,7 +476,7 @@ export async function resendAllPendingInvites(teamId?: number | null) {
 
   let resent = 0
   for (const invite of invites) {
-    const res = await sendPendingInviteEmail(invite.id, me.name)
+    const res = await sendPendingInviteEmail(invite.id)
     if (res.ok) resent++
   }
 
@@ -465,6 +485,156 @@ export async function resendAllPendingInvites(teamId?: number | null) {
   revalidatePath("/dashboard/my-team")
   revalidatePath("/admin/teams")
   return { success: `Resent ${resent} invite${resent === 1 ? "" : "s"}.`, count: resent }
+}
+
+type PendingInvitePreviewItem = {
+  inviteId: number
+  teamId: number
+  teamName: string
+  category: string | null
+  recipientEmail: string
+  inviterName: string
+  inviteLink: string
+}
+
+export async function getPendingInviteResendPreview(teamId?: number | null): Promise<
+  | { error: string }
+  | { items: PendingInvitePreviewItem[] }
+> {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const access = await getAccessContext(me)
+
+  if (teamId != null) {
+    const team = await canManageTeam(me, teamId)
+    if (!team) return { error: "You cannot manage this team." }
+  } else if (!access.isLeagueAdmin) {
+    return { error: "League admin access required." }
+  }
+
+  const pending = await db
+    .select({ id: teamInvites.id })
+    .from(teamInvites)
+    .where(teamId != null ? and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, "pending")) : eq(teamInvites.status, "pending"))
+    .orderBy(desc(teamInvites.createdAt))
+    .limit(500)
+
+  if (pending.length === 0) return { items: [] }
+
+  const inviteIds = pending.map((r) => r.id)
+  const rows = await db
+    .select({
+      inviteId: teamInvites.id,
+      teamId: teamInvites.teamId,
+      teamName: teams.name,
+      teamOwnerName: teams.ownerName,
+      teamCaptainUserId: teams.captainUserId,
+      category: teamInvites.category,
+      recipientEmail: teamInvites.email,
+      inviterId: teamInvites.invitedByUserId,
+      token: teamInvites.token,
+      invitedAt: teamInvites.createdAt,
+    })
+    .from(teamInvites)
+    .innerJoin(teams, eq(teams.id, teamInvites.teamId))
+    .where(and(inArray(teamInvites.id, inviteIds), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt))
+
+  const inviterIds = [...new Set(rows.map((r) => r.inviterId).filter((id): id is string => Boolean(id)))]
+  const inviterNameMap = new Map<string, string>()
+  if (inviterIds.length > 0) {
+    const inviterRows = await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, inviterIds))
+    for (const row of inviterRows) inviterNameMap.set(row.id, row.name ?? "Your captain")
+  }
+  const captainIds = [...new Set(rows.map((r) => r.teamCaptainUserId).filter((id): id is string => Boolean(id)))]
+  const captainNameMap = new Map<string, string>()
+  if (captainIds.length > 0) {
+    const captainRows = await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, captainIds))
+    for (const row of captainRows) captainNameMap.set(row.id, row.name ?? "Your captain")
+  }
+
+  const base = appBaseUrl()
+  return {
+    items: rows.map((row) => ({
+      inviteId: row.inviteId,
+      teamId: row.teamId,
+      teamName: row.teamName ?? "Team",
+      category: row.category ?? null,
+      recipientEmail: row.recipientEmail,
+      inviterName:
+        (row.teamOwnerName && !row.teamOwnerName.includes("@") ? row.teamOwnerName.trim() : null) ||
+        (row.teamCaptainUserId ? captainNameMap.get(row.teamCaptainUserId) : null) ||
+        (row.inviterId ? (inviterNameMap.get(row.inviterId) ?? null) : null) ||
+        "Your captain",
+      inviteLink: `${base}/invite/${row.token}`,
+    })),
+  }
+}
+
+export async function resendPendingInvitesFromPreview(input: {
+  items: { inviteId: number; selected: boolean; recipientEmail: string; inviterName: string }[]
+  teamId?: number | null
+}) {
+  const me = await getCurrentUser()
+  if (!me) return { error: "Not authorised" }
+  const access = await getAccessContext(me)
+
+  const selected = input.items.filter((item) => item.selected)
+  if (selected.length === 0) return { error: "Select at least one invite to resend." }
+
+  const selectedIds = selected.map((item) => item.inviteId)
+  const selectedInvites = await db
+    .select({ id: teamInvites.id, teamId: teamInvites.teamId })
+    .from(teamInvites)
+    .where(and(inArray(teamInvites.id, selectedIds), eq(teamInvites.status, "pending")))
+
+  if (selectedInvites.length === 0) return { error: "No pending invites found for the selected rows." }
+  const inviteById = new Map(selectedInvites.map((row) => [row.id, row]))
+  const teamIds = [...new Set(selectedInvites.map((row) => row.teamId))]
+
+  if (input.teamId != null) {
+    const team = await canManageTeam(me, input.teamId)
+    if (!team) return { error: "You cannot manage this team." }
+    if (teamIds.some((id) => id !== input.teamId)) return { error: "Selection includes invites from another team." }
+  } else if (!access.isLeagueAdmin) {
+    return { error: "League admin access required." }
+  }
+
+  let resent = 0
+  const failures: string[] = []
+  for (const item of selected) {
+    const invite = inviteById.get(item.inviteId)
+    if (!invite) {
+      failures.push(`Invite ${item.inviteId} is no longer pending`)
+      continue
+    }
+    const targetEmail = item.recipientEmail.trim().toLowerCase()
+    if (!targetEmail || !targetEmail.includes("@")) {
+      failures.push(`Invite ${item.inviteId} has an invalid recipient email`)
+      continue
+    }
+    const customInviterName = item.inviterName.trim()
+    const res = await sendPendingInviteEmail(item.inviteId, {
+      overrideTo: targetEmail,
+      fallbackCaptainName: customInviterName || undefined,
+    })
+    if (res.ok) resent++
+    else failures.push(res.error)
+  }
+
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/captain")
+  revalidatePath("/dashboard/my-team")
+  revalidatePath("/admin/teams")
+
+  return {
+    success:
+      failures.length > 0
+        ? `Resent ${resent} invite${resent === 1 ? "" : "s"} (${failures.length} not sent).`
+        : `Resent ${resent} invite${resent === 1 ? "" : "s"}.`,
+    count: resent,
+    failures,
+  }
 }
 
 /**

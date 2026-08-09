@@ -8,6 +8,7 @@ import { getCurrentUser, type Role } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
 import { getAccessContext, type ClubAssignment, type TeamAssignment } from "@/lib/access"
+import { processTeamInviteByToken } from "@/lib/actions/pairings"
 
 import {
   PERMISSIONS,
@@ -243,11 +244,14 @@ export type UnregisteredContact = {
   name: string | null
   email: string
   phone: string | null
-  source: "club_contact" | "club_contact2" | "team_owner" | "team_co_owner"
+  source: "club_contact" | "club_contact2" | "team_owner" | "team_co_owner" | "team_player_invite"
   clubId: number | null
   clubName: string | null
   ownedTeamId: number | null
   ownedTeamName: string | null
+  inviteToken?: string | null
+  inviteCategory?: string | null
+  teamInviteId?: number | null
 }
 
 export async function listUnregisteredContacts(): Promise<UnregisteredContact[]> {
@@ -265,13 +269,26 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
   const teamRows = await db
     .select({ id: teams.id, name: teams.name, ownerEmail: teams.ownerEmail, ownerName: teams.ownerName, ownerPhone: teams.ownerPhone, coOwnerEmail: teams.coOwnerEmail })
     .from(teams)
+  const pendingInviteRows = await db
+    .select({
+      id: teamInvites.id,
+      email: teamInvites.email,
+      invitedName: teamInvites.invitedName,
+      token: teamInvites.token,
+      category: teamInvites.category,
+      teamId: teams.id,
+      teamName: teams.name,
+    })
+    .from(teamInvites)
+    .innerJoin(teams, eq(teams.id, teamInvites.teamId))
+    .where(eq(teamInvites.status, "pending"))
 
   const contacts: UnregisteredContact[] = []
   const seen = new Set<string>()
 
   function push(c: UnregisteredContact) {
     const norm = c.email.trim().toLowerCase()
-    if (!norm || knownEmails.has(norm) || seen.has(norm)) return
+    if (!norm || knownEmails.has(norm) || (c.source !== "team_player_invite" && seen.has(norm))) return
     seen.add(norm)
     contacts.push({ ...c, email: norm })
   }
@@ -299,6 +316,23 @@ export async function listUnregisteredContacts(): Promise<UnregisteredContact[]>
     }
   }
 
+  for (const invite of pendingInviteRows) {
+    push({
+      key: `invite-${invite.id}`,
+      name: invite.invitedName?.trim() || null,
+      email: invite.email,
+      phone: null,
+      source: "team_player_invite",
+      clubId: null,
+      clubName: null,
+      ownedTeamId: invite.teamId,
+      ownedTeamName: invite.teamName,
+      inviteToken: invite.token,
+      inviteCategory: invite.category ?? null,
+      teamInviteId: invite.id,
+    })
+  }
+
   return contacts.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email))
 }
 
@@ -307,6 +341,7 @@ export async function createAccountForContact(input: {
   email: string
   phone?: string | null
   role?: Role
+  inviteToken?: string | null
 }): Promise<{ ok: boolean; error?: string; password?: string }> {
   await requireMemberManager()
 
@@ -320,6 +355,16 @@ export async function createAccountForContact(input: {
       await db.update(userMeta).set({ phone, updatedAt: new Date() }).where(eq(userMeta.userId, res.userId))
     } else {
       await db.insert(userMeta).values({ userId: res.userId, role: input.role ?? "org_admin", phone })
+    }
+  }
+
+  if (input.inviteToken) {
+    const [firstName = "Player", ...rest] = input.name.trim().split(" ")
+    const lastName = rest.join(" ").trim()
+    await ensurePlayerProfile(res.userId, firstName, lastName || "Player")
+    const inviteResult = await processTeamInviteByToken(input.inviteToken, { userId: res.userId })
+    if (!("joined" in inviteResult || "alreadyOnTeam" in inviteResult)) {
+      return { ok: false, error: "Account created, but could not auto-join the invited team. Open the invite link and accept manually." }
     }
   }
 
