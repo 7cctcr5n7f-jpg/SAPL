@@ -875,8 +875,16 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       for (const [category, url] of Object.entries(_categoryLinks)) {
         if (url) normalizedCategoryLinks.set(normalizeCategoryKey(category), url)
       }
+      const fixtureCategoryNames = new Set<string>([
+        ...Object.keys(_categoryLinks),
+        ...Object.keys(f.courtInfoByCategory ?? {}),
+        ...Object.keys(f.homePlayers ?? {}),
+        ...Object.keys(f.awayPlayers ?? {}),
+        ...f.rubbers.map((rubber) => rubber.category).filter(Boolean),
+        ...(f.divisionName ? [f.divisionName] : []),
+      ])
       const sourceLinks = canSeeAllBookingLinks || isCaptainFixture
-        ? Object.keys(_categoryLinks)
+        ? [...fixtureCategoryNames]
         : allowedCategories.size > 0
           ? [...allowedCategories]
           : Object.keys(_categoryLinks)
