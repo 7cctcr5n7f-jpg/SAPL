@@ -632,9 +632,16 @@ export async function getFixtureDetails(
     lineupByTeamCat.set(key, list)
   }
   const namesFor = (ids: number[]) => ids.map((id) => nameById.get(id)).filter((n): n is string => !!n)
+  const normalizeCategoryKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ")
 
   for (const f of fixtureRows) {
     const courtLinks = (f.courtLinks ?? {}) as Record<string, string>
+    const normalizedCourtLinks = new Map<string, string>()
+    for (const [category, url] of Object.entries(courtLinks)) {
+      if (url) normalizedCourtLinks.set(normalizeCategoryKey(category), url)
+    }
+    const linkForCategory = (category: string): string | null =>
+      courtLinks[category] ?? normalizedCourtLinks.get(normalizeCategoryKey(category)) ?? null
     const fxMatches = matchRows.filter((m) => m.fixtureId === f.id)
 
     // Categories present: union of played rubbers and any lineup entries.
@@ -665,7 +672,7 @@ export async function getFixtureDetails(
       return {
         category,
         isFeatureCourt: m?.isFeatureCourt ?? false,
-        courtLink: courtLinks[category] ?? null,
+        courtLink: linkForCategory(category),
         homePlayers: namesFor(homeIds),
         awayPlayers: namesFor(awayIds),
         scoreDetail: m?.scoreDetail ?? null,

@@ -54,11 +54,25 @@ function courtLinksOf(f: DashboardFixture): Record<string, string> {
   return (f.courtLinks ?? {}) as Record<string, string>
 }
 
+function normalizeCategoryKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+function linkForCategory(links: Record<string, string>, category: string): string | null {
+  const direct = links[category]
+  if (direct) return direct
+  const target = normalizeCategoryKey(category)
+  for (const [key, url] of Object.entries(links)) {
+    if (normalizeCategoryKey(key) === target && url) return url
+  }
+  return null
+}
+
 /** The booking link for the player's assigned category only. */
 function primaryJoinLink(f: DashboardFixture, detail?: FixtureDetail): string | null {
   const links = courtLinksOf(f)
   if (!detail?.myCategory) return null
-  return links[detail.myCategory] ?? (f.mine ? Object.values(links)[0] ?? null : null)
+  return linkForCategory(links, detail.myCategory)
 }
 
 function teamLabel(name: string | null, slot: number | null) {
@@ -241,7 +255,7 @@ function FixtureRow({ f, detail }: { f: DashboardFixture; detail?: FixtureDetail
           <ul className="space-y-1.5">
             {COURTS.map((category, i) => {
               const cat = byCategory.get(category)
-              const url = links[category]
+              const url = linkForCategory(links, category)
               const homePlayers = cat?.homePlayers ?? []
               const awayPlayers = cat?.awayPlayers ?? []
               const homeText = homePlayers.length ? homePlayers.join(" / ") : home.text

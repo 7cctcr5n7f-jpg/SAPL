@@ -77,6 +77,21 @@ function fixtureDisplayTime(fixture: LCFixture) {
   return categoryTimes[0] ?? fixture.timeslot
 }
 
+function normalizeCategoryKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+function linkForCategory(links: Record<string, string> | undefined, category: string): string | null {
+  if (!links) return null
+  const direct = links[category]
+  if (direct) return direct
+  const target = normalizeCategoryKey(category)
+  for (const [key, url] of Object.entries(links)) {
+    if (normalizeCategoryKey(key) === target && url) return url
+  }
+  return null
+}
+
 // ─── Main experience ────────────────────────────────────────────────────────
 
 export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
@@ -518,7 +533,7 @@ function FixtureCard({
 
   // Get players for the fixture's own division category
   const category = fixture.divisionName ?? ""
-  const categoryJoinUrl = category ? fixture.joinUrlByCategory?.[category] ?? null : null
+  const categoryJoinUrl = category ? linkForCategory(fixture.joinUrlByCategory, category) : null
   const playerIsShownInCategory =
     currentPlayerId != null &&
     fixture.rubbers.some((rubber) =>
@@ -822,11 +837,7 @@ function FixtureBreakdown({
                 ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
                 : fixture.mine
 
-            const categoryJoinUrl =
-              fixture.joinUrlByCategory?.[category] ??
-              fixture.myCategories.map((myCategory) => fixture.joinUrlByCategory?.[myCategory]).find(Boolean) ??
-              fixture.joinUrl ??
-              null
+            const categoryJoinUrl = linkForCategory(fixture.joinUrlByCategory, category)
             const courtInfo = fixture.courtInfoByCategory?.[category]
             const visibleCategoryBelongsToMine =
               fixture.canSeeBookingLinks &&
