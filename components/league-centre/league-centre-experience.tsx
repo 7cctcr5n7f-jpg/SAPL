@@ -563,7 +563,7 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-6">
+      <div className="grid grid-cols-[1fr_96px_1fr] items-start gap-3 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
         <div className="flex flex-col items-start gap-1">
           <div className="flex items-center gap-2.5">
@@ -590,7 +590,7 @@ function FixtureCard({
         </div>
 
         {/* Score / VS */}
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex min-h-[4.75rem] self-center flex-col items-center justify-center gap-1">
           {hasScore ? (
             <div className="flex items-center gap-2 tabular-nums">
               <span
@@ -848,7 +848,7 @@ function FixtureBreakdown({
                 </div>
 
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <div className="grid grid-cols-[1fr_92px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
                   <div className="space-y-0.5">
                     {homePair.length > 0 ? (
@@ -861,7 +861,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-xs font-semibold leading-tight",
+                                "text-[11px] font-semibold leading-tight md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && homeWon && "text-red-600",
                               )}
@@ -880,8 +880,8 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Score / vs */}
-                  <div className="flex flex-col items-center gap-1 tabular-nums">
-                    <div className="flex flex-col items-center gap-0.5">
+                  <div className="flex min-h-[6rem] flex-col items-center justify-center gap-1 tabular-nums">
+                    <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
                       <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
                         {category}
                       </span>
@@ -893,7 +893,7 @@ function FixtureBreakdown({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex min-h-[1.25rem] items-center gap-1.5">
                       {hasScore ? (
                         <>
                           <span className={cn("text-lg font-extrabold", homeWon ? "text-red-600" : "text-slate-700")}>
@@ -909,7 +909,7 @@ function FixtureBreakdown({
                       )}
                     </div>
                     {(showJoin || showScore) && (
-                      <div className="mt-0 flex flex-col items-center gap-1">
+                      <div className="mt-0 hidden flex-col items-center gap-1 md:flex">
                         {showJoin && (
                           <a
                             href={categoryJoinUrl!}
@@ -962,7 +962,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-xs font-semibold leading-tight",
+                                "text-[11px] font-semibold leading-tight md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && awayWon && "text-red-600",
                               )}
@@ -983,6 +983,50 @@ function FixtureBreakdown({
                     </div>
                   </div>
                 </div>
+
+                {(showJoin || showScore) && (
+                  <div className="mt-2 flex flex-wrap items-center justify-center gap-2 md:hidden">
+                    {showJoin && (
+                      <a
+                        href={categoryJoinUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Join Match
+                      </a>
+                    )}
+                    {showScore && (
+                      <button
+                        onClick={() =>
+                          setScoreRubber(
+                            rubber ?? {
+                              id: 0,
+                              category,
+                              session: 1,
+                              isFeatureCourt: false,
+                              homeSetsWon: 0,
+                              awaySetsWon: 0,
+                              scoreDetail: null,
+                              winnerTeamId: null,
+                              homePlayerIds: [],
+                              awayPlayerIds: [],
+                            },
+                          )
+                        }
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                          isCompleted
+                            ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            : "border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50",
+                        )}
+                      >
+                        {isCompleted ? "Edit Score" : "Enter Score"}
+                      </button>
+                    )}
+                  </div>
+                )}
 
               </div>
             )
