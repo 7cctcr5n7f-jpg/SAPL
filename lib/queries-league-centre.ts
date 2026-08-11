@@ -878,11 +878,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       ? Object.keys(joinUrlByCategory)
       : allowedCategories.size > 0
         ? [...allowedCategories]
-        : mine
-          // Fallback for legitimate team members whose category assignment hasn't
-          // synced into team pairings yet: still surface this fixture's links.
-          ? Object.keys(joinUrlByCategory)
-          : []
+        : []
 
     return {
       ...f,
