@@ -6,7 +6,6 @@ import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
 import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
 import { computeDivisionPlayoffQualifiers } from "@/lib/engine/playoffs"
-import { CATEGORY_RULES } from "@/lib/constants"
 import { ResultEntry } from "@/components/captain/result-entry"
 import {
   Dialog,
@@ -79,6 +78,19 @@ function fixtureDisplayTime(fixture: LCFixture) {
 
 function normalizeCategoryKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+const FIXTURE_CATEGORY_ORDER = ["mens beginner", "mens intermediate", "mens open", "ladies open"] as const
+
+function categorySortRank(category: string): number {
+  const normalized = normalizeCategoryKey(category)
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\s+/g, " ")
+    .trim()
+  const index = FIXTURE_CATEGORY_ORDER.indexOf(normalized as (typeof FIXTURE_CATEGORY_ORDER)[number])
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index
 }
 
 function linkForCategory(links: Record<string, string> | undefined, category: string): string | null {
@@ -426,10 +438,6 @@ function FixturesByCategory({
   onToggleFixture: (id: number) => void
   currentPlayerId: number | null
 }) {
-  // Group by divisionName (the category for this division)
-  // We use CATEGORY_RULES order but also capture any divisionName not in the list
-  const categoryOrder = useMemo(() => CATEGORY_RULES.map((r) => r.name), [])
-
   const byCategory = useMemo(() => {
     const map = new Map<string, LCFixture[]>()
     for (const f of fixtures) {
@@ -438,16 +446,13 @@ function FixturesByCategory({
       arr.push(f)
       map.set(key, arr)
     }
-    // Sort categories by CATEGORY_RULES order
     return Array.from(map.entries()).sort(([a], [b]) => {
-      const ai = categoryOrder.indexOf(a)
-      const bi = categoryOrder.indexOf(b)
-      if (ai === -1 && bi === -1) return a.localeCompare(b)
-      if (ai === -1) return 1
-      if (bi === -1) return -1
+      const ai = categorySortRank(a)
+      const bi = categorySortRank(b)
+      if (ai === bi) return a.localeCompare(b)
       return ai - bi
     })
-  }, [fixtures, categoryOrder])
+  }, [fixtures])
 
   if (fixtures.length === 0) {
     return (
@@ -813,6 +818,7 @@ function FixtureBreakdown({
         <div className="divide-y divide-slate-100">
           {Object.keys(fixture.courtInfoByCategory)
             .sort((a, b) =>
+              categorySortRank(a) - categorySortRank(b) ||
               slotTimeValue(fixture.courtInfoByCategory[a]?.time) - slotTimeValue(fixture.courtInfoByCategory[b]?.time) ||
               courtSortValue(fixture.courtInfoByCategory[b]?.court) - courtSortValue(fixture.courtInfoByCategory[a]?.court) ||
               a.localeCompare(b),
@@ -893,7 +899,7 @@ function FixtureBreakdown({
                   {/* Score / vs */}
                   <div className="flex self-stretch flex-col items-center justify-center gap-1 tabular-nums">
                     <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
-                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-red-600">
                         {category}
                       </span>
                       {(courtInfo?.court || courtInfo?.time) && (
