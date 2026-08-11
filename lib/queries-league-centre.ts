@@ -181,6 +181,10 @@ function normaliseStatus(status: string | null): LCStatus {
 
 const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
 
+function normalizeCategoryKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
 // ---------------------------------------------------------------------------
 // Internal types for the shared cache layer
 // ---------------------------------------------------------------------------
@@ -214,13 +218,12 @@ async function getMyTeamIds(user: CurrentUser): Promise<Set<number>> {
   const captainTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.captainUserId, user.id))
   captainTeams.forEach((t) => ids.add(t.id))
   access.ownedTeamIds.forEach((teamId) => ids.add(teamId))
-  if (user.playerId) {
-    const memberships = await db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .where(and(eq(teamMembers.playerId, user.playerId), eq(teamMembers.status, "active")))
-    memberships.forEach((m) => ids.add(m.teamId))
-  }
+  // teamMembers.playerId stores auth user IDs, so use user.id directly.
+  const memberships = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, user.id), eq(teamMembers.status, "active")))
+  memberships.forEach((m) => ids.add(m.teamId))
   return ids
 }
 
@@ -611,69 +614,94 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   // _categoryLinks stores raw per-category booking links for published,
   // non-completed fixtures so the personal overlay can derive joinUrl
   // and joinUrlByCategory without an extra DB query.
-  const sharedFixtures: SharedFixture[] = fixtureRows.map((f) => ({
-    id: f.id,
-    week: f.week,
-    matchDate: f.matchDate ? new Date(f.matchDate as unknown as string).toISOString() : null,
-    timeslot: f.timeslot,
-    status: normaliseStatus(f.status),
-    divisionId: f.divisionId,
-    divisionName: f.divisionName,
-    divisionLevel: f.divisionLevel,
-    regionId: f.regionId,
-    regionName: f.regionName,
-    homeTeamId: f.homeTeamId,
-    awayTeamId: f.awayTeamId,
-    homeName: f.homeName,
-    awayName: f.awayName,
-    homeLogo: f.homeLogo,
-    awayLogo: f.awayLogo,
-    venue: f.venue,
-    homePoints: f.homePoints,
-    awayPoints: f.awayPoints,
-    homeSetsWon: f.homeSetsWon,
-    awaySetsWon: f.awaySetsWon,
-    winnerTeamId: f.winnerTeamId,
-    homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
-    awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
-    homePairLi: (() => {
-      const out: Record<string, number | null> = {}
-      if (f.homeTeamId != null) {
-        for (const [key, entry] of pairLiMap.entries()) {
-          if (key.startsWith(`${f.homeTeamId}:`)) {
-            const cat = key.slice(String(f.homeTeamId).length + 1)
-            out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+  const sharedFixtures: SharedFixture[] = fixtureRows.map((f) => {
+    const status = normaliseStatus(f.status)
+    const rubbers = rubbersByFixture.get(f.id) ?? []
+    const homePlayers = f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {}
+    const awayPlayers = f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {}
+    const rawCourtLinks = (f.courtLinks ?? {}) as Record<string, string>
+    const rawCourtAssignments =
+      (f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>
+
+    const categoryLinks: Record<string, string> = {}
+    if (f.published && status !== "completed") {
+      for (const [cat, url] of Object.entries(rawCourtLinks)) {
+        if (url) categoryLinks[cat] = url
+      }
+      // Some fixtures only have a single fixture-level Playtomic link.
+      // Mirror that link across known categories so the drilldown rows can show
+      // Join Match consistently like My Matches.
+      if (Object.keys(categoryLinks).length === 0 && f.playtomicUrl) {
+        const categories = new Set<string>()
+        for (const rubber of rubbers) if (rubber.category) categories.add(rubber.category)
+        for (const cat of Object.keys(rawCourtAssignments)) categories.add(cat)
+        for (const cat of Object.keys(homePlayers)) categories.add(cat)
+        for (const cat of Object.keys(awayPlayers)) categories.add(cat)
+        if (f.divisionName) categories.add(f.divisionName)
+        for (const cat of categories) categoryLinks[cat] = f.playtomicUrl
+      }
+    }
+
+    return {
+      id: f.id,
+      week: f.week,
+      matchDate: f.matchDate ? new Date(f.matchDate as unknown as string).toISOString() : null,
+      timeslot: f.timeslot,
+      status,
+      divisionId: f.divisionId,
+      divisionName: f.divisionName,
+      divisionLevel: f.divisionLevel,
+      regionId: f.regionId,
+      regionName: f.regionName,
+      homeTeamId: f.homeTeamId,
+      awayTeamId: f.awayTeamId,
+      homeName: f.homeName,
+      awayName: f.awayName,
+      homeLogo: f.homeLogo,
+      awayLogo: f.awayLogo,
+      venue: f.venue,
+      homePoints: f.homePoints,
+      awayPoints: f.awayPoints,
+      homeSetsWon: f.homeSetsWon,
+      awaySetsWon: f.awaySetsWon,
+      winnerTeamId: f.winnerTeamId,
+      homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
+      awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
+      homePairLi: (() => {
+        const out: Record<string, number | null> = {}
+        if (f.homeTeamId != null) {
+          for (const [key, entry] of pairLiMap.entries()) {
+            if (key.startsWith(`${f.homeTeamId}:`)) {
+              const cat = key.slice(String(f.homeTeamId).length + 1)
+              out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+            }
           }
         }
-      }
-      return out
-    })(),
-    awayPairLi: (() => {
-      const out: Record<string, number | null> = {}
-      if (f.awayTeamId != null) {
-        for (const [key, entry] of pairLiMap.entries()) {
-          if (key.startsWith(`${f.awayTeamId}:`)) {
-            const cat = key.slice(String(f.awayTeamId).length + 1)
-            out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+        return out
+      })(),
+      awayPairLi: (() => {
+        const out: Record<string, number | null> = {}
+        if (f.awayTeamId != null) {
+          for (const [key, entry] of pairLiMap.entries()) {
+            if (key.startsWith(`${f.awayTeamId}:`)) {
+              const cat = key.slice(String(f.awayTeamId).length + 1)
+              out[cat] = entry.count > 0 ? entry.sum / entry.count : null
+            }
           }
         }
-      }
-      return out
-    })(),
-    homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
-    awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
-    _categoryLinks: f.published && normaliseStatus(f.status) !== "completed"
-      ? (f.courtLinks ?? {}) as Record<string, string>
-      : {},
-    courtInfoByCategory: f.published
-      ? ((f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>)
-      : {},
-    published: !!f.published,
-    myCategories: [],
-    homePlayers: f.homeTeamId != null ? (teamPlayerMap.get(f.homeTeamId) ?? {}) : {},
-    awayPlayers: f.awayTeamId != null ? (teamPlayerMap.get(f.awayTeamId) ?? {}) : {},
-    rubbers: rubbersByFixture.get(f.id) ?? [],
-  }))
+        return out
+      })(),
+      homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
+      awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
+      _categoryLinks: categoryLinks,
+      courtInfoByCategory: f.published ? rawCourtAssignments : {},
+      published: !!f.published,
+      myCategories: [],
+      homePlayers,
+      awayPlayers,
+      rubbers,
+    }
+  })
 
   // Rankings (TPR leaderboard) scoped to teams in used divisions.
   const rankingRows = usedDivisionIds.length
@@ -832,17 +860,29 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
 
     const joinUrlByCategory: Record<string, string> = {}
     if (canSeeBookingLinks) {
+      const normalizedCategoryLinks = new Map<string, string>()
+      for (const [category, url] of Object.entries(_categoryLinks)) {
+        if (url) normalizedCategoryLinks.set(normalizeCategoryKey(category), url)
+      }
       const sourceLinks = canSeeAllBookingLinks
         ? Object.keys(_categoryLinks)
         : allowedCategories.size > 0
           ? [...allowedCategories]
           : Object.keys(_categoryLinks)
       for (const cat of sourceLinks) {
-        const url = _categoryLinks[cat]
+        const url = _categoryLinks[cat] ?? normalizedCategoryLinks.get(normalizeCategoryKey(cat)) ?? null
         if (url) joinUrlByCategory[cat] = url
       }
     }
-    const myCategories = canSeeAllBookingLinks ? Object.keys(joinUrlByCategory) : [...allowedCategories]
+    const myCategories = canSeeAllBookingLinks
+      ? Object.keys(joinUrlByCategory)
+      : allowedCategories.size > 0
+        ? [...allowedCategories]
+        : mine
+          // Fallback for legitimate team members whose category assignment hasn't
+          // synced into team pairings yet: still surface this fixture's links.
+          ? Object.keys(joinUrlByCategory)
+          : []
 
     return {
       ...f,

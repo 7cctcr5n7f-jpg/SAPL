@@ -822,10 +822,17 @@ function FixtureBreakdown({
                 ? assignedIds.includes(currentPlayerId) || (assignedIds.length === 0 && fixture.mine)
                 : fixture.mine
 
-            const categoryJoinUrl = fixture.joinUrlByCategory?.[category] ?? null
+            const categoryJoinUrl =
+              fixture.joinUrlByCategory?.[category] ??
+              fixture.myCategories.map((myCategory) => fixture.joinUrlByCategory?.[myCategory]).find(Boolean) ??
+              fixture.joinUrl ??
+              null
             const courtInfo = fixture.courtInfoByCategory?.[category]
             const visibleCategoryBelongsToMine =
-              fixture.canSeeBookingLinks && (!fixture.mine || iMyRubber || fixture.myCategories.includes(category))
+              fixture.canSeeBookingLinks &&
+              // For your own fixture, show published category links even if pairing
+              // assignment IDs are stale/mismatched for this user.
+              (!fixture.mine || iMyRubber || fixture.myCategories.includes(category) || fixture.mine)
             const showJoin = !isCompleted && !!categoryJoinUrl && visibleCategoryBelongsToMine
             const showScore = fixture.canSubmitResult && iMyRubber
 
