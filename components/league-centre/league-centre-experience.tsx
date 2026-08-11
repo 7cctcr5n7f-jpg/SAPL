@@ -861,18 +861,18 @@ function FixtureBreakdown({
                 {/* Players vs Score vs Players */}
                 <div className="grid grid-cols-[1fr_92px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
-                  <div className="space-y-0.5">
+                  <div className="min-w-0 space-y-0.5">
                     {homePair.length > 0 ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         {homePairRating != null && (
                           <LiBadge li={homePairRating} tall />
                         )}
-                        <div className="space-y-0.5">
+                        <div className="min-w-0 space-y-0.5">
                           {homePair.map((player) => (
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight md:text-xs",
+                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && homeWon && "text-red-600",
                               )}
@@ -891,7 +891,7 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Score / vs */}
-                  <div className="flex min-h-[6rem] flex-col items-center justify-center gap-1 tabular-nums">
+                  <div className="flex self-stretch flex-col items-center justify-center gap-1 tabular-nums">
                     <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
                       <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
                         {category}
@@ -965,15 +965,15 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Away pair */}
-                  <div className="space-y-0.5 text-right">
+                  <div className="min-w-0 space-y-0.5 text-right">
                     {awayPair.length > 0 ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="space-y-0.5">
+                      <div className="flex min-w-0 items-center justify-end gap-2">
+                        <div className="min-w-0 space-y-0.5">
                           {awayPair.map((player) => (
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight md:text-xs",
+                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && awayWon && "text-red-600",
                               )}

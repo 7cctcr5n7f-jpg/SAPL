@@ -826,6 +826,14 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   const canSeeAllBookingLinks = access.can("league_management")
   const myTeamIds = await getMyTeamIds(user)
   const myTeamIdsArr = [...myTeamIds]
+  const captainTeamIds = new Set<number>(
+    (
+      await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.captainUserId, user.id))
+    ).map((row) => row.id),
+  )
 
   // Only the current user's assigned pairing categories for their own teams — typically < 10 rows.
   const myPairings = myTeamIdsArr.length
@@ -846,6 +854,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     const mine =
       (f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) ||
       (f.awayTeamId != null && myTeamIds.has(f.awayTeamId))
+    const isCaptainFixture =
+      (f.homeTeamId != null && captainTeamIds.has(f.homeTeamId)) ||
+      (f.awayTeamId != null && captainTeamIds.has(f.awayTeamId))
 
     const allowedCategories = new Set<string>()
     if (f.homeTeamId != null) {
@@ -864,7 +875,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       for (const [category, url] of Object.entries(_categoryLinks)) {
         if (url) normalizedCategoryLinks.set(normalizeCategoryKey(category), url)
       }
-      const sourceLinks = canSeeAllBookingLinks
+      const sourceLinks = canSeeAllBookingLinks || isCaptainFixture
         ? Object.keys(_categoryLinks)
         : allowedCategories.size > 0
           ? [...allowedCategories]
@@ -874,7 +885,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         if (url) joinUrlByCategory[cat] = url
       }
     }
-    const myCategories = canSeeAllBookingLinks
+    const myCategories = canSeeAllBookingLinks || isCaptainFixture
       ? Object.keys(joinUrlByCategory)
       : allowedCategories.size > 0
         ? [...allowedCategories]
