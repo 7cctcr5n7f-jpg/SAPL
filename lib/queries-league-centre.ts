@@ -402,7 +402,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeClub.logoUrl}, ${homeOrg.logoUrl})`,
           awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayClub.logoUrl}, ${awayOrg.logoUrl})`,
           venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
-          playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
+          playtomicUrl: sql<string | null>`nullif(${fixtures.playtomicUrl}, '')`,
           published: fixtures.published,
           courtLinks: fixtures.courtLinks,
           courtAssignments: fixtures.courtAssignments,
