@@ -77,7 +77,14 @@ function fixtureDisplayTime(fixture: LCFixture) {
 }
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\s+/g, " ")
 }
 
 const FIXTURE_CATEGORY_ORDER = ["mens beginner", "mens intermediate", "mens open", "ladies open"] as const

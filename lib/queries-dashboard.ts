@@ -632,7 +632,15 @@ export async function getFixtureDetails(
     lineupByTeamCat.set(key, list)
   }
   const namesFor = (ids: number[]) => ids.map((id) => nameById.get(id)).filter((n): n is string => !!n)
-  const normalizeCategoryKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ")
+  const normalizeCategoryKey = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\bmen\b/g, "mens")
+      .replace(/\bbegineer\b/g, "beginner")
+      .replace(/\s+/g, " ")
 
   for (const f of fixtureRows) {
     const courtLinks = (f.courtLinks ?? {}) as Record<string, string>

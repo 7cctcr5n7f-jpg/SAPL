@@ -182,7 +182,14 @@ function normaliseStatus(status: string | null): LCStatus {
 const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\s+/g, " ")
 }
 
 // ---------------------------------------------------------------------------
