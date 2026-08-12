@@ -27,7 +27,7 @@ import {
   NoTeam,
   FinalCta,
 } from "@/components/landing/info-sections"
-import { PresentedBy, PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
+import { PresentedBy, PartneredByWilson, PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
 
 export default async function HomePage() {
   const season = await getCurrentSeason()
@@ -82,6 +82,9 @@ export default async function HomePage() {
               <PresentedBy sponsor={sponsor} />
             </div>
           ) : null}
+          <div className="mt-3">
+            <PartneredByWilson />
+          </div>
         </div>
       </section>
 

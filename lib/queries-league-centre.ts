@@ -182,7 +182,14 @@ function normaliseStatus(status: string | null): LCStatus {
 const LIVE_STATUSES = new Set(["league_locked", "active", "published"])
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\s+/g, " ")
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +409,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           homeLogo: sql<string | null>`coalesce(${home.logoUrl}, ${homeClub.logoUrl}, ${homeOrg.logoUrl})`,
           awayLogo: sql<string | null>`coalesce(${away.logoUrl}, ${awayClub.logoUrl}, ${awayOrg.logoUrl})`,
           venue: sql<string | null>`coalesce(${clubs.name}, ${fixtures.venue})`,
-          playtomicUrl: sql<string | null>`coalesce(nullif(${fixtures.playtomicUrl}, ''), nullif(${clubs.playtomicUrl}, ''))`,
+          playtomicUrl: sql<string | null>`nullif(${fixtures.playtomicUrl}, '')`,
           published: fixtures.published,
           courtLinks: fixtures.courtLinks,
           courtAssignments: fixtures.courtAssignments,
@@ -628,18 +635,6 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       for (const [cat, url] of Object.entries(rawCourtLinks)) {
         if (url) categoryLinks[cat] = url
       }
-      // Some fixtures only have a single fixture-level Playtomic link.
-      // Mirror that link across known categories so the drilldown rows can show
-      // Join Match consistently like My Matches.
-      if (Object.keys(categoryLinks).length === 0 && f.playtomicUrl) {
-        const categories = new Set<string>()
-        for (const rubber of rubbers) if (rubber.category) categories.add(rubber.category)
-        for (const cat of Object.keys(rawCourtAssignments)) categories.add(cat)
-        for (const cat of Object.keys(homePlayers)) categories.add(cat)
-        for (const cat of Object.keys(awayPlayers)) categories.add(cat)
-        if (f.divisionName) categories.add(f.divisionName)
-        for (const cat of categories) categoryLinks[cat] = f.playtomicUrl
-      }
     }
 
     return {
@@ -826,6 +821,14 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
   const canSeeAllBookingLinks = access.can("league_management")
   const myTeamIds = await getMyTeamIds(user)
   const myTeamIdsArr = [...myTeamIds]
+  const captainTeamIds = new Set<number>(
+    (
+      await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.captainUserId, user.id))
+    ).map((row) => row.id),
+  )
 
   // Only the current user's assigned pairing categories for their own teams — typically < 10 rows.
   const myPairings = myTeamIdsArr.length
@@ -846,6 +849,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     const mine =
       (f.homeTeamId != null && myTeamIds.has(f.homeTeamId)) ||
       (f.awayTeamId != null && myTeamIds.has(f.awayTeamId))
+    const isCaptainFixture =
+      (f.homeTeamId != null && captainTeamIds.has(f.homeTeamId)) ||
+      (f.awayTeamId != null && captainTeamIds.has(f.awayTeamId))
 
     const allowedCategories = new Set<string>()
     if (f.homeTeamId != null) {
@@ -864,8 +870,16 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       for (const [category, url] of Object.entries(_categoryLinks)) {
         if (url) normalizedCategoryLinks.set(normalizeCategoryKey(category), url)
       }
-      const sourceLinks = canSeeAllBookingLinks
-        ? Object.keys(_categoryLinks)
+      const fixtureCategoryNames = new Set<string>([
+        ...Object.keys(_categoryLinks),
+        ...Object.keys(f.courtInfoByCategory ?? {}),
+        ...Object.keys(f.homePlayers ?? {}),
+        ...Object.keys(f.awayPlayers ?? {}),
+        ...f.rubbers.map((rubber) => rubber.category).filter(Boolean),
+        ...(f.divisionName ? [f.divisionName] : []),
+      ])
+      const sourceLinks = canSeeAllBookingLinks || isCaptainFixture
+        ? [...fixtureCategoryNames]
         : allowedCategories.size > 0
           ? [...allowedCategories]
           : Object.keys(_categoryLinks)
@@ -874,7 +888,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         if (url) joinUrlByCategory[cat] = url
       }
     }
-    const myCategories = canSeeAllBookingLinks
+    const myCategories = canSeeAllBookingLinks || isCaptainFixture
       ? Object.keys(joinUrlByCategory)
       : allowedCategories.size > 0
         ? [...allowedCategories]

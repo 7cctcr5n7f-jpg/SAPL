@@ -6,7 +6,6 @@ import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
 import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
 import { computeDivisionPlayoffQualifiers } from "@/lib/engine/playoffs"
-import { CATEGORY_RULES } from "@/lib/constants"
 import { ResultEntry } from "@/components/captain/result-entry"
 import {
   Dialog,
@@ -78,7 +77,27 @@ function fixtureDisplayTime(fixture: LCFixture) {
 }
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\s+/g, " ")
+}
+
+const FIXTURE_CATEGORY_ORDER = ["mens beginner", "mens intermediate", "mens open", "ladies open"] as const
+
+function categorySortRank(category: string): number {
+  const normalized = normalizeCategoryKey(category)
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\s+/g, " ")
+    .trim()
+  const index = FIXTURE_CATEGORY_ORDER.indexOf(normalized as (typeof FIXTURE_CATEGORY_ORDER)[number])
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index
 }
 
 function linkForCategory(links: Record<string, string> | undefined, category: string): string | null {
@@ -426,10 +445,6 @@ function FixturesByCategory({
   onToggleFixture: (id: number) => void
   currentPlayerId: number | null
 }) {
-  // Group by divisionName (the category for this division)
-  // We use CATEGORY_RULES order but also capture any divisionName not in the list
-  const categoryOrder = useMemo(() => CATEGORY_RULES.map((r) => r.name), [])
-
   const byCategory = useMemo(() => {
     const map = new Map<string, LCFixture[]>()
     for (const f of fixtures) {
@@ -438,16 +453,13 @@ function FixturesByCategory({
       arr.push(f)
       map.set(key, arr)
     }
-    // Sort categories by CATEGORY_RULES order
     return Array.from(map.entries()).sort(([a], [b]) => {
-      const ai = categoryOrder.indexOf(a)
-      const bi = categoryOrder.indexOf(b)
-      if (ai === -1 && bi === -1) return a.localeCompare(b)
-      if (ai === -1) return 1
-      if (bi === -1) return -1
+      const ai = categorySortRank(a)
+      const bi = categorySortRank(b)
+      if (ai === bi) return a.localeCompare(b)
       return ai - bi
     })
-  }, [fixtures, categoryOrder])
+  }, [fixtures])
 
   if (fixtures.length === 0) {
     return (
@@ -813,6 +825,7 @@ function FixtureBreakdown({
         <div className="divide-y divide-slate-100">
           {Object.keys(fixture.courtInfoByCategory)
             .sort((a, b) =>
+              categorySortRank(a) - categorySortRank(b) ||
               slotTimeValue(fixture.courtInfoByCategory[a]?.time) - slotTimeValue(fixture.courtInfoByCategory[b]?.time) ||
               courtSortValue(fixture.courtInfoByCategory[b]?.court) - courtSortValue(fixture.courtInfoByCategory[a]?.court) ||
               a.localeCompare(b),
@@ -861,18 +874,18 @@ function FixtureBreakdown({
                 {/* Players vs Score vs Players */}
                 <div className="grid grid-cols-[1fr_92px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
-                  <div className="space-y-0.5">
+                  <div className="min-w-0 space-y-0.5">
                     {homePair.length > 0 ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         {homePairRating != null && (
                           <LiBadge li={homePairRating} tall />
                         )}
-                        <div className="space-y-0.5">
+                        <div className="min-w-0 space-y-0.5">
                           {homePair.map((player) => (
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight md:text-xs",
+                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && homeWon && "text-red-600",
                               )}
@@ -891,9 +904,9 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Score / vs */}
-                  <div className="flex min-h-[6rem] flex-col items-center justify-center gap-1 tabular-nums">
+                  <div className="flex self-stretch flex-col items-center justify-center gap-1 tabular-nums">
                     <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
-                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-red-600">
                         {category}
                       </span>
                       {(courtInfo?.court || courtInfo?.time) && (
@@ -965,15 +978,15 @@ function FixtureBreakdown({
                   </div>
 
                   {/* Away pair */}
-                  <div className="space-y-0.5 text-right">
+                  <div className="min-w-0 space-y-0.5 text-right">
                     {awayPair.length > 0 ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="space-y-0.5">
+                      <div className="flex min-w-0 items-center justify-end gap-2">
+                        <div className="min-w-0 space-y-0.5">
                           {awayPair.map((player) => (
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight md:text-xs",
+                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                                 hasScore && awayWon && "text-red-600",
                               )}

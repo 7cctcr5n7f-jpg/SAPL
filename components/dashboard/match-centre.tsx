@@ -55,7 +55,14 @@ function courtLinksOf(f: DashboardFixture): Record<string, string> {
 }
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\bmen\b/g, "mens")
+    .replace(/\bbegineer\b/g, "beginner")
+    .replace(/\s+/g, " ")
 }
 
 function linkForCategory(links: Record<string, string>, category: string): string | null {
