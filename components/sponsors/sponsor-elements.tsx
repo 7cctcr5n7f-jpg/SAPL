@@ -67,6 +67,22 @@ export function PresentedBy({ sponsor }: { sponsor: PublicSponsor | null }) {
   )
 }
 
+/** Secondary partner lockup shown under the hero sponsor line. */
+export function PartneredByWilson() {
+  return (
+    <span className="inline-flex items-center gap-3">
+      <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">Partnered by</span>
+      <Image
+        src="/wilson.jpeg"
+        alt="Wilson logo"
+        width={150}
+        height={40}
+        className="h-7 w-auto object-contain md:h-8"
+      />
+    </span>
+  )
+}
+
 /** Sitewide sponsor band — a quiet strip of partner logos. */
 export function SponsorBand({ sponsors }: { sponsors: PublicSponsor[] }) {
   if (!sponsors.length) return null

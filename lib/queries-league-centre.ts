@@ -628,18 +628,6 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       for (const [cat, url] of Object.entries(rawCourtLinks)) {
         if (url) categoryLinks[cat] = url
       }
-      // Some fixtures only have a single fixture-level Playtomic link.
-      // Mirror that link across known categories so the drilldown rows can show
-      // Join Match consistently like My Matches.
-      if (Object.keys(categoryLinks).length === 0 && f.playtomicUrl) {
-        const categories = new Set<string>()
-        for (const rubber of rubbers) if (rubber.category) categories.add(rubber.category)
-        for (const cat of Object.keys(rawCourtAssignments)) categories.add(cat)
-        for (const cat of Object.keys(homePlayers)) categories.add(cat)
-        for (const cat of Object.keys(awayPlayers)) categories.add(cat)
-        if (f.divisionName) categories.add(f.divisionName)
-        for (const cat of categories) categoryLinks[cat] = f.playtomicUrl
-      }
     }
 
     return {
