@@ -17,7 +17,7 @@ import {
   defaultCourtAssignments,
   type OpsStatus,
 } from "@/lib/fixtures-ops"
-import { publishFixture, saveCategoryAssignment, saveFixtureSchedule, unpublishFixture } from "@/lib/actions/fixtures"
+import { publishFixture, saveCategoryAssignment, saveFixtureSchedule } from "@/lib/actions/fixtures"
 import { ResultEntry } from "@/components/captain/result-entry"
 import type { DashboardFixture, FixtureHealth, HostClub } from "@/lib/queries-fixtures"
 import {
@@ -639,23 +639,7 @@ function FixtureDetail({
     <div className="space-y-2 border-t border-border bg-background/40 px-4 py-2">
       {canManageVenue && (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {f.published ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                startPublishing(async () => {
-                  const res = await unpublishFixture(f.id)
-                  if (!res.ok) toast.error(res.error ?? "Could not unpublish fixture.")
-                  else toast.success("Fixture unpublished")
-                })
-              }
-              disabled={publishing}
-            >
-              {publishing ? "Saving..." : "Unpublish"}
-            </Button>
-          ) : (
+          {!f.published && (
             <>
               <Button
                 type="button"
