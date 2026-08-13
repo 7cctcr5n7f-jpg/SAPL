@@ -79,6 +79,8 @@ export type MemberRow = {
   /** Team this member is the primary owner of (matched via teams.ownerEmail). */
   ownedTeamId: number | null
   ownedTeamName: string | null
+  /** Whether this member is currently listed on the public player marketplace. */
+  marketplaceListed: boolean
 }
 
 export async function listMembers(): Promise<MemberRow[]> {
@@ -105,6 +107,8 @@ export async function listMembers(): Promise<MemberRow[]> {
       playtomicUrl: user.playtomicUrl,
       playtomicRatingVerified: user.playtomicRatingVerified,
       avatarUrl: user.avatarUrl,
+      lookingForTeam: user.lookingForTeam,
+      onMarketplace: user.onMarketplace,
     })
     .from(user)
     .leftJoin(userMeta, eq(userMeta.userId, user.id))
@@ -231,8 +235,39 @@ export async function listMembers(): Promise<MemberRow[]> {
       registeredBy: null,
       ownedTeamId: ownerMap.get(r.email.trim().toLowerCase())?.teamId ?? null,
       ownedTeamName: ownerMap.get(r.email.trim().toLowerCase())?.teamName ?? null,
+      marketplaceListed: !!(r.lookingForTeam || r.onMarketplace),
     }
   })
+}
+
+export async function setMemberMarketplaceListed(memberId: string, listed: boolean) {
+  await requireMemberManager()
+
+  const activeMembership = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.playerId, memberId), eq(teamMembers.status, "active")))
+    .limit(1)
+
+  const hasTeam = activeMembership.length > 0
+  if (listed && hasTeam) {
+    return { ok: false as const, error: "This member is on a team and cannot be listed on the marketplace." }
+  }
+
+  await db
+    .update(user)
+    .set({
+      lookingForTeam: listed,
+      onMarketplace: listed,
+      availability: listed ? "available" : hasTeam ? "on_team" : "unavailable",
+      updatedAt: new Date(),
+    })
+    .where(eq(user.id, memberId))
+
+  revalidatePath("/marketplace")
+  revalidatePath("/admin/members")
+  revalidatePath("/dashboard/profile")
+  return { ok: true as const }
 }
 
 // ---------------------------------------------------------------------------

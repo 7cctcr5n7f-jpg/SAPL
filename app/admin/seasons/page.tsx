@@ -1,5 +1,11 @@
 import { requirePermissionPage } from "@/lib/access"
-import { getAdminSummary, getSeasonsWithDivisions, getRegions, getSeasonFixturePlanning } from "@/lib/queries-admin"
+import {
+  getAdminSummary,
+  getSeasonsWithDivisions,
+  getRegions,
+  getSeasonFixturePlanning,
+  getSeasonFixtureCheckerEntries,
+} from "@/lib/queries-admin"
 import { getCurrentSeason } from "@/lib/queries"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { PageHeader } from "@/components/dashboard/page-header"
@@ -9,6 +15,7 @@ import { SeasonReadinessSummary } from "@/components/admin/season-readiness-summ
 import { AdminTabs } from "@/components/admin/admin-tabs"
 import { SeasonsSectionsTabs } from "@/components/admin/seasons-sections-tabs"
 import { SeasonExportsPanel } from "@/components/admin/season-exports-panel"
+import { FixtureCheckerPanel } from "@/components/admin/fixture-checker-panel"
 
 export const metadata = { title: "Seasons | SAPL" }
 
@@ -23,8 +30,10 @@ export default async function AdminSeasonsPage() {
   ])
   const readiness = currentSeason ? await getSeasonReadiness(currentSeason.id) : null
   const planningBySeason = new Map<number, Awaited<ReturnType<typeof getSeasonFixturePlanning>>>()
+  const checkerEntriesBySeason = new Map<number, Awaited<ReturnType<typeof getSeasonFixtureCheckerEntries>>>()
   for (const season of seasons) {
     planningBySeason.set(season.id, await getSeasonFixturePlanning(season.id))
+    checkerEntriesBySeason.set(season.id, await getSeasonFixtureCheckerEntries(season.id))
   }
 
   return (
@@ -87,6 +96,12 @@ export default async function AdminSeasonsPage() {
               name: s.name,
               isCurrent: s.isCurrent,
             }))}
+          />
+        }
+        checkerContent={
+          <FixtureCheckerPanel
+            seasons={seasons.map((s) => ({ id: s.id, name: s.name, isCurrent: s.isCurrent }))}
+            entriesBySeason={Object.fromEntries([...checkerEntriesBySeason.entries()])}
           />
         }
       />

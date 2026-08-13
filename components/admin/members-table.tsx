@@ -11,6 +11,7 @@ import {
   updateMemberDetails,
   updateMemberEmail,
   updateMemberPaid,
+  setMemberMarketplaceListed,
   resendInviteEmail,
   deleteMember,
   createAccountForContact,
@@ -38,6 +39,7 @@ import {
   Crown,
   Clock,
   UserPlus,
+  Users,
   Building2,
   ShieldCheck,
   ExternalLink,
@@ -469,6 +471,7 @@ function MemberEditPanel({
   const [playtomicUrl, setPlaytomicUrl] = useState(cleanPlaytomicUrl(member.playtomicUrl) ?? "")
   const [ratingVerified, setRatingVerified] = useState(member.playtomicRatingVerified)
   const [paid, setPaid] = useState(member.paymentStatus === "paid")
+  const [marketplaceListed, setMarketplaceListed] = useState(member.marketplaceListed)
 
   function save() {
     start(async () => {
@@ -776,6 +779,38 @@ function MemberEditPanel({
                 Cancel
               </button>
             )}
+
+            <button
+              type="button"
+              disabled={pending || (member.teamId != null && !marketplaceListed)}
+              onClick={() =>
+                start(async () => {
+                  const next = !marketplaceListed
+                  const res = await setMemberMarketplaceListed(member.id, next)
+                  if (!res.ok) {
+                    toast.error(res.error ?? "Could not update marketplace listing")
+                    return
+                  }
+                  setMarketplaceListed(next)
+                  onSaved({
+                    marketplaceListed: next,
+                  })
+                  toast.success(next ? "Member listed on marketplace" : "Member removed from marketplace")
+                })
+              }
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50",
+                marketplaceListed
+                  ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  : "border-border bg-card hover:bg-muted/50",
+              )}
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span>
+                {marketplaceListed ? "Remove from marketplace" : "List on marketplace"}
+                {member.teamId != null && !marketplaceListed ? " (member is on a team)" : ""}
+              </span>
+            </button>
           </div>
         </div>
 
