@@ -111,6 +111,14 @@ function linkForCategory(links: Record<string, string> | undefined, category: st
   return null
 }
 
+function fixtureWeekNumber(fixture: LCFixture, seasonWeeks: number): number | null {
+  if (Number.isInteger(fixture.week) && fixture.week > 0) return fixture.week
+  if ((fixture.divisionName ?? "").toLowerCase() === "playoff" && Number.isInteger(seasonWeeks) && seasonWeeks > 0) {
+    return seasonWeeks
+  }
+  return null
+}
+
 // ─── Main experience ────────────────────────────────────────────────────────
 
 export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
@@ -189,22 +197,34 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
 
   const allWeeks = useMemo(() => {
     const weeks = new Set<number>()
-    divisionFixtures.forEach((f) => weeks.add(f.week))
+    divisionFixtures.forEach((f) => {
+      const week = fixtureWeekNumber(f, data.season.weeks)
+      if (week != null) weeks.add(week)
+    })
     return Array.from(weeks).sort((a, b) => a - b)
-  }, [divisionFixtures])
+  }, [divisionFixtures, data.season.weeks])
 
-  const activeWeek = selectedWeek ?? allWeeks[0] ?? 1
+  const finalsWeek = useMemo(() => {
+    const playoffWeeks = divisionFixtures
+      .filter((fixture) => (fixture.divisionName ?? "").toLowerCase() === "playoff")
+      .map((fixture) => fixtureWeekNumber(fixture, data.season.weeks))
+      .filter((week): week is number => week != null)
+    if (!playoffWeeks.length) return null
+    return Math.max(...playoffWeeks)
+  }, [divisionFixtures, data.season.weeks])
+
+  const activeWeek = selectedWeek != null && allWeeks.includes(selectedWeek) ? selectedWeek : (allWeeks[0] ?? 1)
 
   const weekFixtures = useMemo(
     () =>
       divisionFixtures
-        .filter((f) => f.week === activeWeek)
+        .filter((f) => fixtureWeekNumber(f, data.season.weeks) === activeWeek)
         .sort((a, b) =>
           slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot) ||
           courtSortValue(b.courtInfoByCategory?.[b.divisionName ?? ""]?.court) - courtSortValue(a.courtInfoByCategory?.[a.divisionName ?? ""]?.court) ||
           (a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0),
         ),
-    [divisionFixtures, activeWeek],
+    [divisionFixtures, activeWeek, data.season.weeks],
   )
 
   const byeTeams = useMemo(() => {
@@ -216,6 +236,10 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     return divisionStandings.filter((team) => !scheduledTeamIds.has(team.teamId))
   }, [weekFixtures, divisionStandings])
 
+  const activeFixtures = weekFixtures
+  const finalsFixtures = activeFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() === "playoff")
+  const showingFinalsBracket = finalsWeek != null && activeWeek === finalsWeek && finalsFixtures.length > 0
+
   if (!data.regions.length) {
     return (
       <div className="rounded-2xl border border-slate-100 bg-white px-6 py-20 text-center shadow-sm">
@@ -226,8 +250,6 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
       </div>
     )
   }
-
-  const activeFixtures = weekFixtures
 
   return (
     <div style={{ backgroundColor: "rgb(245,248,255)" }} className="min-h-screen pb-16">
@@ -322,6 +344,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
             <WeekSelector
               weeks={allWeeks}
               activeWeek={activeWeek}
+              finalsWeek={finalsWeek}
               onSelect={setSelectedWeek}
             />
           )}
@@ -336,7 +359,12 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
               />
             ) : (
               <div className="space-y-5">
-                {byeTeams.length > 0 ? (
+                {finalsWeek != null && activeWeek === finalsWeek ? (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
+                    Finals weekend is shown <span className="font-semibold">as is</span> based on current standings and can still change before lock-in.
+                  </div>
+                ) : null}
+                {!showingFinalsBracket && byeTeams.length > 0 ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <span className="text-xs font-bold uppercase tracking-[0.15em] text-amber-700">
@@ -360,12 +388,16 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                     </div>
                   </div>
                 ) : null}
-                <FixturesByCategory
-                  fixtures={activeFixtures}
-                  expandedFixtureId={expandedFixtureId}
-                  onToggleFixture={toggleFixture}
-                  currentPlayerId={data.currentPlayerId}
-                />
+                {showingFinalsBracket ? (
+                  <FinalsBracket fixtures={finalsFixtures} />
+                ) : (
+                  <FixturesByCategory
+                    fixtures={activeFixtures}
+                    expandedFixtureId={expandedFixtureId}
+                    onToggleFixture={toggleFixture}
+                    currentPlayerId={data.currentPlayerId}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -375,15 +407,92 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   )
 }
 
+function FinalsBracket({ fixtures }: { fixtures: LCFixture[] }) {
+  const sorted = useMemo(
+    () =>
+      [...fixtures].sort(
+        (a, b) =>
+          (a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0) ||
+          slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot) ||
+          (a.id - b.id),
+      ),
+    [fixtures],
+  )
+
+  const round = (fixture: LCFixture): "quarter" | "semi" | "third" | "final" => {
+    if (fixture.playoffBracketPosition != null) {
+      if (fixture.playoffBracketPosition >= 1 && fixture.playoffBracketPosition <= 4) return "quarter"
+      if (fixture.playoffBracketPosition >= 5 && fixture.playoffBracketPosition <= 6) return "semi"
+      if (fixture.playoffBracketPosition === 7) return "third"
+      if (fixture.playoffBracketPosition === 8) return "final"
+    }
+    const label = `${fixture.homeName ?? ""} ${fixture.awayName ?? ""}`.toLowerCase()
+    if (label.includes("sf1 loser") || label.includes("sf2 loser") || label.includes("3rd")) return "third"
+    if (label.includes("sf1 winner") || label.includes("sf2 winner")) return "final"
+    if (label.includes("qf") && label.includes("winner")) return "semi"
+    return "quarter"
+  }
+
+  const quarters = sorted.filter((fixture) => round(fixture) === "quarter")
+  const semis = sorted.filter((fixture) => round(fixture) === "semi")
+  const thirdPlace = sorted.filter((fixture) => round(fixture) === "third")
+  const final = sorted.filter((fixture) => round(fixture) === "final")
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <BracketColumn title="Quarter-finals" fixtures={quarters} />
+      <BracketColumn title="Semi-finals" fixtures={semis} />
+      <div className="space-y-4">
+        <BracketColumn title="3rd Place Playoff" fixtures={thirdPlace} />
+        <BracketColumn title="Final" fixtures={final} />
+      </div>
+    </div>
+  )
+}
+
+function BracketColumn({ title, fixtures }: { title: string; fixtures: LCFixture[] }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-center">
+      <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-red-600">{title}</h3>
+      <div className="space-y-2.5">
+        {fixtures.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-400">TBD</p>
+        ) : (
+          fixtures.map((fixture) => <BracketMatchCard key={fixture.id} fixture={fixture} />)
+        )}
+      </div>
+    </section>
+  )
+}
+
+function BracketMatchCard({ fixture }: { fixture: LCFixture }) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-center">
+      <div className="mb-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+        {fixture.matchDate ? <span>{shortDate(fixture.matchDate)}</span> : null}
+        {fixture.timeslot ? <span>{fixture.timeslot}</span> : null}
+      </div>
+      <div className="space-y-1 text-sm font-semibold text-slate-800">
+        <p>{fixture.homeName ?? "TBD"}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">vs</p>
+        <p>{fixture.awayName ?? "TBD"}</p>
+      </div>
+      {fixture.venue ? <p className="mt-1.5 text-[11px] text-slate-500">{fixture.venue}</p> : null}
+    </article>
+  )
+}
+
 // ─── Week Selector ───────────────────────────────────────────────────────────
 
 function WeekSelector({
   weeks,
   activeWeek,
+  finalsWeek,
   onSelect,
 }: {
   weeks: number[]
   activeWeek: number
+  finalsWeek: number | null
   onSelect: (w: number) => void
 }) {
   return (
@@ -412,7 +521,7 @@ function WeekSelector({
                 : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800",
             )}
           >
-            Week {w}
+            {w === finalsWeek ? "Finals" : `Week ${w}`}
           </button>
         ))}
       </div>

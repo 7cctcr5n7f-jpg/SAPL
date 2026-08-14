@@ -21,9 +21,31 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
 
 export async function getCurrentSeason() {
-  const [season] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).where(eq(seasons.isCurrent, true)).limit(1)
+  const [season] = await db
+    .select({
+      id: seasons.id,
+      name: seasons.name,
+      weeks: seasons.weeks,
+      status: seasons.status,
+      isCurrent: seasons.isCurrent,
+      playerFee: seasons.playerFee,
+    })
+    .from(seasons)
+    .where(eq(seasons.isCurrent, true))
+    .limit(1)
   if (season) return season
-  const [latest] = await db.select({ id: seasons.id, isCurrent: seasons.isCurrent, playerFee: seasons.playerFee }).from(seasons).orderBy(desc(seasons.id)).limit(1)
+  const [latest] = await db
+    .select({
+      id: seasons.id,
+      name: seasons.name,
+      weeks: seasons.weeks,
+      status: seasons.status,
+      isCurrent: seasons.isCurrent,
+      playerFee: seasons.playerFee,
+    })
+    .from(seasons)
+    .orderBy(desc(seasons.id))
+    .limit(1)
   return latest ?? null
 }
 
