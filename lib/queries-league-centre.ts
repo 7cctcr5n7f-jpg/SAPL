@@ -14,6 +14,7 @@ import {
   matches,
   teamPairings,
   teamInvites,
+  playoffs,
   user as userTable,
 } from "@/lib/db/schema"
 import { alias } from "drizzle-orm/pg-core"
@@ -100,6 +101,7 @@ export type LCFixture = {
   homeSetsWon: number | null
   awaySetsWon: number | null
   winnerTeamId: number | null
+  playoffBracketPosition?: number | null
   /** Average LI for all active players in each team */
   homeAvgLi: number | null
   awayAvgLi: number | null
@@ -388,7 +390,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   const homeClub = alias(clubs, "homeClub")
   const awayClub = alias(clubs, "awayClub")
 
-  const fixtureRows = usedDivisionIds.length
+  const fixtureRowsBase = usedDivisionIds.length
     ? await db
         .select({
           id: fixtures.id,
@@ -418,6 +420,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           homeSetsWon: fixtures.homeSetsWon,
           awaySetsWon: fixtures.awaySetsWon,
           winnerTeamId: fixtures.winnerTeamId,
+          bracketPosition: sql<number | null>`null`,
           homeAvgLi: home.avgLi,
           awayAvgLi: away.avgLi,
         })
@@ -434,6 +437,67 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.published, true), inArray(fixtures.divisionId, usedDivisionIds)))
         .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
     : []
+
+  const playoffRows = await db
+    .select({
+      id: playoffs.id,
+      homeTeamId: playoffs.homeTeamId,
+      awayTeamId: playoffs.awayTeamId,
+      homeLabel: playoffs.homeLabel,
+      awayLabel: playoffs.awayLabel,
+      homeScore: playoffs.homeScore,
+      awayScore: playoffs.awayScore,
+      winnerTeamId: playoffs.winnerTeamId,
+      status: playoffs.status,
+      matchDate: playoffs.matchDate,
+      timeslot: playoffs.timeslot,
+      venue: playoffs.venue,
+      bracketPosition: playoffs.bracketPosition,
+    })
+    .from(playoffs)
+    .where(and(eq(playoffs.seasonId, season.id), eq(playoffs.type, "tshwane_masters")))
+    .orderBy(asc(playoffs.matchDate), asc(playoffs.bracketPosition))
+
+  const playoffDivisionTargets = usedDivisions.filter(
+    (division): division is typeof division & { regionId: number } => division.regionId != null,
+  )
+
+  const playoffFixtureRows = playoffRows.flatMap((playoffRow) =>
+    playoffDivisionTargets.map((divisionTarget, index) => ({
+      id: 9_000_000 + playoffRow.id * 10 + index,
+      week: season.weeks,
+      matchDate: playoffRow.matchDate,
+      timeslot: playoffRow.timeslot,
+      status: playoffRow.status,
+      divisionId: divisionTarget.id,
+      divisionName: "Playoff",
+      divisionLevel: divisionTarget.level,
+      regionId: divisionTarget.regionId,
+      regionName: divisionTarget.regionName,
+      venueClubId: null,
+      homeTeamId: playoffRow.homeTeamId,
+      awayTeamId: playoffRow.awayTeamId,
+      homeName: playoffRow.homeLabel,
+      awayName: playoffRow.awayLabel,
+      homeLogo: null,
+      awayLogo: null,
+      venue: playoffRow.venue ?? "To be Confirmed",
+      playtomicUrl: null,
+      published: true,
+      courtLinks: {},
+      courtAssignments: {},
+      homePoints: playoffRow.homeScore,
+      awayPoints: playoffRow.awayScore,
+      homeSetsWon: playoffRow.homeScore,
+      awaySetsWon: playoffRow.awayScore,
+      winnerTeamId: playoffRow.winnerTeamId,
+      bracketPosition: playoffRow.bracketPosition,
+      homeAvgLi: null,
+      awayAvgLi: null,
+    })),
+  )
+
+  const fixtureRows = [...fixtureRowsBase, ...playoffFixtureRows]
 
   const fixtureVenueRows = usedDivisionIds.length
     ? await db
@@ -660,6 +724,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       homeSetsWon: f.homeSetsWon,
       awaySetsWon: f.awaySetsWon,
       winnerTeamId: f.winnerTeamId,
+      playoffBracketPosition: (f as { bracketPosition?: number | null }).bracketPosition ?? null,
       homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
       awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
       homePairLi: (() => {
@@ -758,7 +823,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
  */
 const getSharedLeagueCentreData = unstable_cache(
   _buildSharedLeagueCentreData,
-  ["league-centre-shared"],
+  ["league-centre-shared-finals-v2"],
   { revalidate: 60, tags: ["league-centre-shared"] },
 )
 
