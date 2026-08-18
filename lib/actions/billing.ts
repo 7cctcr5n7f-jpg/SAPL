@@ -77,19 +77,50 @@ export async function sendFeeReminder(input: {
       <div style="padding:32px;">
         <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">Outstanding league fee</h1>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
-          Hi ${input.payerName}, our records show an outstanding ${BRAND.name} fee of
+          Hi ${input.payerName},
+        </p>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
+          We&rsquo;re almost there! 🎾 The ${BRAND.short} league kicks off this Thursday, and we&rsquo;re looking forward to getting everyone on court.
+        </p>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
+          Our records show that there is still an outstanding league fee of
           <strong style="color:#ffffff;">${fmtZAR(input.amount)}</strong> for <strong style="color:#ffffff;">${input.teamName}</strong>.
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
-          Please settle this as soon as possible so your league participation isn't affected. If you've already paid, you can ignore this message.
+          When you get a moment, please log into your ${BRAND.short} profile and settle the outstanding fee. You can use the PayFast payment link provided there to make payment quickly and securely.
+        </p>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
+          If you&rsquo;ve already made payment, thank you and please ignore this reminder.
+        </p>
+        <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
+          Let&rsquo;s get the season started! 🔥
         </p>
         <p style="color:#737373;font-size:12px;line-height:1.6;margin:24px 0 0;">
-          Questions? Just reply to this email and the league office will help.
+          Questions? Just reply to this email and the ${BRAND.short} team will be happy to help.
+        </p>
+        <p style="color:#737373;font-size:12px;line-height:1.6;margin:16px 0 0;">
+          Thanks,<br/>
+          South Africa Padel League
         </p>
       </div>
     </div>
   </div>`
-  const text = `Hi ${input.payerName}, our records show an outstanding ${BRAND.name} fee of ${fmtZAR(input.amount)} for ${input.teamName}. Please settle this as soon as possible.`
+  const text = `Hi ${input.payerName},
+
+We’re almost there! 🎾 The SAPL league kicks off this Thursday, and we’re looking forward to getting everyone on court.
+
+Our records show that there is still an outstanding league fee of ${fmtZAR(input.amount)} for ${input.teamName}.
+
+When you get a moment, please log into your SAPL profile and settle the outstanding fee. You can use the PayFast payment link provided there to make payment quickly and securely.
+
+If you’ve already made payment, thank you and please ignore this reminder.
+
+Let’s get the season started! 🔥
+
+Questions? Just reply to this email and the SAPL team will be happy to help.
+
+Thanks,
+South Africa Padel League`
 
   const { sent } = await sendEmail({ to: input.email, subject, html, text })
 
