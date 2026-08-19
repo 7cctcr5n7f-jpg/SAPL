@@ -81,6 +81,7 @@ export function DashboardNav({
       { href: "/admin/clubs", label: "Clubs", icon: ICONS.venues },
       { href: "/admin/members", label: "Members", icon: ICONS.members },
       { href: "/admin/billing", label: "Payments", icon: ICONS.payments },
+      { href: "/admin/news", label: "News", icon: ICONS.results },
       { href: "/dashboard/league-centre", label: "League Centre", icon: ICONS.results },
       { href: "/admin/sponsors", label: "Sponsors", icon: ICONS.sponsors },
     ]
@@ -107,7 +108,7 @@ export function DashboardNav({
   return (
     <aside className="flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-16 items-center border-b border-sidebar-border px-5">
-        <Logo />
+        <Logo imgClassName="h-24 w-auto brightness-0 contrast-200 md:h-28" />
       </div>
 
       <div className="border-b border-sidebar-border px-5 py-4">

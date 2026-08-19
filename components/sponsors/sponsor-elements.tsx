@@ -68,18 +68,35 @@ export function PresentedBy({ sponsor }: { sponsor: PublicSponsor | null }) {
 }
 
 /** Secondary partner lockup shown under the hero sponsor line. */
-export function PartneredByWilson() {
+export function PartneredBy({ sponsors }: { sponsors: PublicSponsor[] }) {
+  if (!sponsors.length) return null
   return (
-    <span className="inline-flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">Partnered by</span>
-      <Image
-        src="/wilson.jpeg"
-        alt="Wilson logo"
-        width={150}
-        height={40}
-        className="h-7 w-auto object-contain md:h-8"
-      />
-    </span>
+      {sponsors.map((s) => {
+        const logo = s.logoUrl ? (
+          <SponsorLogo s={s} className="h-7 w-auto object-contain md:h-8" />
+        ) : (
+          <span className="heading text-sm text-foreground">{s.name}</span>
+        )
+        return s.website ? (
+          <a
+            key={s.id}
+            href={s.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center"
+            aria-label={s.name}
+          >
+            {logo}
+          </a>
+        ) : (
+          <span key={s.id} className="inline-flex items-center">
+            {logo}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

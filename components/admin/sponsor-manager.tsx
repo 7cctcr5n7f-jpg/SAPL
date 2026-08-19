@@ -153,6 +153,9 @@ export function SponsorManager({
                 <div className="space-y-2">
                   <Label>Logo</Label>
                   <SponsorLogoUploader value={logoUrl} onChange={setLogoUrl} />
+                  <p className="text-xs text-muted-foreground">
+                    Uploading stores the image file. Click <span className="font-semibold">Save changes</span> to attach it to this sponsor.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="name">Sponsor name</Label>

@@ -665,6 +665,56 @@ export const settings = pgTable("ppl_settings", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
+// Editorial categories for SAPL news/articles.
+export const newsCategories = pgTable(
+  "ppl_news_categories",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex("ppl_news_categories_slug_uidx").on(t.slug),
+    nameIdx: index("ppl_news_categories_name_idx").on(t.name),
+  }),
+)
+
+// Editorial articles/news stories shown on homepage and /news surfaces.
+export const newsArticles = pgTable(
+  "ppl_news_articles",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    slug: text("slug").notNull(),
+    excerpt: text("excerpt"),
+    content: text("content").notNull().default(""),
+    featuredImage: text("featuredImage"),
+    featuredImageAlt: text("featuredImageAlt"),
+    categoryId: integer("categoryId"),
+    authorName: text("authorName"),
+    status: text("status").notNull().default("draft"), // draft | published
+    featured: boolean("featured").notNull().default(false),
+    publishedAt: timestamp("publishedAt"),
+    metaTitle: text("metaTitle"),
+    metaDescription: text("metaDescription"),
+    tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    readTime: integer("readTime"),
+    createdByUserId: text("createdByUserId"),
+    updatedByUserId: text("updatedByUserId"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex("ppl_news_articles_slug_uidx").on(t.slug),
+    statusIdx: index("ppl_news_articles_status_idx").on(t.status),
+    featuredIdx: index("ppl_news_articles_featured_idx").on(t.featured),
+    categoryIdx: index("ppl_news_articles_category_idx").on(t.categoryId),
+    publishedAtIdx: index("ppl_news_articles_published_at_idx").on(t.publishedAt),
+  }),
+)
+
 // Payments / invoices
 export const payments = pgTable(
   "ppl_payments",
