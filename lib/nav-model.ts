@@ -62,7 +62,7 @@ const SETTINGS: NavItem = { label: "Settings", icon: "settings", href: "/dashboa
 const PUBLIC_HOME: NavItem = { label: "Home", icon: "home", href: "/" }
 const CLUBS: NavItem = { label: "Clubs", icon: "clubs", href: "/clubs" }
 const MARKETPLACE: NavItem = { label: "Marketplace", icon: "marketplace", href: "/marketplace" }
-const LEAGUE_FORMAT: NavItem = { label: "League Format", icon: "rules", href: "/rules" }
+const LEAGUE_FORMAT: NavItem = { label: "Rulebook", icon: "rules", href: "/rules" }
 const SPONSORS: NavItem = { label: "Sponsors", icon: "sponsors", href: "/sponsors" }
 
 // Admin

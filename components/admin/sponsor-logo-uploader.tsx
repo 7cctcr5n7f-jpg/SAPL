@@ -74,7 +74,7 @@ export function SponsorLogoUploader({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Upload failed")
       onChange(data.url)
-      toast.success("Logo uploaded")
+      toast.success("Logo uploaded. Click Save changes to apply it to this sponsor.")
       cancelEdit()
     } catch (err) {
       toast.error((err as Error).message)

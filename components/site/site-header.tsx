@@ -10,10 +10,11 @@ import { cn } from "@/lib/utils"
 import { Menu, X } from "lucide-react"
 
 const NAV = [
+  { href: "/news", label: "News" },
   { href: "/league-centre", dashboardHref: "/dashboard/league-centre", label: "League Centre" },
   { href: "/clubs", label: "Clubs" },
   { href: "/marketplace", label: "Marketplace" },
-  { href: "/rules", label: "League Format" },
+  { href: "/rules", label: "Rulebook" },
   { href: "/sponsors", label: "Sponsors" },
 ]
 

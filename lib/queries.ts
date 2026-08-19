@@ -113,6 +113,34 @@ export async function getTeamRankings(limit = 100) {
     .limit(limit)
 }
 
+export async function getConferenceLeaders(limit = 12) {
+  const season = await getCurrentSeason()
+  if (!season) return []
+  return db
+    .select({
+      teamId: teams.id,
+      teamName: teams.name,
+      tpr: teams.tpr,
+      divisionName: divisions.name,
+      divisionLevel: divisions.level,
+      regionName: regions.name,
+      rank: standings.rank,
+    })
+    .from(standings)
+    .innerJoin(teams, eq(standings.teamId, teams.id))
+    .leftJoin(divisions, eq(standings.divisionId, divisions.id))
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .where(
+      and(
+        eq(standings.seasonId, season.id),
+        eq(standings.rank, 1),
+        inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
+      ),
+    )
+    .orderBy(asc(divisions.level), asc(regions.name), asc(teams.name))
+    .limit(limit)
+}
+
 // Club Performance Index leaderboard
 export async function getCpiRankings() {
   const rows = await db
