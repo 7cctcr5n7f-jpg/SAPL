@@ -1,10 +1,13 @@
 import { SectionTitle } from "@/components/brand/bits"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { readFile } from "node:fs/promises"
+import path from "node:path"
 
 export const metadata = { title: "Rulebook | SAPL" }
 
 type RuleItem = { number: string; title: string; points: string[] }
 type RuleTab = { value: string; label: string; items: RuleItem[] }
+type ParsedRule = { number: number; heading: string; body: string }
 
 const RULE_TABS: RuleTab[] = [
   {
@@ -244,7 +247,100 @@ function RuleCard({ item }: { item: RuleItem }) {
   )
 }
 
-export default function RulesPage() {
+function parseRuleRefs(input: string) {
+  const refs: number[] = []
+  for (const part of input.split(",").map((p) => p.trim()).filter(Boolean)) {
+    const normalized = part.replace("–", "-")
+    if (normalized.includes("-")) {
+      const [startStr, endStr] = normalized.split("-").map((s) => s.trim())
+      const start = Number(startStr)
+      const end = Number(endStr)
+      if (Number.isInteger(start) && Number.isInteger(end) && end >= start) {
+        for (let n = start; n <= end; n += 1) refs.push(n)
+      }
+      continue
+    }
+    const single = Number(normalized)
+    if (Number.isInteger(single)) refs.push(single)
+  }
+  return refs
+}
+
+async function loadRulebookByRuleNumber() {
+  const filePath = path.join(process.cwd(), "app", "(public)", "rules", "rulebook-2026.txt")
+  const raw = await readFile(filePath, "utf8")
+  const lines = raw.split(/\r?\n/)
+  const map = new Map<number, ParsedRule>()
+  const headingRe = /^#{1,2}\s+(\d+)\.\s+(.+)$/
+
+  let current: { number: number; heading: string; body: string[] } | null = null
+  for (const line of lines) {
+    const match = line.match(headingRe)
+    if (match) {
+      if (current) {
+        map.set(current.number, {
+          number: current.number,
+          heading: current.heading,
+          body: current.body.join("\n").trim(),
+        })
+      }
+      current = {
+        number: Number(match[1]),
+        heading: match[2].trim(),
+        body: [],
+      }
+      continue
+    }
+    if (current) current.body.push(line)
+  }
+
+  if (current) {
+    map.set(current.number, {
+      number: current.number,
+      heading: current.heading,
+      body: current.body.join("\n").trim(),
+    })
+  }
+
+  return map
+}
+
+function RuleDetail({
+  item,
+  rulebook,
+}: {
+  item: RuleItem
+  rulebook: Map<number, ParsedRule>
+}) {
+  const rules = parseRuleRefs(item.number)
+    .map((ruleNumber) => rulebook.get(ruleNumber))
+    .filter((rule): rule is ParsedRule => Boolean(rule))
+
+  if (rules.length === 0) return null
+  return (
+    <details className="mt-3">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-primary transition hover:text-primary/80">
+        View full official rule text
+      </summary>
+      <div className="mt-3 space-y-3 rounded-lg border border-border/70 bg-background/40 p-3 md:p-4">
+        {rules.map((rule) => (
+          <section key={`${item.number}-${rule.number}`}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              Rule {rule.number}: {rule.heading}
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed text-muted-foreground">
+              {rule.body}
+            </pre>
+          </section>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+export default async function RulesPage() {
+  const rulebook = await loadRulebookByRuleNumber()
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 md:px-6">
       <SectionTitle eyebrow="SAPL 2026 Rulebook" title="Rulebook" />
@@ -264,7 +360,10 @@ export default function RulesPage() {
         {RULE_TABS.map((tab) => (
           <TabsContent key={tab.value} value={tab.value} className="mt-4 space-y-3">
             {tab.items.map((item) => (
-              <RuleCard key={`${tab.value}-${item.number}`} item={item} />
+              <div key={`${tab.value}-${item.number}`}>
+                <RuleCard item={item} />
+                <RuleDetail item={item} rulebook={rulebook} />
+              </div>
             ))}
           </TabsContent>
         ))}

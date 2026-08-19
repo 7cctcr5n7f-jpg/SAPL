@@ -1,0 +1,1259 @@
+# SOUTH AFRICA PADEL LEAGUE
+
+## SAPL 2026 OFFICIAL RULEBOOK
+
+**PLAY. COMPETE. PROMOTE.**
+
+**Version:** 2026 Season
+**Applies to:** All SAPL league matches
+**Governing principle:** FIP Rules of Padel apply unless specifically overridden by these SAPL League Rules.
+
+---
+
+# 1. PURPOSE AND PRINCIPLES
+
+The South Africa Padel League (SAPL) is a self-officiated team padel competition.
+
+SAPL is designed to provide competitive, fair and enjoyable padel while maintaining a practical league structure that can operate without an on-court referee.
+
+All players and captains are expected to:
+
+* Know and follow these rules.
+* Make honest calls.
+* Keep an accurate score.
+* Respect opponents.
+* Avoid deliberate delays.
+* Resolve disputes quickly and fairly.
+* Accept decisions once a point or issue has been resolved.
+
+## 1.1 No-referee principle
+
+SAPL matches are self-officiated.
+
+Players and captains are responsible for applying the rules during the match.
+
+**Players may not deliberately exploit the absence of a referee.**
+
+Where a situation is not specifically addressed by these rules, the players should first attempt to resolve it immediately.
+
+If the players cannot agree, the two captains must attempt to resolve the matter.
+
+If the captains cannot agree and the dispute concerns a point, **the disputed point shall be replayed from the last score that both sides agree upon.**
+
+Once the replayed point has been completed, the decision is final and play must continue.
+
+A match may not be delayed indefinitely because of a dispute.
+
+SAPL may review incidents after the match and impose disciplinary or league penalties where appropriate.
+
+---
+
+# 2. TEAM MATCH FORMAT
+
+Each SAPL team fixture consists of **four doubles matches**.
+
+The four categories are:
+
+1. Men's Beginner
+2. Men's Intermediate
+3. Men's Advanced
+4. Ladies Open
+
+All four matches form part of the same team fixture.
+
+## 2.1 All four matches must be played
+
+All four category matches must be played, even if one team has already secured enough points to win the overall fixture.
+
+Every match contributes to the team's league points.
+
+---
+
+# 3. LEAGUE POINTS
+
+Each doubles match contributes a maximum of **4 SAPL league points**.
+
+The points are awarded as follows:
+
+* **1 point for each set won**
+* **1 additional point for winning the doubles match**
+
+Therefore:
+
+### 3-0 match win
+
+3 sets won + match bonus = **4 points**
+
+### 2-1 match win
+
+2 sets won + match bonus = **3 points**
+
+### 1-2 match loss
+
+1 set won = **1 point**
+
+### 0-3 match loss
+
+0 sets won = **0 points**
+
+Each team therefore has a maximum of **16 league points per four-match fixture**.
+
+The four individual match results are combined to determine the team's total fixture points.
+
+---
+
+# 4. MATCH FORMAT
+
+Each doubles match is:
+
+**Best of three full sets.**
+
+All three sets are to be played where court time permits.
+
+A player/pair does not stop playing simply because they have already won two sets unless the match has been officially concluded under a SAPL rule.
+
+The third set is a full set.
+
+---
+
+# 5. SET FORMAT
+
+A set is won by the first pair to reach six games with a minimum two-game advantage.
+
+Examples:
+
+* 6-0 = set won
+* 6-1 = set won
+* 6-2 = set won
+* 6-3 = set won
+* 6-4 = set won
+* 6-5 = continue
+* 7-5 = set won
+
+At **6-6**, a standard seven-point tiebreak is played.
+
+The pair must win the tiebreak by at least two points.
+
+Examples:
+
+* 7-5 = tiebreak won
+* 7-6 = continue
+* 8-6 = tiebreak won
+* 10-8 = tiebreak won
+
+The set is recorded as **7-6**.
+
+---
+
+# 6. TIEBREAK
+
+SAPL uses the standard FIP-style seven-point tiebreak.
+
+The first pair to reach seven points with a minimum two-point advantage wins the tiebreak.
+
+## 6.1 Tiebreak ends
+
+Players change ends after every six points.
+
+Examples:
+
+* 6-0 → change ends
+* 4-2 → change ends
+* 6-6 → change ends
+* 9-9 → change ends
+
+The normal SAPL four-game change-of-end rule does **not** apply during the tiebreak.
+
+## 6.2 Tiebreak serving order
+
+The standard padel tiebreak serving sequence applies.
+
+Players must maintain the correct service order throughout the tiebreak.
+
+---
+
+# 7. CHANGE OF ENDS
+
+SAPL uses a specific league rule for changing ends.
+
+Players change ends after **four completed games in total**.
+
+The first change therefore occurs when the total number of games completed in the set reaches four.
+
+Examples:
+
+* 2-2 → change ends
+* 4-0 → change ends
+* 3-1 → change ends
+
+After changing ends, the next change occurs after another four completed games.
+
+Examples:
+
+* 6-2 → change
+* 5-3 → change
+* 4-4 → change
+
+The four-game count is based on the total number of games completed since the previous change of ends.
+
+## 7.1 Serving order
+
+The change of ends does not change the established serving order.
+
+Players must continue according to the correct service rotation.
+
+---
+
+# 8. SERVE
+
+SAPL follows the standard FIP service rules except where expressly stated otherwise.
+
+## 8.1 Serve height
+
+The ball must be struck:
+
+**At or below waist height.**
+
+A serve struck above waist height is a fault.
+
+The 2026 FIP Rules continue to specify waist height, not chest height.
+
+## 8.2 Feet
+
+The server must have at least one foot in contact with the ground when striking the serve.
+
+The server may not touch the service line or its imaginary extension when serving.
+
+## 8.3 Ball bounce
+
+The server must bounce the ball within the appropriate service area before striking it.
+
+## 8.4 Two serves
+
+The server has two attempts.
+
+First serve fault → second serve.
+
+Second serve fault → double fault and the receiving pair wins the point.
+
+## 8.5 Service direction
+
+The serve must be delivered diagonally into the correct service box.
+
+All other FIP service requirements apply.
+
+---
+
+# 9. WRONG SERVER
+
+If the wrong player serves:
+
+### If discovered before the next point begins
+
+The correct server must serve.
+
+The score is corrected if necessary.
+
+The point is replayed where required.
+
+### If discovered after the next point has begun
+
+The previous completed point remains final.
+
+The correct service order must be restored as soon as reasonably possible.
+
+Players may not retrospectively overturn completed points merely because the serving order was discovered to be incorrect.
+
+---
+
+# 10. GAME SCORING
+
+SAPL uses normal padel scoring:
+
+**Love → 15 → 30 → 40 → Game**
+
+SAPL uses a league-specific **Silver Point followed by Golden Point** system at deuce.
+
+## 10.1 Silver Point
+
+When the score reaches:
+
+**40-40**
+
+the next point is played as an **Advantage Point**.
+
+The pair winning that point receives:
+
+**Advantage**
+
+If the pair with Advantage wins the following point, they win the game.
+
+If the pair with Advantage loses the following point, the score returns to:
+
+**Deuce**
+
+At this point, the **next point is the Golden Point**.
+
+Therefore:
+
+**40-40**
+
+→ Advantage
+
+→ If Advantage pair wins = Game
+
+→ If Advantage pair loses = Deuce
+
+→ Next point = Golden Point
+
+The Golden Point decides the game.
+
+## 10.2 Golden Point receiving side
+
+For the Golden Point, the receiving pair chooses whether to receive from the right or left side.
+
+The receiving pair may not change positions for that deciding point.
+
+---
+
+# 11. TIME BETWEEN POINTS
+
+A maximum of **20 seconds** is allowed between points.
+
+The 20-second period runs from the completion of the previous point until the serve for the next point.
+
+Players must be ready to continue play promptly.
+
+The 20-second standard is consistent with the current FIP Rules of Padel.
+
+---
+
+# 12. CHANGEOVER TIME
+
+A maximum of **90 seconds** is permitted when changing ends.
+
+The 90-second period includes:
+
+* Changing sides
+* Getting water
+* Towelling
+* Brief tactical discussion
+* Coaching where permitted
+
+Players must be ready to resume play before the 90 seconds expires.
+
+FIP's current standard also provides a maximum 90-second changeover.
+
+---
+
+# 13. SET BREAK
+
+A maximum of **120 seconds** is permitted between sets.
+
+This includes:
+
+* Rest
+* Water
+* Equipment adjustment
+* Tactical discussion
+* Coaching
+* Bathroom break, where applicable
+
+FIP's current rules provide a 120-second set interval.
+
+---
+
+# 14. COACHING
+
+Coaching is permitted only during:
+
+* 90-second changeovers
+* 120-second breaks between sets
+
+Coaching is not permitted:
+
+* During a point
+* Between points
+* While the ball is in play
+* During a serve preparation period
+
+Players may not deliberately extend a changeover in order to receive additional coaching.
+
+---
+
+# 15. BATHROOM BREAKS
+
+Each player is entitled to:
+
+**One bathroom break per match.**
+
+The bathroom break may only be taken **after completion of a set**.
+
+Maximum duration:
+
+**5 minutes.**
+
+The player must return and be ready to resume play within the five-minute period.
+
+## 15.1 Exceeding five minutes
+
+Once the five-minute allowance expires, continued absence is treated as time wasting.
+
+The normal SAPL time-wasting penalty system applies.
+
+---
+
+# 16. MEDICAL TIMEOUT
+
+A player may receive one medical timeout of up to:
+
+**10 minutes**
+
+for an injury occurring during the match.
+
+The purpose is to allow the player to determine whether they can safely continue.
+
+The player may not use a medical timeout simply to rest, recover fitness, receive coaching or deliberately delay play.
+
+## 16.1 Unable to continue
+
+If the player cannot continue after the permitted medical period:
+
+**The player forfeits all remaining games of that match.**
+
+The match result is recorded based on the completed games and the forfeited remaining games.
+
+---
+
+# 17. TIME WASTING
+
+Players must not deliberately delay the match.
+
+Examples of time wasting include:
+
+* Deliberately exceeding the 20-second period
+* Excessive racket adjustment
+* Excessive towel use
+* Slowly retrieving balls
+* Deliberately delaying the serve
+* Repeatedly arguing about completed points
+* Unnecessary bathroom delays
+* Unnecessary equipment adjustments
+* Repeatedly leaving the court without permission
+* Deliberately delaying the restart after a changeover
+
+## 17.1 Penalty system
+
+The following escalation applies:
+
+### First occurrence
+
+**Verbal warning**
+
+### Second occurrence
+
+**Point penalty**
+
+The offending pair loses the next point.
+
+### Third occurrence
+
+**Game penalty**
+
+One game is awarded to the opposing pair.
+
+### Continued or serious time wasting
+
+**Match forfeiture**
+
+The captains should apply the penalty consistently and without unnecessary argument.
+
+SAPL may review repeated or abusive use of the time-wasting rule after the match.
+
+---
+
+# 18. LINE CALLS
+
+SAPL is self-officiated.
+
+The player/team on the side where the ball lands is responsible for the line call.
+
+Therefore:
+
+**If your opponent hits the ball onto your side of the court, you make the call.**
+
+## 18.1 Ball touching the line
+
+A ball touching any part of the relevant line is:
+
+**IN**
+
+## 18.2 Doubt
+
+If the receiving side cannot clearly establish that a ball was out, the ball is:
+
+**IN**
+
+The benefit of the doubt goes to the ball being in.
+
+## 18.3 Agreement to replay
+
+Players may mutually agree to replay a point where there is genuine uncertainty.
+
+However, neither side may use repeated "let" decisions simply to avoid making a line call.
+
+The normal line-call responsibility remains with the side where the ball landed.
+
+---
+
+# 19. SCORE DISPUTES
+
+Players must keep the score clearly and honestly.
+
+If the two pairs disagree about the score:
+
+1. Stop play.
+2. Establish the last score that both sides agree upon.
+3. Any disputed point is replayed from that score.
+4. Continue play.
+
+### Example
+
+Both teams agree the score was:
+
+**30-30**
+
+One team says they won the next point.
+
+The other says the opposite.
+
+The disputed point is replayed from:
+
+**30-30**
+
+## 19.1 Completed points
+
+Once the next point has started, the previous point is final.
+
+A player may not stop the match after the next point has begun and demand that the previous point be changed.
+
+## 19.2 Repeated arguments
+
+Repeatedly disputing completed points may be treated as:
+
+* Time wasting
+* Unsportsmanlike conduct
+* Misconduct
+
+depending on the circumstances.
+
+---
+
+# 20. DISPUTES ABOUT A POINT
+
+If players disagree about who won a point:
+
+### Step 1
+
+Players attempt to resolve the matter immediately.
+
+### Step 2
+
+Captains become involved.
+
+### Step 3
+
+If the captains cannot agree, the disputed point is replayed from the last mutually agreed score.
+
+### Step 4
+
+The replayed point is final.
+
+Play then continues.
+
+A dispute may not be used to delay a match indefinitely.
+
+---
+
+# 21. BALL INTERFERENCE
+
+If a ball from another court enters the court during an active rally and materially interferes with play:
+
+**Play stops and the point is replayed.**
+
+If the outside ball enters the court after the point has already been completed:
+
+**No replay.**
+
+Players should not deliberately claim interference where the outside ball had no material effect on the point.
+
+---
+
+# 22. FIP RULES
+
+Except where SAPL specifically provides a different rule, standard FIP Rules of Padel apply.
+
+This includes rules concerning:
+
+* Net
+* Glass
+* Fence
+* Posts
+* Ball contact
+* Player contact
+* Racket contact
+* Clothing
+* Ball crossing the net
+* Ball crossing outside the court
+* Returning the ball around the net post
+* Out-of-court play
+* Lets
+* Double bounces
+* Service faults
+* Other standard padel situations
+
+The current FIP Rules of Padel remain the reference standard for these technical playing situations.
+
+---
+
+# 23. RESCHEDULED MATCHES
+
+A captain may request that:
+
+* An individual category match, or
+* The entire four-match team fixture
+
+be rescheduled.
+
+## 23.1 Fixture week
+
+A rescheduled match must be played **within the same scheduled fixture week**.
+
+## 23.2 Opponent agreement
+
+The requesting team may propose an alternative date within the same fixture week.
+
+The opposing team is not required to accept the proposed date.
+
+If the opposing team does not agree:
+
+* The requesting team must provide an eligible substitute where possible, or
+* The requesting team forfeits the affected match.
+
+## 23.3 SAPL approval
+
+Normal rescheduling within the same fixture week does not require prior SAPL approval.
+
+---
+
+# 24. PLAYER SUBSTITUTIONS
+
+A captain may replace a player with an eligible substitute.
+
+The substitute must have a **Playtomic rating equal to or lower than the player being replaced**, subject to the applicable SAPL category rules.
+
+A substitute may not be used to strengthen a team unfairly.
+
+## 24.1 Category direction
+
+Players may stand in for a **higher category**.
+
+Players may not stand in for a **lower category**.
+
+Example:
+
+A Men's Beginner player may play up in Men's Intermediate.
+
+A Men's Intermediate player may play up in Men's Advanced.
+
+An Advanced player may not play down in Beginner.
+
+---
+
+# 25. SUBSTITUTE RATING PENALTY
+
+Where a substitute/player exceeds the applicable rating limit, the SAPL rating penalty applies.
+
+The penalty is:
+
+**1 game lost per 0.1 rating above the permitted limit, per set.**
+
+The penalty is applied to the actual set score.
+
+### Example
+
+Permitted rating:
+
+**3.50**
+
+Actual player rating:
+
+**3.70**
+
+Difference:
+
+**0.20**
+
+Penalty:
+
+**2 games per set**
+
+If the actual set result was:
+
+**6-2**
+
+The adjusted SAPL set result becomes:
+
+**4-2**
+
+The purpose of this rule is to prevent teams from gaining an unfair competitive advantage by using players above the permitted rating.
+
+## 25.1 Rating calculation
+
+The applicable Playtomic rating must be determined according to the SAPL eligibility/rating rules in force for the relevant fixture.
+
+---
+
+# 26. LATE ARRIVALS
+
+The official match start time is:
+
+**Scheduled court start time + maximum 5-minute warm-up.**
+
+Example:
+
+Court booking:
+
+**18:30**
+
+Warm-up:
+
+**18:30-18:35**
+
+Official match start:
+
+**18:35**
+
+## 26.1 Late penalty
+
+A team/player who is not ready to play at the official match start begins to lose games.
+
+The penalty is:
+
+* First 10 minutes late = **2 games**
+* 15 minutes late = **3 games**
+* 20 minutes late = **4 games**
+* 25 minutes late = **5 games**
+* 30 minutes late = **6 games**
+
+Therefore, at 30 minutes late, the first set is recorded as:
+
+**6-0**
+
+## 26.2 Continuing after six games
+
+Once the 30-minute threshold has been reached, the affected set has been forfeited 6-0.
+
+The match may continue if the player/team is then present and able to play, subject to available court time and SAPL rules.
+
+---
+
+# 27. WALKOVERS
+
+A walkover is recorded as:
+
+**6-0, 6-0, 6-0**
+
+The winning team receives the applicable league points.
+
+A walkover may occur where a team/player:
+
+* Fails to appear
+* Cannot field an eligible player
+* Refuses to play
+* Fails to comply with an applicable match requirement
+* Is unable to continue where the relevant rules require forfeiture
+
+---
+
+# 28. COURT TIME EXPIRY
+
+SAPL matches should be completed within the booked court period.
+
+If the booked court time expires before a match is completed and no additional court time is available:
+
+**The current score is recorded.**
+
+The match is not automatically awarded based on the current game score.
+
+Where applicable, SAPL may review the incomplete match administratively.
+
+Players must not deliberately delay a match in an attempt to cause the court time to expire.
+
+Deliberate time wasting remains subject to the time-wasting rules.
+
+---
+
+# 29. MATCH BALLS
+
+The home team is responsible for supplying the official SAPL match balls.
+
+SAPL's designated match ball is:
+
+**Wilson black padel ball**
+
+from the designated SAPL supply.
+
+Balls may be reused where they remain in suitable playing condition.
+
+The opposing captain may reasonably reject balls that are visibly damaged, excessively worn or unsuitable for competitive play.
+
+---
+
+# 30. WEATHER AND UNSAFE CONDITIONS
+
+Either captain may request that play be suspended where they reasonably believe the court has become unsafe.
+
+Examples include:
+
+* Rain
+* Excessive water
+* Dangerous slipperiness
+* Dangerous wind
+* Unsafe court conditions
+* Other circumstances creating a genuine safety concern
+
+## 30.1 Captain disagreement
+
+If one captain believes conditions are unsafe and the other wants to continue:
+
+**Play must stop while the issue is assessed.**
+
+The captains should attempt to reach an agreement.
+
+If they cannot agree, the relevant club/court management decision takes precedence.
+
+Players may not be required to continue on a court that the venue has declared unsafe.
+
+## 30.2 Club closure
+
+If the club closes the court or declares the court unavailable for safety/weather reasons:
+
+**The club's decision is final.**
+
+---
+
+# 31. MATCH INTERRUPTION
+
+If a match is temporarily interrupted, players must preserve:
+
+* Current set
+* Current game
+* Current point score
+* Server
+* Receiving order
+* Serving order
+
+The match should resume from the exact position at which it stopped wherever practical.
+
+---
+
+# 32. CONDUCT
+
+SAPL expects all players to behave respectfully.
+
+The following conduct is prohibited:
+
+* Abusive language directed at another person
+* Personal insults
+* Threatening behaviour
+* Aggressive intimidation
+* Deliberate racket throwing
+* Deliberately striking a ball at a person
+* Physical contact intended to intimidate or harm
+* Fighting
+* Discriminatory or hateful language
+* Deliberate damage to equipment or facilities
+* Abusive communication after matches, including league-related WhatsApp communications
+
+---
+
+# 33. CONDUCT PENALTIES
+
+For ordinary misconduct, SAPL uses an escalation system.
+
+### Level 1
+
+**Verbal warning**
+
+### Level 2
+
+**Point penalty**
+
+The offending pair loses the next point.
+
+### Level 3
+
+**Game penalty**
+
+One game is awarded to the opposing pair.
+
+### Level 4
+
+**Match forfeiture**
+
+The offending pair forfeits the match.
+
+## 33.1 Serious misconduct
+
+SAPL may immediately escalate serious misconduct without progressing through every warning stage.
+
+Examples include:
+
+* Physical assault
+* Threats of violence
+* Fighting
+* Deliberately striking an opponent
+* Severe abusive behaviour
+* Discriminatory/hateful abuse
+* Deliberate dangerous conduct
+
+Possible consequences include:
+
+* Match forfeiture
+* Team penalties
+* Player suspension
+* League suspension
+* Removal from SAPL
+* Further disciplinary action
+
+---
+
+# 34. MOBILE PHONES
+
+Phones must be:
+
+**On silent and not used during play.**
+
+Phone use is permitted only for legitimate emergencies.
+
+Normal phone use during the match is treated initially as a warning.
+
+Continued use is subject to SAPL's time-wasting penalty structure.
+
+The standard SAPL penalty for continued phone-related delay is:
+
+**1 game lost per five minutes of continued violation.**
+
+Players must not use phones to:
+
+* Delay the match
+* Receive coaching
+* Dispute calls
+* Search for rules during an active point
+* Conduct unrelated activities
+
+---
+
+# 35. CAPTAIN RESPONSIBILITIES
+
+Each captain is responsible for:
+
+* Confirming the team lineup
+* Ensuring players are eligible
+* Ensuring substitutes comply with rating requirements
+* Understanding the SAPL rules
+* Communicating rules to team members
+* Managing disputes
+* Ensuring accurate scoring
+* Confirming the match result
+* Reporting the result
+* Ensuring appropriate player conduct
+* Cooperating with the opposing captain
+
+A captain is responsible for the behaviour of their team members insofar as SAPL disciplinary processes permit.
+
+---
+
+# 36. MATCH RESULT CONFIRMATION
+
+Both captains should confirm the final match result.
+
+The home captain is responsible for submitting the official result through the SAPL system.
+
+The result should include the completed scores for each category match.
+
+Players must not knowingly submit an incorrect result.
+
+---
+
+# 37. RESULT DISPUTES
+
+A team may challenge a match result within:
+
+**24 hours of the match.**
+
+The dispute must identify:
+
+* Match
+* Players involved
+* Specific issue
+* Relevant rule
+* Available evidence
+
+A dispute does not automatically suspend the recorded result.
+
+SAPL may investigate and subsequently:
+
+* Confirm the result
+* Amend league points
+* Apply rating penalties
+* Apply match penalties
+* Apply disciplinary penalties
+* Apply other appropriate league sanctions
+
+---
+
+# 38. FINALITY OF COMPLETED POINTS
+
+Once the next point has begun, the previous point is final.
+
+Players may not repeatedly reopen completed points.
+
+Examples:
+
+If a team believes the previous ball was out but the next point has already started:
+
+**The previous point stands.**
+
+If players discover after several points that they disagree about an earlier score:
+
+The score is reconstructed only to the last mutually agreed score.
+
+Any disputed point from that point is replayed.
+
+Points that both teams already agree were completed remain valid.
+
+---
+
+# 39. UNRESOLVED SITUATIONS
+
+Where a situation is not specifically addressed in the SAPL Rulebook:
+
+1. Apply the relevant FIP Rule of Padel.
+2. If FIP does not address the league-specific situation, the captains attempt to resolve it.
+3. If the captains cannot agree on a disputed point, replay the point from the last mutually agreed score.
+4. The replayed point is final.
+5. Play continues.
+6. SAPL may review the matter after the match.
+
+This rule exists specifically to ensure that a match does not become stuck because there is no referee.
+
+---
+
+# 40. PLAYER RESPONSIBILITY
+
+Every player participating in SAPL is deemed to accept:
+
+* These SAPL rules
+* FIP playing rules where applicable
+* The self-officiated nature of SAPL
+* Captain authority
+* SAPL disciplinary authority
+* The requirement to make honest calls
+* The requirement to respect opponents
+
+"I didn't know the rule" is not a defence for deliberately violating a clearly published SAPL rule.
+
+---
+
+# 41. SPORTSMANSHIP
+
+SAPL is competitive, but competition must remain respectful.
+
+Players are expected to:
+
+* Shake hands after matches
+* Respect opponents
+* Accept legitimate calls
+* Avoid excessive celebration directed at opponents
+* Avoid provoking opponents
+* Help maintain a positive league environment
+
+Competitive intensity is encouraged.
+
+Unsportsmanlike behaviour is not.
+
+---
+
+# 42. SAPL AUTHORITY
+
+SAPL retains the right to interpret and enforce its league-specific rules.
+
+SAPL may investigate:
+
+* Player eligibility
+* Rating violations
+* Incorrect results
+* Misconduct
+* Deliberate rule exploitation
+* Team manipulation
+* Disputes
+* Repeated breaches
+* Other matters affecting the integrity of the league
+
+SAPL's administrative decision may result in:
+
+* Adjustment of league points
+* Match forfeiture
+* Player suspension
+* Team penalties
+* Removal of players
+* Removal of teams
+* Other appropriate sanctions
+
+---
+
+# 43. FIP RULE OVERRIDE
+
+Where these SAPL rules differ from a standard FIP playing rule, the **SAPL rule applies to SAPL league competition**.
+
+Examples of SAPL-specific rules include:
+
+* Four-match team format
+* Four-game change of ends
+* SAPL league points
+* Silver Point/Golden Point scoring
+* Rating/substitution rules
+* Late-arrival game penalties
+* SAPL rescheduling rules
+* SAPL dispute procedure
+* SAPL disciplinary framework
+
+All other technical padel rules remain governed by the applicable FIP Rules of Padel.
+
+The current FIP Rules provide alternative game-scoring options, including traditional advantage, Star Point and Golden Point. SAPL's Silver Point/Golden Point system is therefore expressly a **SAPL competition rule**, not a claim that it is the standard FIP scoring option.
+
+---
+
+# 44. QUICK MATCH REFERENCE
+
+## BEFORE THE MATCH
+
+* Confirm correct players.
+* Confirm substitutes are eligible.
+* Confirm correct category.
+* Confirm balls.
+* Complete maximum 5-minute warm-up.
+* Confirm starting server.
+* Confirm scorekeeping responsibility.
+
+## DURING THE MATCH
+
+**Between points:** maximum 20 seconds.
+
+**Change ends:** every 4 completed games.
+
+**Changeover:** maximum 90 seconds.
+
+**Between sets:** maximum 120 seconds.
+
+**Bathroom:** one per player, after a set, maximum 5 minutes.
+
+**Medical:** maximum 10 minutes.
+
+**Coaching:** only during permitted breaks.
+
+**Phones:** silent and not used except for emergencies.
+
+## AT DEUCE
+
+40-40
+
+→ Advantage Point
+
+→ Advantage wins next point = Game
+
+→ Advantage loses next point = Deuce
+
+→ Next point = Golden Point
+
+Receiving pair chooses receiving side.
+
+## IF THERE IS A DISPUTE
+
+1. Stop.
+2. Discuss.
+3. Captains decide.
+4. If still unresolved, return to the last agreed score.
+5. Replay the disputed point.
+6. Decision is final.
+7. Continue.
+
+## IF A PLAYER IS TIME WASTING
+
+Warning
+
+→ Point penalty
+
+→ Game penalty
+
+→ Match forfeiture if continued/serious
+
+## IF A BALL FROM ANOTHER COURT INTERFERES
+
+During rally + material interference:
+
+**Replay point.**
+
+After point completed:
+
+**No replay.**
+
+## IF A PLAYER IS LATE
+
+Official start = booking time + 5-minute warm-up.
+
+10 minutes late → 2 games
+
+15 minutes → 3 games
+
+20 minutes → 4 games
+
+25 minutes → 5 games
+
+30 minutes → 6-0 first set
+
+---
+
+# 45. CORE SAPL RULE
+
+## PLAY THE POINT. RESPECT THE CALL. KEEP THE MATCH MOVING.
+
+SAPL is designed to be competitive without requiring a referee at every court.
+
+The absence of a referee does not give players permission to argue indefinitely, manipulate rules or deliberately delay matches.
+
+Players and captains are expected to use these rules in good faith.
+
+Where there is genuine uncertainty, the objective is not to determine who can argue the longest.
+
+The objective is to:
+
+**Resolve the issue. Replay where necessary. Accept the outcome. Continue playing.**
+
+That is the SAPL standard.
+
+---
+
+## 46. RULEBOOK VERSION CONTROL
+
+**SAPL 2026 Official Rulebook**
+
+This document represents the league-specific competition rules for the SAPL 2026 season.
+
+Where SAPL issues an official rule update during the season, the updated rule takes precedence from the effective date communicated by SAPL.
+
+The latest official SAPL rulebook published through the SAPL platform is the controlling version.
+
+FIP rules may be updated independently. SAPL will determine whether and when a FIP change is adopted into SAPL competition rules.
