@@ -87,13 +87,13 @@ export default async function HomePage() {
             </div>
 
             {featuredStory?.featuredImage ? (
-              <div className="relative min-h-[260px] border-t border-white/10 bg-black/30 lg:min-h-full lg:border-l lg:border-t-0">
+              <div className="relative aspect-[4/3] max-h-[240px] w-full overflow-hidden border-t border-white/10 bg-black/30 sm:aspect-[16/10] sm:max-h-[320px] lg:min-h-full lg:max-h-none lg:border-l lg:border-t-0 lg:aspect-auto">
                 <Image
                   src={featuredStory.featuredImage}
                   alt={featuredStory.featuredImageAlt || featuredStory.title}
                   fill
                   priority
-                  className="object-contain p-4 md:p-6"
+                  className="object-contain p-3 sm:p-4 md:p-6"
                 />
               </div>
             ) : (
