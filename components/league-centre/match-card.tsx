@@ -106,11 +106,11 @@ export function MatchCard({ fixture }: { fixture: LCFixture }) {
           <div className="flex flex-col items-center gap-1 px-1">
             {isCompleted || isLive ? (
               <div className="flex items-center gap-2 tabular-nums">
-                <span className={cn("heading text-3xl", homeWon ? "text-primary" : "text-foreground")}>
+                <span className="heading text-3xl" style={{ color: homeWon ? "#16a34a" : "#000000" }}>
                   {fixture.homePoints ?? 0}
                 </span>
                 <span className="text-muted-foreground">-</span>
-                <span className={cn("heading text-3xl", awayWon ? "text-primary" : "text-foreground")}>
+                <span className="heading text-3xl" style={{ color: awayWon ? "#16a34a" : "#000000" }}>
                   {fixture.awayPoints ?? 0}
                 </span>
               </div>

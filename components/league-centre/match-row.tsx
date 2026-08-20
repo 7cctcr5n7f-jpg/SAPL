@@ -66,7 +66,7 @@ export function MatchRow({ fixture, showMeta = false }: { fixture: LCFixture; sh
             {fixture.homeName ?? "TBD"}
           </span>
           {hasScore ? (
-            <span className={cn("heading w-6 text-right text-base tabular-nums", homeWon ? "text-primary" : "text-foreground")}>
+            <span className="heading w-6 text-right text-base tabular-nums" style={{ color: homeWon ? "#16a34a" : "#000000" }}>
               {fixture.homePoints ?? 0}
             </span>
           ) : null}
@@ -77,7 +77,7 @@ export function MatchRow({ fixture, showMeta = false }: { fixture: LCFixture; sh
             {fixture.awayName ?? "TBD"}
           </span>
           {hasScore ? (
-            <span className={cn("heading w-6 text-right text-base tabular-nums", awayWon ? "text-primary" : "text-foreground")}>
+            <span className="heading w-6 text-right text-base tabular-nums" style={{ color: awayWon ? "#16a34a" : "#000000" }}>
               {fixture.awayPoints ?? 0}
             </span>
           ) : null}

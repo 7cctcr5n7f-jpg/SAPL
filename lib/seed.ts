@@ -362,6 +362,7 @@ export async function runSeed(orgList: OrgSeed[] = ORGS) {
           category: cat.name,
           homeSetsWon: homeSetsAssigned,
           awaySetsWon: awaySetsAssigned,
+          splitSets: 0,
           homeGames,
           awayGames,
           scoreDetail: setRows.map((r) => `${r.home}-${r.away}`).join(", "),

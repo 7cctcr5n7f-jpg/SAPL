@@ -8,7 +8,7 @@ import {
   divisions,
 } from "@/lib/db/schema"
 import { eq, and, inArray, asc } from "drizzle-orm"
-import { scoreFixture, tallySets, formatScoreDetail, type MatchResult, type SetScore } from "@/lib/engine/scoring"
+import { scoreFixture, tallySets, formatScoreDetail, parseScoreDetail, type MatchResult, type SetScore } from "@/lib/engine/scoring"
 import { calculateTpr } from "@/lib/engine/tpr"
 import { syncTeamLifecycleStatus } from "@/lib/engine/team-stats"
 
@@ -30,7 +30,8 @@ export type CategoryScoreInput = {
  *  - updates both teams' standings (with rank recompute for the division)
  *  - updates both teams' TPR and writes TPR history snapshots
  *
- * Idempotency: deletes any pre-existing matches for the fixture first.
+ * Idempotency: rewrites fixture matches from a merged view of existing + edited
+ * categories so updating one pairing never drops other recorded pairings.
  */
 export async function applyFixtureResult(fixtureId: number, categoryScores: CategoryScoreInput[]) {
   const [fixtureRow] = await db
@@ -55,41 +56,141 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
     ? await db.select({ id: divisions.id }).from(divisions).where(eq(divisions.id, fixture.divisionId)).limit(1)
     : [null]
 
-  // 1. Score the fixture. Derive sets won + games from the entered set scores.
-  const tallied = categoryScores.map((c) => ({ input: c, tally: tallySets(c.sets) }))
-  const matchResults: MatchResult[] = tallied.map(({ input, tally }) => ({
-    category: input.category,
-    homeSetsWon: tally.homeSetsWon,
-    awaySetsWon: tally.awaySetsWon,
-    homeGames: tally.homeGames,
-    awayGames: tally.awayGames,
-  }))
-  const score = scoreFixture(matchResults)
-  const winnerTeamId =
-    score.winnerSide === "home" ? fixture.homeTeamId : score.winnerSide === "away" ? fixture.awayTeamId : null
+  const existingMatchRows = await db
+    .select({
+      category: matches.category,
+      session: matches.session,
+      isFeatureCourt: matches.isFeatureCourt,
+      homeSetsWon: matches.homeSetsWon,
+      awaySetsWon: matches.awaySetsWon,
+      homeGames: matches.homeGames,
+      awayGames: matches.awayGames,
+      scoreDetail: matches.scoreDetail,
+      winnerTeamId: matches.winnerTeamId,
+      homePlayerIds: matches.homePlayerIds,
+      awayPlayerIds: matches.awayPlayerIds,
+    })
+    .from(matches)
+    .where(eq(matches.fixtureId, fixtureId))
 
-  // 2. Persist matches (reset first for idempotency)
-  await db.delete(matches).where(eq(matches.fixtureId, fixtureId))
-  for (const { input: c, tally } of tallied) {
-    const mWinner =
+  const editsByCategory = new Map(categoryScores.map((categoryScore) => [categoryScore.category, categoryScore]))
+
+  const mergedRows: Array<{
+    category: string
+    session: number
+    isFeatureCourt: boolean
+    homeSetsWon: number
+    awaySetsWon: number
+    splitSets: number
+    homeGames: number
+    awayGames: number
+    scoreDetail: string | null
+    winnerTeamId: number | null
+    homePlayerIds: number[] | null
+    awayPlayerIds: number[] | null
+  }> = []
+
+  for (const row of existingMatchRows) {
+    const edited = editsByCategory.get(row.category)
+    if (edited) {
+      const tally = tallySets(edited.sets)
+      const winnerTeamId =
+        tally.homeSetsWon > tally.awaySetsWon
+          ? fixture.homeTeamId
+          : tally.awaySetsWon > tally.homeSetsWon
+            ? fixture.awayTeamId
+            : null
+      mergedRows.push({
+        category: edited.category,
+        session: edited.session,
+        isFeatureCourt: edited.isFeatureCourt,
+        homeSetsWon: tally.homeSetsWon,
+        awaySetsWon: tally.awaySetsWon,
+        splitSets: tally.splitSets,
+        homeGames: tally.homeGames,
+        awayGames: tally.awayGames,
+        scoreDetail: formatScoreDetail(edited.sets) || null,
+        winnerTeamId,
+        homePlayerIds: edited.homePlayerIds ?? (row.homePlayerIds as number[] | null),
+        awayPlayerIds: edited.awayPlayerIds ?? (row.awayPlayerIds as number[] | null),
+      })
+      editsByCategory.delete(row.category)
+      continue
+    }
+
+    const parsedSets = parseScoreDetail(row.scoreDetail)
+    const parsedTally = parsedSets.length > 0 ? tallySets(parsedSets) : null
+    mergedRows.push({
+      category: row.category,
+      session: row.session,
+      isFeatureCourt: row.isFeatureCourt,
+      homeSetsWon: row.homeSetsWon,
+      awaySetsWon: row.awaySetsWon,
+      splitSets: parsedTally?.splitSets ?? 0,
+      homeGames: row.homeGames,
+      awayGames: row.awayGames,
+      scoreDetail: row.scoreDetail,
+      winnerTeamId: row.winnerTeamId,
+      homePlayerIds: (row.homePlayerIds as number[] | null) ?? null,
+      awayPlayerIds: (row.awayPlayerIds as number[] | null) ?? null,
+    })
+  }
+
+  // New category result that wasn't in existing rows yet.
+  for (const edited of editsByCategory.values()) {
+    const tally = tallySets(edited.sets)
+    const winnerTeamId =
       tally.homeSetsWon > tally.awaySetsWon
         ? fixture.homeTeamId
         : tally.awaySetsWon > tally.homeSetsWon
           ? fixture.awayTeamId
           : null
-    await db.insert(matches).values({
-      fixtureId,
-      category: c.category,
-      session: c.session,
-      isFeatureCourt: c.isFeatureCourt,
+    mergedRows.push({
+      category: edited.category,
+      session: edited.session,
+      isFeatureCourt: edited.isFeatureCourt,
       homeSetsWon: tally.homeSetsWon,
       awaySetsWon: tally.awaySetsWon,
+      splitSets: tally.splitSets,
       homeGames: tally.homeGames,
       awayGames: tally.awayGames,
-      scoreDetail: formatScoreDetail(c.sets) || null,
-      winnerTeamId: mWinner,
-      homePlayerIds: c.homePlayerIds ?? null,
-      awayPlayerIds: c.awayPlayerIds ?? null,
+      scoreDetail: formatScoreDetail(edited.sets) || null,
+      winnerTeamId,
+      homePlayerIds: edited.homePlayerIds ?? null,
+      awayPlayerIds: edited.awayPlayerIds ?? null,
+    })
+  }
+
+  // 1. Score fixture from full merged category set (existing + this edit).
+  const score = scoreFixture(
+    mergedRows.map((row): MatchResult => ({
+      category: row.category,
+      homeSetsWon: row.homeSetsWon,
+      awaySetsWon: row.awaySetsWon,
+      splitSets: row.splitSets,
+      homeGames: row.homeGames,
+      awayGames: row.awayGames,
+    })),
+  )
+  const winnerTeamId =
+    score.winnerSide === "home" ? fixture.homeTeamId : score.winnerSide === "away" ? fixture.awayTeamId : null
+
+  // 2. Persist merged matches (reset + reinsert full merged set).
+  await db.delete(matches).where(eq(matches.fixtureId, fixtureId))
+  for (const row of mergedRows) {
+    await db.insert(matches).values({
+      fixtureId,
+      category: row.category,
+      session: row.session,
+      isFeatureCourt: row.isFeatureCourt,
+      homeSetsWon: row.homeSetsWon,
+      awaySetsWon: row.awaySetsWon,
+      homeGames: row.homeGames,
+      awayGames: row.awayGames,
+      scoreDetail: row.scoreDetail,
+      winnerTeamId: row.winnerTeamId,
+      homePlayerIds: row.homePlayerIds,
+      awayPlayerIds: row.awayPlayerIds,
     })
   }
 
@@ -107,75 +208,96 @@ export async function applyFixtureResult(fixtureId: number, categoryScores: Cate
     })
     .where(eq(fixtures.id, fixtureId))
 
-  // 4. Update standings for both teams
-  await bumpStanding({
-    seasonId: fixture.seasonId,
-    divisionId: fixture.divisionId,
-    teamId: fixture.homeTeamId,
-    points: score.homePoints,
-    setsWon: score.homeSetsWon,
-    setsLost: score.awaySetsWon,
-    gamesFor: score.homeGames,
-    gamesAgainst: score.awayGames,
-    won: score.winnerSide === "home",
-    lost: score.winnerSide === "away",
-  })
-  await bumpStanding({
-    seasonId: fixture.seasonId,
-    divisionId: fixture.divisionId,
-    teamId: fixture.awayTeamId,
-    points: score.awayPoints,
-    setsWon: score.awaySetsWon,
-    setsLost: score.homeSetsWon,
-    gamesFor: score.awayGames,
-    gamesAgainst: score.homeGames,
-    won: score.winnerSide === "away",
-    lost: score.winnerSide === "home",
-  })
-  await recomputeRanks(fixture.divisionId)
-
-  // 5. TPR update
-  const [homeTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.homeTeamId)).limit(1)
-  const [awayTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.awayTeamId)).limit(1)
-  if (homeTeam && awayTeam) {
-    const tpr = calculateTpr({
-      homeTpr: homeTeam.tpr,
-      awayTpr: awayTeam.tpr,
-      homeSetsWon: score.homeSetsWon,
-      awaySetsWon: score.awaySetsWon,
-      divisionLevel: division?.level ?? 4,
+  // 4. Update standings for both teams (best-effort; fixture save is canonical)
+  try {
+    await bumpStanding({
+      seasonId: fixture.seasonId,
+      divisionId: fixture.divisionId,
+      teamId: fixture.homeTeamId,
+      points: score.homePoints,
+      setsWon: score.homeSetsWon,
+      setsLost: score.awaySetsWon,
+      gamesFor: score.homeGames,
+      gamesAgainst: score.awayGames,
+      won: score.winnerSide === "home",
+      lost: score.winnerSide === "away",
     })
-    await db
-      .update(teams)
-      .set({ tpr: tpr.homeTpr, highestTpr: Math.max(homeTeam.highestTpr, tpr.homeTpr), updatedAt: new Date() })
-      .where(eq(teams.id, homeTeam.id))
-    await db
-      .update(teams)
-      .set({ tpr: tpr.awayTpr, highestTpr: Math.max(awayTeam.highestTpr, tpr.awayTpr), updatedAt: new Date() })
-      .where(eq(teams.id, awayTeam.id))
-
-    await db.insert(tprHistory).values([
-      {
-        teamId: homeTeam.id,
-        tpr: tpr.homeTpr,
-        change: tpr.homeChange,
-        reason: `vs ${awayTeam.name}`,
-        fixtureId,
-        seasonId: fixture.seasonId,
-      },
-      {
-        teamId: awayTeam.id,
-        tpr: tpr.awayTpr,
-        change: tpr.awayChange,
-        reason: `vs ${homeTeam.name}`,
-        fixtureId,
-        seasonId: fixture.seasonId,
-      },
-    ])
+    await bumpStanding({
+      seasonId: fixture.seasonId,
+      divisionId: fixture.divisionId,
+      teamId: fixture.awayTeamId,
+      points: score.awayPoints,
+      setsWon: score.awaySetsWon,
+      setsLost: score.homeSetsWon,
+      gamesFor: score.awayGames,
+      gamesAgainst: score.homeGames,
+      won: score.winnerSide === "away",
+      lost: score.winnerSide === "home",
+    })
+    await recomputeRanks(fixture.divisionId)
+  } catch (error) {
+    console.error("Failed to update standings after fixture result save", {
+      fixtureId,
+      divisionId: fixture.divisionId,
+      error,
+    })
   }
 
-  await syncTeamLifecycleStatus(fixture.homeTeamId)
-  await syncTeamLifecycleStatus(fixture.awayTeamId)
+  // 5. TPR update (best-effort; do not fail the score save path)
+  try {
+    const [homeTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.homeTeamId)).limit(1)
+    const [awayTeam] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, fixture.awayTeamId)).limit(1)
+    if (homeTeam && awayTeam) {
+      const tpr = calculateTpr({
+        homeTpr: homeTeam.tpr,
+        awayTpr: awayTeam.tpr,
+        homeSetsWon: score.homeSetsWon,
+        awaySetsWon: score.awaySetsWon,
+        divisionLevel: division?.level ?? 4,
+      })
+      await db
+        .update(teams)
+        .set({ tpr: tpr.homeTpr, highestTpr: Math.max(homeTeam.highestTpr, tpr.homeTpr), updatedAt: new Date() })
+        .where(eq(teams.id, homeTeam.id))
+      await db
+        .update(teams)
+        .set({ tpr: tpr.awayTpr, highestTpr: Math.max(awayTeam.highestTpr, tpr.awayTpr), updatedAt: new Date() })
+        .where(eq(teams.id, awayTeam.id))
+
+      await db.insert(tprHistory).values([
+        {
+          teamId: homeTeam.id,
+          tpr: tpr.homeTpr,
+          change: tpr.homeChange,
+          reason: `vs ${awayTeam.name}`,
+          fixtureId,
+          seasonId: fixture.seasonId,
+        },
+        {
+          teamId: awayTeam.id,
+          tpr: tpr.awayTpr,
+          change: tpr.awayChange,
+          reason: `vs ${homeTeam.name}`,
+          fixtureId,
+          seasonId: fixture.seasonId,
+        },
+      ])
+    }
+  } catch (error) {
+    console.error("Failed to update TPR after fixture result save", { fixtureId, error })
+  }
+
+  try {
+    await syncTeamLifecycleStatus(fixture.homeTeamId)
+    await syncTeamLifecycleStatus(fixture.awayTeamId)
+  } catch (error) {
+    console.error("Failed to sync team lifecycle status after result save", {
+      fixtureId,
+      homeTeamId: fixture.homeTeamId,
+      awayTeamId: fixture.awayTeamId,
+      error,
+    })
+  }
 
   return { score, winnerTeamId }
 }
@@ -206,6 +328,7 @@ export async function rebuildDivisionStandings(divisionId: number, seasonId: num
         category: matches.category,
         homeSetsWon: matches.homeSetsWon,
         awaySetsWon: matches.awaySetsWon,
+        scoreDetail: matches.scoreDetail,
         homeGames: matches.homeGames,
         awayGames: matches.awayGames,
       })
@@ -213,7 +336,20 @@ export async function rebuildDivisionStandings(divisionId: number, seasonId: num
       .where(eq(matches.fixtureId, row.id))
 
     if (row.homeTeamId == null || row.awayTeamId == null || categoryRows.length === 0) continue
-    const score = scoreFixture(categoryRows)
+    const score = scoreFixture(
+      categoryRows.map((row) => {
+        const parsed = parseScoreDetail(row.scoreDetail)
+        const tally = parsed.length > 0 ? tallySets(parsed) : null
+        return {
+          category: row.category,
+          homeSetsWon: row.homeSetsWon,
+          awaySetsWon: row.awaySetsWon,
+          splitSets: tally?.splitSets ?? 0,
+          homeGames: row.homeGames,
+          awayGames: row.awayGames,
+        }
+      }),
+    )
     await bumpStanding({
       seasonId,
       divisionId,

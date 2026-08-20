@@ -7,6 +7,7 @@ export type MatchResult = {
   category: string
   homeSetsWon: number
   awaySetsWon: number
+  splitSets: number
   homeGames: number
   awayGames: number
 }
@@ -23,6 +24,11 @@ export type FixtureScore = {
   winnerSide: "home" | "away" | "draw"
 }
 
+function isCompletedSet(home: number, away: number) {
+  if (home === away) return false
+  return Math.max(home, away) >= 6
+}
+
 /**
  * Derive sets won and total games from a list of set scores for one rubber.
  * A set is won by whichever side has more games in that set; equal games count
@@ -31,11 +37,13 @@ export type FixtureScore = {
 export function tallySets(sets: SetScore[]): {
   homeSetsWon: number
   awaySetsWon: number
+  splitSets: number
   homeGames: number
   awayGames: number
 } {
   let homeSetsWon = 0
   let awaySetsWon = 0
+  let splitSets = 0
   let homeGames = 0
   let awayGames = 0
   for (const s of sets) {
@@ -44,10 +52,15 @@ export function tallySets(sets: SetScore[]): {
     if (h === 0 && a === 0) continue // empty/unplayed set row
     homeGames += h
     awayGames += a
+    if (h === a) continue
+    if (!isCompletedSet(h, a)) {
+      splitSets++
+      continue
+    }
     if (h > a) homeSetsWon++
-    else if (a > h) awaySetsWon++
+    else awaySetsWon++
   }
-  return { homeSetsWon, awaySetsWon, homeGames, awayGames }
+  return { homeSetsWon, awaySetsWon, splitSets, homeGames, awayGames }
 }
 
 /**
@@ -77,7 +90,8 @@ export function formatScoreDetail(sets: SetScore[]): string {
 
 /**
  * League scoring:
- *  - 1 point per set won (per category)
+ *  - 1 point per completed set won (per category)
+ *  - 0.5 point each for an incomplete/unfinished set entered (e.g. 3-4)
  *  - 1 bonus point per CATEGORY won (team that won more sets in that category)
  *
  * Example: winning a category 2-1 in sets → 2 + 1 = 3 pts
@@ -102,15 +116,26 @@ export function scoreFixture(matches: MatchResult[]): FixtureScore {
     homeGames += m.homeGames
     awayGames += m.awayGames
 
-    // Per-category points: sets won + bonus if this category was won
+    // Per-category points: completed sets won + split points for unfinished sets
     homePoints += m.homeSetsWon * LEAGUE_SCORING.pointPerSet
     awayPoints += m.awaySetsWon * LEAGUE_SCORING.pointPerSet
+    const splitSets = m.splitSets ?? 0
+    if (splitSets > 0) {
+      homePoints += splitSets * 0.5
+      awayPoints += splitSets * 0.5
+    }
     if (m.homeSetsWon > m.awaySetsWon) {
       homeMatchesWon++
       homePoints += LEAGUE_SCORING.bonusForWinner
     } else if (m.awaySetsWon > m.homeSetsWon) {
       awayMatchesWon++
       awayPoints += LEAGUE_SCORING.bonusForWinner
+    } else if (m.homeSetsWon > 0 && m.homeSetsWon === m.awaySetsWon) {
+      // Category tied on sets (e.g. 1-1) with no deciding set played — split the
+      // bonus point (0.5 each) and split the "phantom" deciding set (0.5 each),
+      // so a 1-1 split category shows as 2-2 rather than 1-1.
+      homePoints += LEAGUE_SCORING.bonusForWinner / 2 + 0.5
+      awayPoints += LEAGUE_SCORING.bonusForWinner / 2 + 0.5
     }
   }
 
