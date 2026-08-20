@@ -178,6 +178,28 @@
   color: oklch(0.12 0 0) !important;
 }
 
+/* League Centre explicit color overrides inside dashboard light mode */
+.dashboard-light .lc-score-win {
+  color: #16a34a !important;
+}
+
+.dashboard-light .lc-score-neutral {
+  color: #000000 !important;
+}
+
+.dashboard-light .lc-tooltip,
+.dashboard-light .lc-tooltip * {
+  color: #f8fafc !important;
+}
+
+.dashboard-light .lc-tooltip .lc-tooltip-win {
+  color: #34d399 !important;
+}
+
+.dashboard-light .lc-tooltip .lc-tooltip-loss {
+  color: #f87171 !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
