@@ -2,6 +2,10 @@ import { cn } from "@/lib/utils"
 import { Crest } from "@/components/league-centre/crest"
 import type { LCStanding } from "@/lib/queries-league-centre"
 
+function formatPoints(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
 export function StandingsTable({
   rows,
   qualifierByTeamId = new Map<number, "direct" | "wildcard">(),
@@ -20,8 +24,15 @@ export function StandingsTable({
       </p>
     )
   }
+  const sortedRows = [...rows].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points
+    if (b.matchesWon !== a.matchesWon) return b.matchesWon - a.matchesWon
+    if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
+    if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
+    return a.teamId - b.teamId
+  })
   const anyPlayed = rows.some((r) => r.played > 0)
-  const total = rows.length
+  const total = sortedRows.length
   const hasWildcards = Array.from(qualifierByTeamId.values()).includes("wildcard")
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
@@ -34,29 +45,27 @@ export function StandingsTable({
           {qualificationRule}
         </div>
       ) : null}
-      <div className="hidden grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 md:grid">
+      <div className="hidden grid-cols-[2.5rem_1fr_repeat(8,2.5rem)_3.5rem] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 md:grid">
         <span className="text-center">#</span>
         <span>Team</span>
         <span className="text-center">P</span>
         <span className="text-center">W</span>
+        <span className="text-center">D</span>
         <span className="text-center">L</span>
+        <span className="text-center" title="Category Matches Won">MW</span>
         <span className="text-center" title="Sets Won">SW</span>
-        <span className="text-center" title="Sets Lost">SL</span>
-        <span className="text-center" title="Games For">GF</span>
-        <span className="text-center" title="Games Against">GA</span>
         <span className="text-center" title="Points Difference (Games For − Games Against)">+/−</span>
-        <span className="text-center">Pts</span>
-        <span className="text-center" title="Team Power Rating">TPR</span>
+        <span className="text-center" title="Team points (1 per set won + 1 bonus per category won)">Pts</span>
       </div>
       <ul>
-        {rows.map((r, i) => {
-          const pos = r.rank ?? i + 1
+        {sortedRows.map((r, i) => {
+          const pos = i + 1
           const qualifier = qualifierByTeamId.get(r.teamId) ?? null
           return (
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(9,2.25rem)_3.25rem] md:px-4",
+                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(8,2.5rem)_3.5rem] md:px-4",
                 qualifier && "bg-sky-50/70",
                 showRelegation && pos >= total - 1 && total > 4 && "bg-red-50/60",
               )}
@@ -80,7 +89,7 @@ export function StandingsTable({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900">{r.teamName ?? "—"}</p>
                   <p className="truncate text-[11px] text-slate-500 md:hidden">
-                    {r.played}P · {r.wins}W · {r.points}pts
+                    {r.played}P · {r.wins}W · {r.draws}D · {r.matchesWon}MW · {formatPoints(r.points)}pts
                   </p>
                   <div className="hidden items-center gap-2 md:flex">
                     {r.venueName ? <p className="truncate text-[11px] text-slate-500">{r.venueName}</p> : null}
@@ -104,11 +113,10 @@ export function StandingsTable({
               </div>
               <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.played}</span>
               <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.wins}</span>
+              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.draws}</span>
               <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.losses}</span>
+              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.matchesWon}</span>
               <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.setsWon}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.setsLost}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.gamesFor}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.gamesAgainst}</span>
               <span
                 className={cn(
                   "hidden text-center text-sm font-semibold tabular-nums md:block",
@@ -117,9 +125,9 @@ export function StandingsTable({
               >
                 {r.pointsDiff > 0 ? `+${r.pointsDiff}` : r.pointsDiff}
               </span>
-              <span className="hidden text-center text-sm font-bold tabular-nums text-slate-900 md:block">{r.points}</span>
-              <span className="text-right text-sm font-semibold tabular-nums text-slate-500 md:text-center">
-                {r.tpr != null ? Math.round(r.tpr) : "—"}
+              <span className="hidden text-center text-sm font-bold tabular-nums text-slate-900 md:block">{formatPoints(r.points)}</span>
+              <span className="text-right text-sm font-semibold tabular-nums text-slate-500 md:hidden">
+                {Number.isFinite(r.tpr) ? Math.round(r.tpr as number) : "—"}
               </span>
             </li>
           )

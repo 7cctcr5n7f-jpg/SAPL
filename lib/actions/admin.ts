@@ -578,7 +578,7 @@ export async function pullPlayoffTeams(formData: FormData) {
             teamId: row.teamId,
             rank: row.rank,
             points: row.points,
-            wins: row.wins,
+            matchesWon: row.wins,
             setsWon: row.setsWon,
             pointsDiff: row.pointsDiff,
           }

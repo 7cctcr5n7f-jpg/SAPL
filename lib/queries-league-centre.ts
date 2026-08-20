@@ -21,6 +21,7 @@ import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 import { getCurrentSeason } from "@/lib/queries"
 import type { CurrentUser } from "@/lib/session"
+import { parseScoreDetail, tallySets } from "@/lib/engine/scoring"
 
 // ---------------------------------------------------------------------------
 // League Centre — a single premium data payload powering the flagship public
@@ -58,7 +59,9 @@ export type LCStanding = {
   orgLogo: string | null
   played: number
   wins: number
+  draws: number
   losses: number
+  matchesWon: number
   setsWon: number
   setsLost: number
   gamesFor: number
@@ -122,6 +125,7 @@ export type LCFixture = {
   assignedToFixture: boolean
   canSeeBookingLinks: boolean
   canSubmitResult: boolean
+  canSubmitAllCategories: boolean
   myCategories: string[]
   homePlayers: Record<string, { name: string; rating: number | null }[]>
   awayPlayers: Record<string, { name: string; rating: number | null }[]>
@@ -206,7 +210,7 @@ function normalizeCategoryKey(value: string): string {
  * overlay to derive joinUrl / joinUrlByCategory for assigned players.
  * Not exported or surfaced on the public LCFixture type.
  */
-type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory" | "canSeeBookingLinks" | "canSubmitResult" | "myCategories"> & {
+type SharedFixture = Omit<LCFixture, "mine" | "assignedToFixture" | "joinUrl" | "joinUrlByCategory" | "canSeeBookingLinks" | "canSubmitResult" | "canSubmitAllCategories" | "myCategories"> & {
   _categoryLinks: Record<string, string>
 }
 
@@ -332,7 +336,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
 
   // Standings — base on teamEntries so ALL teams in the division appear even
   // when no games have been played yet. stats come from a LEFT JOIN to standings.
-  const standingsOut: LCStanding[] = usedDivisionIds.length
+  let standingsOut: LCStanding[] = usedDivisionIds.length
     ? await db
         .select({
           divisionId: teamEntries.divisionId,
@@ -346,7 +350,9 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           orgLogo: organisations.logoUrl,
           played: sql<number>`COALESCE(${standings.played}, 0)`,
           wins: sql<number>`COALESCE(${standings.wins}, 0)`,
+          draws: sql<number>`0`,
           losses: sql<number>`COALESCE(${standings.losses}, 0)`,
+          matchesWon: sql<number>`0`,
           setsWon: sql<number>`COALESCE(${standings.setsWon}, 0)`,
           setsLost: sql<number>`COALESCE(${standings.setsLost}, 0)`,
           gamesFor: sql<number>`COALESCE(${standings.gamesFor}, 0)`,
@@ -763,6 +769,98 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     }
   })
 
+  // Recompute standings presentation from completed fixture data so League Centre
+  // stays stable even before all DB migrations are applied.
+  const standingByTeam = new Map<number, LCStanding>()
+  for (const row of standingsOut) {
+    standingByTeam.set(row.teamId, {
+      ...row,
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      matchesWon: 0,
+      setsWon: 0,
+      setsLost: 0,
+      gamesFor: 0,
+      gamesAgainst: 0,
+      points: 0,
+      pointsDiff: 0,
+    })
+  }
+
+  for (const fixtureRow of fixtureRows) {
+    if (normaliseStatus(fixtureRow.status) !== "completed") continue
+    if (fixtureRow.homeTeamId == null || fixtureRow.awayTeamId == null) continue
+    const home = standingByTeam.get(fixtureRow.homeTeamId)
+    const away = standingByTeam.get(fixtureRow.awayTeamId)
+    if (!home || !away) continue
+
+    const rubbers = rubbersByFixture.get(fixtureRow.id) ?? []
+    const homeMatchesWon = rubbers.filter((rubber) => rubber.winnerTeamId === fixtureRow.homeTeamId).length
+    const awayMatchesWon = rubbers.filter((rubber) => rubber.winnerTeamId === fixtureRow.awayTeamId).length
+    let homeGames = 0
+    let awayGames = 0
+    for (const rubber of rubbers) {
+      const parsed = parseScoreDetail(rubber.scoreDetail)
+      const tally = tallySets(parsed)
+      homeGames += tally.homeGames
+      awayGames += tally.awayGames
+    }
+
+    home.played += 1
+    away.played += 1
+    if (fixtureRow.winnerTeamId === fixtureRow.homeTeamId) {
+      home.wins += 1
+      away.losses += 1
+    } else if (fixtureRow.winnerTeamId === fixtureRow.awayTeamId) {
+      away.wins += 1
+      home.losses += 1
+    } else {
+      home.draws += 1
+      away.draws += 1
+    }
+    home.matchesWon += homeMatchesWon
+    away.matchesWon += awayMatchesWon
+    home.setsWon += fixtureRow.homeSetsWon ?? 0
+    away.setsWon += fixtureRow.awaySetsWon ?? 0
+    home.setsLost += fixtureRow.awaySetsWon ?? 0
+    away.setsLost += fixtureRow.homeSetsWon ?? 0
+    home.gamesFor += homeGames
+    home.gamesAgainst += awayGames
+    away.gamesFor += awayGames
+    away.gamesAgainst += homeGames
+    home.points += fixtureRow.homePoints ?? 0
+    away.points += fixtureRow.awayPoints ?? 0
+  }
+
+  standingsOut = standingsOut.map((row) => {
+    const computed = standingByTeam.get(row.teamId) ?? row
+    return {
+      ...computed,
+      pointsDiff: computed.gamesFor - computed.gamesAgainst,
+    }
+  })
+
+  const standingsByDivision = new Map<number, LCStanding[]>()
+  for (const row of standingsOut) {
+    const arr = standingsByDivision.get(row.divisionId) ?? []
+    arr.push(row)
+    standingsByDivision.set(row.divisionId, arr)
+  }
+  for (const rows of standingsByDivision.values()) {
+    rows.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points
+      if (b.matchesWon !== a.matchesWon) return b.matchesWon - a.matchesWon
+      if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
+      if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
+      return a.teamId - b.teamId
+    })
+    rows.forEach((row, index) => {
+      row.rank = index + 1
+    })
+  }
+
   // Rankings (TPR leaderboard) scoped to teams in used divisions.
   const rankingRows = usedDivisionIds.length
     ? await db
@@ -862,6 +960,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         assignedToFixture: false,
         canSeeBookingLinks: false,
         canSubmitResult: false,
+        canSubmitAllCategories: false,
         joinUrl: null,
         joinUrlByCategory: {},
         myCategories: [],
@@ -883,7 +982,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
 
   // Authenticated users: two small targeted queries for personal fixture flags.
   const access = await getAccessContext(user)
-  const canSeeAllBookingLinks = access.can("league_management")
+  const canSeeAllBookingLinks = access.can("league_management") || user.isSuperAdmin
   const myTeamIds = await getMyTeamIds(user)
   const myTeamIdsArr = [...myTeamIds]
   const captainTeamIds = new Set<number>(
@@ -927,7 +1026,8 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
     }
     const assignedToFixture = canSeeAllBookingLinks || mine || allowedCategories.size > 0
     const canSeeBookingLinks = canSeeAllBookingLinks || mine || allowedCategories.size > 0
-    const canSubmitResult = allowedCategories.size > 0
+    const canSubmitAllCategories = canSeeAllBookingLinks || isCaptainFixture
+    const canSubmitResult = canSubmitAllCategories || allowedCategories.size > 0
 
     const joinUrlByCategory: Record<string, string> = {}
     if (canSeeBookingLinks) {
@@ -965,6 +1065,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       assignedToFixture,
       canSeeBookingLinks,
       canSubmitResult,
+      canSubmitAllCategories,
       joinUrl: myCategories.map((category) => joinUrlByCategory[category]).find(Boolean) ?? null,
       joinUrlByCategory,
       myCategories,

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import {
   results,
+  matches,
   fixtures,
   teams,
   teamMembers,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/db/schema"
 import { getCurrentUser, type CurrentUser } from "@/lib/session"
 import { eq, and } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { applyFixtureResult, rebuildDivisionStandings } from "@/lib/engine/apply-result"
 import { tallySets } from "@/lib/engine/scoring"
 import { recomputeTeamStats } from "@/lib/engine/team-stats"
@@ -97,7 +98,8 @@ export type SubmittedCategory = {
 export async function submitResult(fixtureId: number, categories: SubmittedCategory[]) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const isAdmin = me.isSuperAdmin
+  const access = await getAccessContext(me)
+  const isAdmin = me.isSuperAdmin || access.isLeagueAdmin || access.can("league_management")
   // getFixtureForUser enforces that the user can manage one of the teams in this
   // fixture (captain, owner, or team/club manager), so we don't gate on role here.
   const fixture = await getFixtureForUser(me, fixtureId, isAdmin)
@@ -122,7 +124,14 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   }
 
   // Apply the result immediately — no approval step.
-  const { score, winnerTeamId } = await applyFixtureResult(fixtureId, categories)
+  let scoreResult: { score: { homePoints: number; awayPoints: number; homeSetsWon: number; awaySetsWon: number }; winnerTeamId: number | null }
+  try {
+    scoreResult = await applyFixtureResult(fixtureId, categories)
+  } catch (error) {
+    console.error("Failed to save fixture result", { fixtureId, error })
+    return { error: "Could not save score right now. Please try again." }
+  }
+  const { score, winnerTeamId } = scoreResult
 
   // Record an audit row for the result (status approved / final).
   await db.delete(results).where(eq(results.fixtureId, fixtureId))
@@ -145,20 +154,34 @@ export async function submitResult(fixtureId: number, categories: SubmittedCateg
   const title = wasCompleted ? "Result updated" : "Result recorded — standings updated"
   const body = `Final score ${scoreLine}. Tap to view the match.`
   const href = `/league-centre/match/${fixtureId}`
-  await notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId, href })
-  await notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId, href })
+  const notifyResults = await Promise.allSettled([
+    notifyTeam(homeTeamId, { type: "result_recorded", title, body, fixtureId, href }),
+    notifyTeam(awayTeamId, { type: "result_recorded", title, body, fixtureId, href }),
+  ])
+  const notifyErrors = notifyResults
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason)
+  if (notifyErrors.length > 0) {
+    console.error("Result saved but team notifications failed", {
+      fixtureId,
+      homeTeamId,
+      awayTeamId,
+      errors: notifyErrors,
+    })
+  }
 
-  revalidatePath("/dashboard/captain")
-  revalidatePath("/admin/fixtures")
-  revalidatePath("/standings")
+  revalidatePath("/dashboard/league-centre")
   revalidatePath("/league-centre")
+  revalidateTag("league-centre-shared")
   return { success: wasCompleted ? "Result updated." : "Result recorded. Standings updated." }
 }
 
 export async function clearResult(fixtureId: number) {
   const me = await getCurrentUser()
   if (!me) return { error: "Not authorised" }
-  const fixture = await getFixtureForUser(me, fixtureId, me.isSuperAdmin)
+  const access = await getAccessContext(me)
+  const isAdmin = me.isSuperAdmin || access.isLeagueAdmin || access.can("league_management")
+  const fixture = await getFixtureForUser(me, fixtureId, isAdmin)
   if (!fixture) return { error: "You do not manage a team in this fixture." }
   if (fixture.divisionId == null) return { error: "Fixture division missing." }
 
@@ -177,12 +200,20 @@ export async function clearResult(fixtureId: number) {
     })
     .where(eq(fixtures.id, fixtureId))
 
-  await rebuildDivisionStandings(fixture.divisionId, fixture.seasonId)
+  try {
+    await rebuildDivisionStandings(fixture.divisionId, fixture.seasonId)
+  } catch (error) {
+    console.error("Failed to rebuild standings after clearing result", {
+      fixtureId,
+      divisionId: fixture.divisionId,
+      seasonId: fixture.seasonId,
+      error,
+    })
+  }
 
-  revalidatePath("/dashboard/captain")
-  revalidatePath("/admin/fixtures")
-  revalidatePath("/standings")
+  revalidatePath("/dashboard/league-centre")
   revalidatePath("/league-centre")
+  revalidateTag("league-centre-shared")
   return { success: "Result cleared. You can submit the corrected score now." }
 }
 

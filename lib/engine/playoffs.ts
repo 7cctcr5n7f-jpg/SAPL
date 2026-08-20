@@ -83,7 +83,7 @@ export type DivisionPlayoffStandingInput = {
   teamName?: string | null
   rank: number | null
   points: number
-  wins: number
+  matchesWon: number
   setsWon: number
   pointsDiff: number
 }
@@ -93,12 +93,12 @@ export type DivisionPlayoffQualifier = DivisionPlayoffStandingInput & {
   qualificationType: "direct" | "wildcard"
 }
 
-function compareQualifierStrength(a: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "wins" | "setsWon" | "pointsDiff" | "teamId">, b: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "wins" | "setsWon" | "pointsDiff" | "teamId">) {
+function compareQualifierStrength(a: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "matchesWon" | "setsWon" | "pointsDiff" | "teamId">, b: Pick<DivisionPlayoffStandingInput, "rank" | "points" | "matchesWon" | "setsWon" | "pointsDiff" | "teamId">) {
   const rankA = a.rank ?? Number.MAX_SAFE_INTEGER
   const rankB = b.rank ?? Number.MAX_SAFE_INTEGER
   if (rankA !== rankB) return rankA - rankB
   if (b.points !== a.points) return b.points - a.points
-  if (b.wins !== a.wins) return b.wins - a.wins
+  if (b.matchesWon !== a.matchesWon) return b.matchesWon - a.matchesWon
   if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
   if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
   return a.teamId - b.teamId

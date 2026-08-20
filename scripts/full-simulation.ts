@@ -162,6 +162,7 @@ async function standingsMismatchCount(seasonId: number): Promise<number> {
         category: "N/A",
         homeSetsWon: m.homeSetsWon,
         awaySetsWon: m.awaySetsWon,
+        splitSets: 0,
         homeGames: m.homeGames,
         awayGames: m.awayGames,
       })),

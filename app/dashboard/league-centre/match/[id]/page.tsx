@@ -80,9 +80,9 @@ export default async function DashboardMatchDetailPage({ params }: { params: Pro
           <div className="flex flex-col items-center">
             {isCompleted || isLive ? (
               <div className="flex items-center gap-3 text-4xl font-extrabold tabular-nums">
-                <span className={homeWon ? "text-foreground" : "text-muted-foreground"}>{f.homePoints ?? 0}</span>
+                <span style={{ color: homeWon ? "#16a34a" : "#000000" }}>{f.homePoints ?? 0}</span>
                 <span className="text-border">-</span>
-                <span className={awayWon ? "text-foreground" : "text-muted-foreground"}>{f.awayPoints ?? 0}</span>
+                <span style={{ color: awayWon ? "#16a34a" : "#000000" }}>{f.awayPoints ?? 0}</span>
               </div>
             ) : (
               <span className="text-2xl font-bold text-muted-foreground">vs</span>
@@ -139,7 +139,7 @@ export default async function DashboardMatchDetailPage({ params }: { params: Pro
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-sm">
-                    {r.scoreDetail && <span className="text-muted-foreground">{r.scoreDetail}</span>}
+                    {r.scoreDetail && <SetScoreDetail scoreDetail={r.scoreDetail} />}
                     <span className="font-semibold tabular-nums">
                       <span className={rHome ? "text-foreground" : "text-muted-foreground"}>{r.homeSetsWon}</span>
                       <span className="mx-1 text-border">-</span>
@@ -153,5 +153,26 @@ export default async function DashboardMatchDetailPage({ params }: { params: Pro
         )}
       </div>
     </div>
+  )
+}
+
+function SetScoreDetail({ scoreDetail }: { scoreDetail: string }) {
+  return (
+    <span className="font-medium tabular-nums">
+      {scoreDetail.split(",").map((part, index) => {
+        const [homeRaw, awayRaw] = part.trim().split("-")
+        const home = Number(homeRaw)
+        const away = Number(awayRaw)
+        const completed = home !== away && Math.max(home, away) >= 6
+        return (
+          <span key={`${part}-${index}`}>
+            <span style={{ color: completed && home > away ? "#16a34a" : "#000000" }}>{home}</span>
+            <span className="text-slate-400">-</span>
+            <span style={{ color: completed && away > home ? "#16a34a" : "#000000" }}>{away}</span>
+            {index < scoreDetail.split(",").length - 1 ? <span className="text-slate-400">, </span> : null}
+          </span>
+        )
+      })}
+    </span>
   )
 }

@@ -6,6 +6,7 @@ import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
 import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
 import { computeDivisionPlayoffQualifiers } from "@/lib/engine/playoffs"
+import { parseScoreDetail, tallySets } from "@/lib/engine/scoring"
 import { ResultEntry } from "@/components/captain/result-entry"
 import {
   Dialog,
@@ -66,6 +67,93 @@ function averagePairRating(players: { rating: number | null }[]) {
   const ratings = players.map((player) => player.rating).filter((rating): rating is number => rating != null)
   if (ratings.length === 0) return null
   return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+}
+
+function computeFixtureTeamPoints(fixture: LCFixture) {
+  if (fixture.rubbers.length === 0) {
+    return {
+      home: fixture.homePoints ?? 0,
+      away: fixture.awayPoints ?? 0,
+    }
+  }
+  return fixture.rubbers.reduce(
+    (acc, rubber) => {
+      const rubberPoints = computeRubberTeamPoints(rubber)
+      acc.home += rubberPoints.home
+      acc.away += rubberPoints.away
+      return acc
+    },
+    { home: 0, away: 0 },
+  )
+}
+
+function computeRubberTeamPoints(rubber: LCRubber | null | undefined) {
+  if (!rubber) return { home: 0, away: 0 }
+  const parsedSets = parseScoreDetail(rubber.scoreDetail)
+  const tally = parsedSets.length > 0 ? tallySets(parsedSets) : null
+  const homeSetsWon = tally?.homeSetsWon ?? rubber.homeSetsWon
+  const awaySetsWon = tally?.awaySetsWon ?? rubber.awaySetsWon
+  const splitSets = tally?.splitSets ?? 0
+  const homeBonus = homeSetsWon > awaySetsWon ? 1 : 0
+  const awayBonus = awaySetsWon > homeSetsWon ? 1 : 0
+  // Category tied on sets (e.g. 1-1) with no deciding set played — split the
+  // bonus point (0.5 each) and split the "phantom" deciding set (0.5 each),
+  // so a 1-1 split category shows as 2-2 rather than 1-1.
+  const tiedSplitBonus = homeSetsWon > 0 && homeSetsWon === awaySetsWon ? 0.5 : 0
+  const tiedSplitExtra = tiedSplitBonus > 0 ? 0.5 : 0
+  return {
+    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus + tiedSplitExtra,
+    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus + tiedSplitExtra,
+  }
+}
+
+function isCompletedSet(home: number, away: number) {
+  if (home === away) return false
+  return Math.max(home, away) >= 6
+}
+
+function renderScoreDetail(scoreDetail: string | null | undefined) {
+  const sets = parseScoreDetail(scoreDetail)
+  if (sets.length === 0) return null
+  return (
+    <span className="flex flex-col items-center gap-0.5 text-[11px] font-medium leading-tight">
+      {sets.map((set, index) => {
+        const completed = isCompletedSet(set.home, set.away)
+        const homeColor = completed && set.home > set.away ? "#16a34a" : "#000000"
+        const awayColor = completed && set.away > set.home ? "#16a34a" : "#000000"
+        return (
+          <span key={`${set.home}-${set.away}-${index}`} className="tabular-nums">
+            <span className="font-semibold" style={{ color: homeColor }}>{set.home}</span>
+            <span className="text-slate-500">-</span>
+            <span className="font-semibold" style={{ color: awayColor }}>{set.away}</span>
+            {index < sets.length - 1 ? null : null}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function renderTooltipScoreDetail(scoreDetail: string) {
+  const sets = parseScoreDetail(scoreDetail)
+  if (sets.length === 0) return null
+  return (
+    <span className="ml-1 tabular-nums">
+      {sets.map((set, index) => {
+        const completed = isCompletedSet(set.home, set.away)
+        const homeColor = completed && set.home > set.away ? "#34d399" : "#f8fafc"
+        const awayColor = completed && set.away > set.home ? "#34d399" : "#f8fafc"
+        return (
+          <span key={`${set.home}-${set.away}-${index}`}>
+            <span style={{ color: homeColor }}>{set.home}</span>
+            <span className="text-slate-400">-</span>
+            <span style={{ color: awayColor }}>{set.away}</span>
+            {index < sets.length - 1 ? <span className="text-slate-400">, </span> : null}
+          </span>
+        )
+      })}
+    </span>
+  )
 }
 
 function fixtureDisplayTime(fixture: LCFixture) {
@@ -178,7 +266,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
             teamName: row.teamName,
             rank: row.rank,
             points: row.points,
-            wins: row.wins,
+            matchesWon: row.matchesWon,
             setsWon: row.setsWon,
             pointsDiff: row.pointsDiff,
           }
@@ -649,7 +737,13 @@ function FixtureCard({
   const isLive = fixture.status === "live"
   const homeWon = fixture.winnerTeamId != null && fixture.winnerTeamId === fixture.homeTeamId
   const awayWon = fixture.winnerTeamId != null && fixture.winnerTeamId === fixture.awayTeamId
-  const hasScore = isCompleted || isLive
+  const hasRecordedRubber = fixture.rubbers.some(
+    (rubber) => rubber.homeSetsWon > 0 || rubber.awaySetsWon > 0 || Boolean(rubber.scoreDetail),
+  )
+  const hasScore = isCompleted || isLive || hasRecordedRubber
+  const teamPoints = computeFixtureTeamPoints(fixture)
+  const homeTeamScoreColor = teamPoints.home > teamPoints.away ? "#16a34a" : "#000000"
+  const awayTeamScoreColor = teamPoints.away > teamPoints.home ? "#16a34a" : "#000000"
   const displayTime = fixtureDisplayTime(fixture)
 
   // Get players for the fixture's own division category
@@ -730,21 +824,17 @@ function FixtureCard({
           {hasScore ? (
             <div className="flex items-center gap-2 tabular-nums">
               <span
-              className={cn(
-                "text-3xl font-extrabold leading-none",
-                homeWon ? "text-red-600" : "text-slate-900",
-              )}
+              className="text-3xl font-extrabold leading-none"
+              style={{ color: homeTeamScoreColor }}
               >
-                {fixture.homePoints ?? 0}
+                {teamPoints.home}
               </span>
               <span className="text-lg font-bold text-slate-300">-</span>
               <span
-              className={cn(
-                "text-3xl font-extrabold leading-none",
-                awayWon ? "text-red-600" : "text-slate-900",
-              )}
+              className="text-3xl font-extrabold leading-none"
+              style={{ color: awayTeamScoreColor }}
               >
-                {fixture.awayPoints ?? 0}
+                {teamPoints.away}
               </span>
             </div>
           ) : (
@@ -852,23 +942,69 @@ function FormDots({
             />
             {/* Tooltip */}
             <div className={cn(
-              "pointer-events-none absolute bottom-full z-50 mb-1.5 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+              "pointer-events-none absolute top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
               align === "right" ? "right-0" : "left-0",
             )}>
               <span className={cn("font-bold", item.result === "W" ? "text-emerald-400" : "text-red-400")}>
                 {item.result === "W" ? "W" : "L"}
               </span>
-              {" · "}{item.opponentName}
-              <span className="ml-1.5 tabular-nums text-slate-300">{scoreLabel}</span>
+              <span style={{ color: "#f8fafc" }}>{" · "}{item.opponentName}</span>
+              {renderTooltipScoreDetail(scoreLabel)}
               {/* Caret */}
               <span className={cn(
-                "absolute top-full h-0 w-0 border-x-4 border-t-4 border-x-transparent border-t-slate-900",
+                "absolute bottom-full h-0 w-0 border-x-4 border-b-4 border-x-transparent border-b-slate-900",
                 align === "right" ? "right-2" : "left-2",
               )} />
             </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function CategoryDot({
+  result,
+  opponent,
+  scoreLabel,
+  align = "left",
+}: {
+  result: "W" | "L" | "D"
+  opponent: string
+  scoreLabel?: string | null
+  align?: "left" | "right"
+}) {
+  return (
+    <div className={cn("group relative flex items-center", align === "right" && "justify-end")}>
+      <span
+        className={cn(
+          "block h-2.5 w-2.5 rounded-full cursor-default transition-transform group-hover:scale-125",
+          result === "W" ? "bg-emerald-500" : result === "L" ? "bg-red-400" : "bg-slate-500",
+        )}
+      />
+      <div
+        className={cn(
+          "pointer-events-none absolute top-full z-50 mt-1.5 max-w-52 rounded-md bg-slate-950 px-2 py-1 text-[10px] font-medium leading-snug opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+          align === "right" ? "right-0" : "left-0",
+        )}
+      >
+        <span
+          className={cn(
+            "font-bold",
+            result === "W" ? "text-emerald-400" : result === "L" ? "text-red-400" : "text-slate-300",
+          )}
+        >
+          {result}
+        </span>
+        <span className="break-words" style={{ color: "#f8fafc" }}>{" · "}{opponent}</span>
+        {scoreLabel ? renderTooltipScoreDetail(scoreLabel) : null}
+        <span
+          className={cn(
+            "absolute bottom-full h-0 w-0 border-x-4 border-b-4 border-x-transparent border-b-slate-900",
+            align === "right" ? "right-2" : "left-2",
+          )}
+        />
+      </div>
     </div>
   )
 }
@@ -895,7 +1031,11 @@ function FixtureBreakdown({
   currentPlayerId: number | null
 }) {
   const isCompleted = fixture.status === "completed"
-  const [scoreRubber, setScoreRubber] = useState<LCRubber | null>(null)
+  const [scoreRubber, setScoreRubber] = useState<{
+    rubber: LCRubber
+    homeLabel: string
+    awayLabel: string
+  } | null>(null)
 
   // Build a map of existing rubbers by category
   const rubberByCategory = new Map<string, LCRubber>()
@@ -943,6 +1083,12 @@ function FixtureBreakdown({
             const rubber = rubberByCategory.get(category)
             const homePair = fixture.homePlayers?.[category] ?? []
             const awayPair = fixture.awayPlayers?.[category] ?? []
+            const homePlayerLabel = homePair.length > 0
+              ? homePair.map((player) => player.name).join(" / ")
+              : (fixture.homeName ?? "Home")
+            const awayPlayerLabel = awayPair.length > 0
+              ? awayPair.map((player) => player.name).join(" / ")
+              : (fixture.awayName ?? "Away")
             const homeWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.homeTeamId
             const awayWon = rubber?.winnerTeamId != null && rubber.winnerTeamId === fixture.awayTeamId
             const hasScore = !!rubber && isCompleted
@@ -967,19 +1113,19 @@ function FixtureBreakdown({
               // assignment IDs are stale/mismatched for this user.
               (!fixture.mine || iMyRubber || fixture.myCategories.includes(category) || fixture.mine)
             const showJoin = !isCompleted && !!categoryJoinUrl && visibleCategoryBelongsToMine
-            const showScore = fixture.canSubmitResult && iMyRubber
+            const showScore = fixture.canSubmitAllCategories || (fixture.canSubmitResult && iMyRubber)
+            const rubberPoints = computeRubberTeamPoints(rubber)
+            const homeRubberPoints = rubberPoints.home
+            const awayRubberPoints = rubberPoints.away
+            const homeRubberScoreColor = homeRubberPoints > awayRubberPoints ? "#16a34a" : "#000000"
+            const awayRubberScoreColor = awayRubberPoints > homeRubberPoints ? "#16a34a" : "#000000"
+            const homeCategoryResult: "W" | "L" | "D" =
+              homeRubberPoints > awayRubberPoints ? "W" : homeRubberPoints < awayRubberPoints ? "L" : "D"
+            const awayCategoryResult: "W" | "L" | "D" =
+              awayRubberPoints > homeRubberPoints ? "W" : awayRubberPoints < homeRubberPoints ? "L" : "D"
 
             return (
               <div key={category} className="px-4 py-3">
-                {/* Category badge + score detail */}
-                <div className="mb-2 flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-2">
-                    {rubber?.scoreDetail && (
-                      <span className="text-[10px] text-slate-400">{rubber.scoreDetail}</span>
-                    )}
-                  </div>
-                </div>
-
                 {/* Players vs Score vs Players */}
                 <div className="grid grid-cols-[1fr_92px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
@@ -996,7 +1142,6 @@ function FixtureBreakdown({
                               className={cn(
                                 "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
-                                hasScore && homeWon && "text-red-600",
                               )}
                             >
                               {player.name}
@@ -1008,14 +1153,23 @@ function FixtureBreakdown({
                       <p className="text-xs text-slate-400">TBD</p>
                     )}
                     <div className="flex items-center gap-1.5 pt-0.5">
-                      <FormDots items={fixture.homeFormItems} align="left" />
+                      {hasScore ? (
+                        <CategoryDot
+                          result={homeCategoryResult}
+                          opponent={awayPlayerLabel}
+                          scoreLabel={rubber?.scoreDetail ?? null}
+                          align="left"
+                        />
+                      ) : (
+                        <FormDots items={fixture.homeFormItems} align="left" />
+                      )}
                     </div>
                   </div>
 
                   {/* Score / vs */}
                   <div className="flex self-stretch flex-col items-center justify-center gap-1 tabular-nums">
                     <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
-                      <span className="rounded-md bg-red-50 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-black">
                         {category}
                       </span>
                       {(courtInfo?.court || courtInfo?.time) && (
@@ -1029,18 +1183,19 @@ function FixtureBreakdown({
                     <div className="flex min-h-[1.25rem] items-center gap-1.5">
                       {hasScore ? (
                         <>
-                          <span className={cn("text-lg font-extrabold", homeWon ? "text-red-600" : "text-slate-700")}>
-                            {rubber!.homeSetsWon}
+                          <span className="text-lg font-extrabold" style={{ color: homeRubberScoreColor }}>
+                            {homeRubberPoints}
                           </span>
                           <span className="text-sm text-slate-300">-</span>
-                          <span className={cn("text-lg font-extrabold", awayWon ? "text-red-600" : "text-slate-700")}>
-                            {rubber!.awaySetsWon}
+                          <span className="text-lg font-extrabold" style={{ color: awayRubberScoreColor }}>
+                            {awayRubberPoints}
                           </span>
                         </>
                       ) : (
                         <span className="text-sm font-bold text-slate-300">vs</span>
                       )}
                     </div>
+                    {rubber?.scoreDetail ? renderScoreDetail(rubber.scoreDetail) : null}
                     {(showJoin || showScore) && (
                       <div className="mt-0 hidden flex-col items-center gap-1 md:flex">
                         {showJoin && (
@@ -1058,17 +1213,21 @@ function FixtureBreakdown({
                           <button
                             onClick={() =>
                               setScoreRubber(
-                                rubber ?? {
-                                  id: 0,
-                                  category,
-                                  session: 1,
-                                  isFeatureCourt: false,
-                                  homeSetsWon: 0,
-                                  awaySetsWon: 0,
-                                  scoreDetail: null,
-                                  winnerTeamId: null,
-                                  homePlayerIds: [],
-                                  awayPlayerIds: [],
+                                {
+                                  rubber: rubber ?? {
+                                    id: 0,
+                                    category,
+                                    session: 1,
+                                    isFeatureCourt: false,
+                                    homeSetsWon: 0,
+                                    awaySetsWon: 0,
+                                    scoreDetail: null,
+                                    winnerTeamId: null,
+                                    homePlayerIds: [],
+                                    awayPlayerIds: [],
+                                  },
+                                  homeLabel: homePlayerLabel,
+                                  awayLabel: awayPlayerLabel,
                                 },
                               )
                             }
@@ -1097,7 +1256,6 @@ function FixtureBreakdown({
                               className={cn(
                                 "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
-                                hasScore && awayWon && "text-red-600",
                               )}
                             >
                               {player.name}
@@ -1112,7 +1270,16 @@ function FixtureBreakdown({
                       <p className="text-right text-xs text-slate-400">TBD</p>
                     )}
                     <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                      <FormDots items={fixture.awayFormItems} align="right" />
+                      {hasScore ? (
+                        <CategoryDot
+                          result={awayCategoryResult}
+                          opponent={homePlayerLabel}
+                          scoreLabel={rubber?.scoreDetail ?? null}
+                          align="right"
+                        />
+                      ) : (
+                        <FormDots items={fixture.awayFormItems} align="right" />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1134,17 +1301,21 @@ function FixtureBreakdown({
                       <button
                         onClick={() =>
                           setScoreRubber(
-                            rubber ?? {
-                              id: 0,
-                              category,
-                              session: 1,
-                              isFeatureCourt: false,
-                              homeSetsWon: 0,
-                              awaySetsWon: 0,
-                              scoreDetail: null,
-                              winnerTeamId: null,
-                              homePlayerIds: [],
-                              awayPlayerIds: [],
+                            {
+                              rubber: rubber ?? {
+                                id: 0,
+                                category,
+                                session: 1,
+                                isFeatureCourt: false,
+                                homeSetsWon: 0,
+                                awaySetsWon: 0,
+                                scoreDetail: null,
+                                winnerTeamId: null,
+                                homePlayerIds: [],
+                                awayPlayerIds: [],
+                              },
+                              homeLabel: homePlayerLabel,
+                              awayLabel: awayPlayerLabel,
                             },
                           )
                         }
@@ -1169,19 +1340,19 @@ function FixtureBreakdown({
 
       {/* Inline score entry dialog */}
       <Dialog open={!!scoreRubber} onOpenChange={(open) => !open && setScoreRubber(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Enter Score · {scoreRubber?.category}</DialogTitle>
+            <DialogTitle>Enter Score · {scoreRubber?.rubber.category}</DialogTitle>
           </DialogHeader>
           {scoreRubber && (
             <ResultEntry
               fixtureId={fixture.id}
-              homeName={fixture.homeName ?? "Home"}
-              awayName={fixture.awayName ?? "Away"}
+              homeName={scoreRubber.homeLabel}
+              awayName={scoreRubber.awayLabel}
               categories={[{
-                category: scoreRubber.category,
-                session: scoreRubber.session,
-                isFeatureCourt: scoreRubber.isFeatureCourt,
+                category: scoreRubber.rubber.category,
+                session: scoreRubber.rubber.session,
+                isFeatureCourt: scoreRubber.rubber.isFeatureCourt,
               }]}
               isEdit={isCompleted}
               allowClear={isCompleted}
