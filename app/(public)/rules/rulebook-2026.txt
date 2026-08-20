@@ -627,22 +627,24 @@ be rescheduled.
 
 ## 23.1 Fixture week
 
-A rescheduled match must be played **within the same scheduled fixture week**.
+Reschedule requests must be made **at least 24 hours before the scheduled match time**.
+
+Where approved, a rescheduled match must be completed **before the next fixture starts**.
 
 ## 23.2 Opponent agreement
 
-The requesting team may propose an alternative date within the same fixture week.
+The requesting team may propose an alternative date/time before the next fixture starts.
 
 The opposing team is not required to accept the proposed date.
 
 If the opposing team does not agree:
 
-* The requesting team must provide an eligible substitute where possible, or
-* The requesting team forfeits the affected match.
+* The affected match is forfeited.
+* Where permitted under eligibility rules, the requesting team may still keep the original fixture by using an eligible substitute.
 
 ## 23.3 SAPL approval
 
-Normal rescheduling within the same fixture week does not require prior SAPL approval.
+Normal rescheduling that satisfies these timing and agreement rules does not require prior SAPL approval.
 
 ---
 

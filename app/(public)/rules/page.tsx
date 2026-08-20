@@ -168,9 +168,11 @@ const RULE_TABS: RuleTab[] = [
         number: "23–24",
         title: "Rescheduling and substitutions",
         points: [
+          "Reschedule requests must be made at least 24 hours before the scheduled match time.",
           "To reschedule a specific match, you must first get agreement from the opposing players/captain on the new date and time.",
           "If both teams agree, the rescheduled match must be completed before the next fixture starts.",
-          "If the opposing team cannot move date/time, the original fixture stands and you must use an eligible substitute where needed.",
+          "If the opposing team cannot approve the reschedule, the game is forfeited.",
+          "Where allowed, the original fixture can still be fulfilled by using an eligible substitute.",
           "Substitutes must be eligible and may play up categories, not down.",
           "Substitute rating must be equal or lower than replaced player under category rules.",
         ],
