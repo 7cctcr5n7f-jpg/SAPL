@@ -139,10 +139,11 @@ export function scoreFixture(matches: MatchResult[]): FixtureScore {
     }
   }
 
-  // Fixture winner determined by categories won (most categories)
+  // Fixture winner determined by total points (not raw categories won) —
+  // e.g. 10 points to 6 is a win even if categories won are tied 2-2.
   let winnerSide: "home" | "away" | "draw" = "draw"
-  if (homeMatchesWon > awayMatchesWon) winnerSide = "home"
-  else if (awayMatchesWon > homeMatchesWon) winnerSide = "away"
+  if (homePoints > awayPoints) winnerSide = "home"
+  else if (awayPoints > homePoints) winnerSide = "away"
 
   return {
     homePoints,

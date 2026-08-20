@@ -119,13 +119,13 @@ function renderScoreDetail(scoreDetail: string | null | undefined) {
     <span className="flex flex-col items-center gap-0.5 text-[11px] font-medium leading-tight">
       {sets.map((set, index) => {
         const completed = isCompletedSet(set.home, set.away)
-        const homeColor = completed && set.home > set.away ? "#16a34a" : "#000000"
-        const awayColor = completed && set.away > set.home ? "#16a34a" : "#000000"
+        const homeClass = completed && set.home > set.away ? "lc-score-win" : "lc-score-neutral"
+        const awayClass = completed && set.away > set.home ? "lc-score-win" : "lc-score-neutral"
         return (
           <span key={`${set.home}-${set.away}-${index}`} className="tabular-nums">
-            <span className="font-semibold" style={{ color: homeColor }}>{set.home}</span>
+            <span className={cn("font-semibold", homeClass)}>{set.home}</span>
             <span className="text-slate-500">-</span>
-            <span className="font-semibold" style={{ color: awayColor }}>{set.away}</span>
+            <span className={cn("font-semibold", awayClass)}>{set.away}</span>
             {index < sets.length - 1 ? null : null}
           </span>
         )
@@ -141,13 +141,13 @@ function renderTooltipScoreDetail(scoreDetail: string) {
     <span className="ml-1 tabular-nums">
       {sets.map((set, index) => {
         const completed = isCompletedSet(set.home, set.away)
-        const homeColor = completed && set.home > set.away ? "#34d399" : "#f8fafc"
-        const awayColor = completed && set.away > set.home ? "#34d399" : "#f8fafc"
+        const homeClass = completed && set.home > set.away ? "lc-tooltip-win" : "lc-tooltip-text"
+        const awayClass = completed && set.away > set.home ? "lc-tooltip-win" : "lc-tooltip-text"
         return (
           <span key={`${set.home}-${set.away}-${index}`}>
-            <span style={{ color: homeColor }}>{set.home}</span>
+            <span className={homeClass}>{set.home}</span>
             <span className="text-slate-400">-</span>
-            <span style={{ color: awayColor }}>{set.away}</span>
+            <span className={awayClass}>{set.away}</span>
             {index < sets.length - 1 ? <span className="text-slate-400">, </span> : null}
           </span>
         )
@@ -742,8 +742,8 @@ function FixtureCard({
   )
   const hasScore = isCompleted || isLive || hasRecordedRubber
   const teamPoints = computeFixtureTeamPoints(fixture)
-  const homeTeamScoreColor = teamPoints.home > teamPoints.away ? "#16a34a" : "#000000"
-  const awayTeamScoreColor = teamPoints.away > teamPoints.home ? "#16a34a" : "#000000"
+  const homeTeamScoreClass = teamPoints.home > teamPoints.away ? "lc-score-win" : "lc-score-neutral"
+  const awayTeamScoreClass = teamPoints.away > teamPoints.home ? "lc-score-win" : "lc-score-neutral"
   const displayTime = fixtureDisplayTime(fixture)
 
   // Get players for the fixture's own division category
@@ -824,15 +824,13 @@ function FixtureCard({
           {hasScore ? (
             <div className="flex items-center gap-2 tabular-nums">
               <span
-              className="text-3xl font-extrabold leading-none"
-              style={{ color: homeTeamScoreColor }}
+              className={cn("text-3xl font-extrabold leading-none", homeTeamScoreClass)}
               >
                 {teamPoints.home}
               </span>
               <span className="text-lg font-bold text-slate-300">-</span>
               <span
-              className="text-3xl font-extrabold leading-none"
-              style={{ color: awayTeamScoreColor }}
+              className={cn("text-3xl font-extrabold leading-none", awayTeamScoreClass)}
               >
                 {teamPoints.away}
               </span>
@@ -942,13 +940,13 @@ function FormDots({
             />
             {/* Tooltip */}
             <div className={cn(
-              "pointer-events-none absolute top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+              "lc-tooltip pointer-events-none absolute top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
               align === "right" ? "right-0" : "left-0",
             )}>
-              <span className={cn("font-bold", item.result === "W" ? "text-emerald-400" : "text-red-400")}>
+              <span className={cn("font-bold", item.result === "W" ? "lc-tooltip-win" : "lc-tooltip-loss")}>
                 {item.result === "W" ? "W" : "L"}
               </span>
-              <span style={{ color: "#f8fafc" }}>{" · "}{item.opponentName}</span>
+              <span className="lc-tooltip-text">{" · "}{item.opponentName}</span>
               {renderTooltipScoreDetail(scoreLabel)}
               {/* Caret */}
               <span className={cn(
@@ -984,19 +982,19 @@ function CategoryDot({
       />
       <div
         className={cn(
-          "pointer-events-none absolute top-full z-50 mt-1.5 max-w-52 rounded-md bg-slate-950 px-2 py-1 text-[10px] font-medium leading-snug opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+          "lc-tooltip pointer-events-none absolute top-full z-50 mt-1.5 max-w-52 rounded-md bg-slate-950 px-2 py-1 text-[10px] font-medium leading-snug opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
           align === "right" ? "right-0" : "left-0",
         )}
       >
         <span
           className={cn(
             "font-bold",
-            result === "W" ? "text-emerald-400" : result === "L" ? "text-red-400" : "text-slate-300",
+            result === "W" ? "lc-tooltip-win" : result === "L" ? "lc-tooltip-loss" : "lc-tooltip-text",
           )}
         >
           {result}
         </span>
-        <span className="break-words" style={{ color: "#f8fafc" }}>{" · "}{opponent}</span>
+        <span className="lc-tooltip-text break-words">{" · "}{opponent}</span>
         {scoreLabel ? renderTooltipScoreDetail(scoreLabel) : null}
         <span
           className={cn(
@@ -1117,8 +1115,8 @@ function FixtureBreakdown({
             const rubberPoints = computeRubberTeamPoints(rubber)
             const homeRubberPoints = rubberPoints.home
             const awayRubberPoints = rubberPoints.away
-            const homeRubberScoreColor = homeRubberPoints > awayRubberPoints ? "#16a34a" : "#000000"
-            const awayRubberScoreColor = awayRubberPoints > homeRubberPoints ? "#16a34a" : "#000000"
+            const homeRubberScoreClass = homeRubberPoints > awayRubberPoints ? "lc-score-win" : "lc-score-neutral"
+            const awayRubberScoreClass = awayRubberPoints > homeRubberPoints ? "lc-score-win" : "lc-score-neutral"
             const homeCategoryResult: "W" | "L" | "D" =
               homeRubberPoints > awayRubberPoints ? "W" : homeRubberPoints < awayRubberPoints ? "L" : "D"
             const awayCategoryResult: "W" | "L" | "D" =
@@ -1183,11 +1181,11 @@ function FixtureBreakdown({
                     <div className="flex min-h-[1.25rem] items-center gap-1.5">
                       {hasScore ? (
                         <>
-                          <span className="text-lg font-extrabold" style={{ color: homeRubberScoreColor }}>
+                          <span className={cn("text-lg font-extrabold", homeRubberScoreClass)}>
                             {homeRubberPoints}
                           </span>
                           <span className="text-sm text-slate-300">-</span>
-                          <span className="text-lg font-extrabold" style={{ color: awayRubberScoreColor }}>
+                          <span className={cn("text-lg font-extrabold", awayRubberScoreClass)}>
                             {awayRubberPoints}
                           </span>
                         </>
