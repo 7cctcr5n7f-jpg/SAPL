@@ -153,30 +153,9 @@
   background-color: oklch(0.95 0 0) !important;
 }
 
-/* Force ALL text to be dark on dashboard light theme */
-.dashboard-light * {
-  color: oklch(0.12 0 0) !important;
-  --tw-text-opacity: 1 !important;
-}
-
-/* Except for primary accent text which should stay red */
-.dashboard-light .text-primary,
-.dashboard-light .text-red-600,
-.dashboard-light .text-destructive {
-  color: oklch(0.585 0.243 27.5) !important;
-}
-
-/* And white text on red buttons */
-.dashboard-light .bg-primary,
-.dashboard-light .bg-red-600,
-.dashboard-light .bg-destructive {
-  color: white !important;
-}
-
-/* Preserve inherited text colors for specific elements */
-.dashboard-light .text-muted-foreground {
-  color: oklch(0.12 0 0) !important;
-}
+/* Avoid global text-forcing rules in dashboard light mode.
+   They previously overrode component state colors (wins/losses, tooltips, etc.)
+   and caused cross-device rendering inconsistencies. */
 
 /* League Centre explicit color overrides inside dashboard light mode */
 .dashboard-light .lc-score-win {

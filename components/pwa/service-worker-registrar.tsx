@@ -22,6 +22,8 @@ export function ServiceWorkerRegistrar() {
     // bug). Purge every cache, unregister all workers, and reload exactly once
     // so the device recovers itself with zero manual DevTools steps.
     const HEAL_KEY = "sapl-sw-healed"
+    const SW_SCHEMA_VERSION = "2026-08-21-2"
+    const SW_SCHEMA_KEY = "sapl-sw-schema-version"
     const selfHeal = async () => {
       try {
         if (sessionStorage.getItem(HEAL_KEY)) return // already tried this session
@@ -36,6 +38,23 @@ export function ServiceWorkerRegistrar() {
         // ignore — fall through to reload regardless
       }
       window.location.reload()
+    }
+    const enforceSchemaUpgrade = async () => {
+      try {
+        const current = localStorage.getItem(SW_SCHEMA_KEY)
+        if (current === SW_SCHEMA_VERSION) return false
+        localStorage.setItem(SW_SCHEMA_KEY, SW_SCHEMA_VERSION)
+        if ("caches" in window) {
+          const keys = await caches.keys()
+          await Promise.all(keys.map((k) => caches.delete(k)))
+        }
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map((r) => r.unregister()))
+        return true
+      } catch {
+        // Storage/permission failures should not trigger reload loops.
+        return false
+      }
     }
     const isChunkError = (msg?: string) =>
       !!msg && (/ChunkLoadError/i.test(msg) || /Loading chunk [\d]+ failed/i.test(msg) || /Importing a module script failed/i.test(msg))
@@ -98,7 +117,13 @@ export function ServiceWorkerRegistrar() {
       }
     }
 
-    register()
+    enforceSchemaUpgrade().then((didUpgrade) => {
+      if (didUpgrade) {
+        window.location.reload()
+        return
+      }
+      register()
+    })
 
     return () => {
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
