@@ -793,12 +793,12 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[1fr_96px_1fr] items-start gap-3 md:grid-cols-[1fr_108px_1fr] md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
-        <div className="flex flex-col items-start gap-1">
+        <div className="flex min-w-0 flex-col items-start gap-1">
           <div className="flex items-center gap-2.5">
             <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="md" />
-            <div className="flex flex-col gap-0.5">
+            <div className="min-w-0 flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
                   "text-sm font-bold leading-tight md:text-base",
@@ -849,13 +849,14 @@ function FixtureCard({
         </div>
 
         {/* Away team */}
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex min-w-0 flex-col items-end gap-1">
           <div className="flex flex-row-reverse items-center gap-2.5">
             <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="md" />
-            <div className="flex flex-col items-end gap-0.5">
+            <div className="min-w-0 flex flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
                   "text-right text-sm font-bold leading-tight md:text-base",
+                  "break-words [overflow-wrap:anywhere]",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
                 )}>
                   {fixture.awayName ?? "TBD"}
