@@ -7,6 +7,7 @@ import {
   seasons,
   standings,
   fixtures,
+  matches,
   sponsors,
   settings,
   tprHistory,
@@ -19,6 +20,7 @@ import {
 import { alias } from "drizzle-orm/pg-core"
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 import { TEAM_VISIBLE_STATUSES } from "@/lib/team-lifecycle"
+import { parseScoreDetail, tallySets } from "@/lib/engine/scoring"
 
 export async function getCurrentSeason() {
   const [season] = await db
@@ -116,29 +118,197 @@ export async function getTeamRankings(limit = 100) {
 export async function getConferenceLeaders(limit = 12) {
   const season = await getCurrentSeason()
   if (!season) return []
-  return db
+  const divisionRows = await db
+    .select({
+      id: divisions.id,
+      name: divisions.name,
+      level: divisions.level,
+      regionName: regions.name,
+    })
+    .from(divisions)
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .where(eq(divisions.seasonId, season.id))
+
+  const teamRows = await db
     .select({
       teamId: teams.id,
       teamName: teams.name,
-      tpr: teams.tpr,
-      divisionName: divisions.name,
-      divisionLevel: divisions.level,
-      regionName: regions.name,
-      rank: standings.rank,
+      divisionId: teams.divisionId,
     })
-    .from(standings)
-    .innerJoin(teams, eq(standings.teamId, teams.id))
-    .leftJoin(divisions, eq(standings.divisionId, divisions.id))
-    .leftJoin(regions, eq(divisions.regionId, regions.id))
-    .where(
-      and(
-        eq(standings.seasonId, season.id),
-        eq(standings.rank, 1),
-        inArray(teams.status, [...TEAM_VISIBLE_STATUSES]),
-      ),
-    )
-    .orderBy(asc(divisions.level), asc(regions.name), asc(teams.name))
-    .limit(limit)
+    .from(teams)
+    .where(and(eq(teams.seasonId, season.id), inArray(teams.status, [...TEAM_VISIBLE_STATUSES])))
+
+  const fixtureRows = await db
+    .select({
+      fixtureId: fixtures.id,
+      divisionId: fixtures.divisionId,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      winnerTeamId: fixtures.winnerTeamId,
+      homeSetsWon: fixtures.homeSetsWon,
+      awaySetsWon: fixtures.awaySetsWon,
+      homePoints: fixtures.homePoints,
+      awayPoints: fixtures.awayPoints,
+    })
+    .from(fixtures)
+    .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.status, "completed")))
+
+  const fixtureIds = fixtureRows.map((f) => f.fixtureId)
+  const matchRows = fixtureIds.length
+    ? await db
+        .select({
+          fixtureId: matches.fixtureId,
+          winnerTeamId: matches.winnerTeamId,
+          scoreDetail: matches.scoreDetail,
+        })
+        .from(matches)
+        .where(inArray(matches.fixtureId, fixtureIds))
+    : []
+
+  const rubbersByFixture = new Map<number, { homeMatchesWon: number; awayMatchesWon: number; homeGames: number; awayGames: number }>()
+  const fixtureMap = new Map<number, { homeTeamId: number | null; awayTeamId: number | null }>()
+  for (const f of fixtureRows) {
+    fixtureMap.set(f.fixtureId, { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId })
+    rubbersByFixture.set(f.fixtureId, { homeMatchesWon: 0, awayMatchesWon: 0, homeGames: 0, awayGames: 0 })
+  }
+  for (const m of matchRows) {
+    const fixture = fixtureMap.get(m.fixtureId)
+    const agg = rubbersByFixture.get(m.fixtureId)
+    if (!fixture || !agg) continue
+    if (fixture.homeTeamId != null && m.winnerTeamId === fixture.homeTeamId) agg.homeMatchesWon += 1
+    if (fixture.awayTeamId != null && m.winnerTeamId === fixture.awayTeamId) agg.awayMatchesWon += 1
+    const tally = tallySets(parseScoreDetail(m.scoreDetail))
+    agg.homeGames += tally.homeGames
+    agg.awayGames += tally.awayGames
+  }
+
+  type LeaderStats = {
+    teamId: number
+    teamName: string
+    played: number
+    points: number
+    matchesWon: number
+    setsWon: number
+    pointsDiff: number
+  }
+  const divisionTeamStats = new Map<number, LeaderStats[]>()
+  for (const team of teamRows) {
+    if (!team.divisionId) continue
+    const arr = divisionTeamStats.get(team.divisionId) ?? []
+    arr.push({
+      teamId: team.teamId,
+      teamName: team.teamName,
+      played: 0,
+      points: 0,
+      matchesWon: 0,
+      setsWon: 0,
+      pointsDiff: 0,
+    })
+    divisionTeamStats.set(team.divisionId, arr)
+  }
+
+  const statsByTeam = new Map<number, LeaderStats>()
+  for (const arr of divisionTeamStats.values()) {
+    for (const row of arr) statsByTeam.set(row.teamId, row)
+  }
+
+  for (const fixture of fixtureRows) {
+    if (fixture.homeTeamId == null || fixture.awayTeamId == null) continue
+    const home = statsByTeam.get(fixture.homeTeamId)
+    const away = statsByTeam.get(fixture.awayTeamId)
+    if (!home || !away) continue
+    const rubber = rubbersByFixture.get(fixture.fixtureId)
+    const homeGames = rubber?.homeGames ?? 0
+    const awayGames = rubber?.awayGames ?? 0
+    home.played += 1
+    away.played += 1
+    home.points += fixture.homePoints ?? 0
+    away.points += fixture.awayPoints ?? 0
+    home.matchesWon += rubber?.homeMatchesWon ?? 0
+    away.matchesWon += rubber?.awayMatchesWon ?? 0
+    home.setsWon += fixture.homeSetsWon ?? 0
+    away.setsWon += fixture.awaySetsWon ?? 0
+    home.pointsDiff += homeGames - awayGames
+    away.pointsDiff += awayGames - homeGames
+  }
+
+  const leaders = divisionRows
+    .map((division) => {
+      const rows = [...(divisionTeamStats.get(division.id) ?? [])]
+      rows.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points
+        if (b.matchesWon !== a.matchesWon) return b.matchesWon - a.matchesWon
+        if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
+        if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
+        return a.teamId - b.teamId
+      })
+      return rows[0]
+        ? {
+            teamId: rows[0].teamId,
+            teamName: rows[0].teamName,
+            points: rows[0].points,
+            divisionName: division.name,
+            divisionLevel: division.level,
+            regionName: division.regionName,
+          }
+        : null
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null)
+    .sort((a, b) => {
+      if (a.divisionLevel !== b.divisionLevel) return a.divisionLevel - b.divisionLevel
+      return (a.regionName ?? "").localeCompare(b.regionName ?? "")
+    })
+
+  return leaders.slice(0, limit)
+}
+
+export async function getDonutFactoryLeaders(limit = 3) {
+  const season = await getCurrentSeason()
+  if (!season) return []
+
+  const rows = await db
+    .select({
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      scoreDetail: matches.scoreDetail,
+    })
+    .from(matches)
+    .innerJoin(fixtures, eq(matches.fixtureId, fixtures.id))
+    .where(and(eq(fixtures.seasonId, season.id), eq(fixtures.status, "completed")))
+
+  const donutCounts = new Map<number, number>()
+  for (const row of rows) {
+    const sets = parseScoreDetail(row.scoreDetail)
+    for (const set of sets) {
+      if (set.home === 6 && set.away === 0 && row.homeTeamId != null) {
+        donutCounts.set(row.homeTeamId, (donutCounts.get(row.homeTeamId) ?? 0) + 1)
+      } else if (set.away === 6 && set.home === 0 && row.awayTeamId != null) {
+        donutCounts.set(row.awayTeamId, (donutCounts.get(row.awayTeamId) ?? 0) + 1)
+      }
+    }
+  }
+
+  if (donutCounts.size === 0) return []
+
+  const teamIds = [...donutCounts.keys()]
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(inArray(teams.id, teamIds))
+  const nameById = new Map<number, string>()
+  for (const row of teamRows) nameById.set(row.id, row.name)
+
+  return [...donutCounts.entries()]
+    .map(([teamId, donuts]) => ({
+      teamId,
+      teamName: nameById.get(teamId) ?? `Team ${teamId}`,
+      donuts,
+    }))
+    .sort((a, b) => {
+      if (b.donuts !== a.donuts) return b.donuts - a.donuts
+      return a.teamName.localeCompare(b.teamName)
+    })
+    .slice(0, limit)
 }
 
 // Club Performance Index leaderboard
