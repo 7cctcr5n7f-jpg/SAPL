@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { getConferenceLeaders, getCurrentSeason, getMainSponsor, getPrizePool, getSponsors, getTeamRankings } from "@/lib/queries"
+import { getConferenceLeaders, getCurrentSeason, getDonutFactoryLeaders, getMainSponsor, getPrizePool, getSponsors, getTeamRankings } from "@/lib/queries"
 import {
   getLandingStats,
   getRegionBreakdown,
@@ -31,13 +31,24 @@ import { PartneredBy, PresentedBy, PrizeCallout, type PublicSponsor } from "@/co
 import { ArticleCard } from "@/components/news/article-card"
 import { getFeaturedOrLatestPublishedArticle, getLatestPublishedArticles, getNewsMatchOfWeekFixtureId } from "@/lib/queries-news"
 
+function shortConferenceName(name: string | null | undefined) {
+  if (!name) return "Conference"
+  return name
+    .replace(/\s+conference$/i, "")
+    .replace(/^northern$/i, "North")
+    .replace(/^southern$/i, "South")
+    .replace(/^eastern$/i, "East")
+    .replace(/^western$/i, "West")
+}
+
 export default async function HomePage() {
   const season = await getCurrentSeason()
-  const [stats, regions, featuredClubs, conferenceLeaders, rankings, topClubs, upcoming, mainSponsor, allSponsors, prizePool, featuredStory, selectedMatchOfWeekFixtureId] = await Promise.all([
+  const [stats, regions, featuredClubs, conferenceLeaders, donutLeaders, rankings, topClubs, upcoming, mainSponsor, allSponsors, prizePool, featuredStory, selectedMatchOfWeekFixtureId] = await Promise.all([
     getLandingStats(),
     getRegionBreakdown(),
     getFeaturedClubs(),
     getConferenceLeaders(12),
+    getDonutFactoryLeaders(3),
     getTeamRankings(5),
     getPublicClubs(5),
     season ? getUpcomingFixtures(season.id, 60) : Promise.resolve([]),
@@ -123,9 +134,11 @@ export default async function HomePage() {
           <Link href="/news" className="text-sm font-semibold text-red-600 hover:text-red-700">View all →</Link>
         </div>
         {latestStories.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
             {latestStories.map((article) => (
-              <ArticleCard key={article.id} article={article} compact />
+              <div key={article.id} className="min-w-[300px] max-w-[300px] shrink-0 sm:min-w-[340px] sm:max-w-[340px]">
+                <ArticleCard article={article} compact />
+              </div>
             ))}
           </div>
         ) : (
@@ -162,9 +175,9 @@ export default async function HomePage() {
                 {conferenceLeaders.slice(0, 3).map((team) => (
                   <li key={team.teamId} className="flex items-center justify-between gap-3">
                     <span>
-                      {team.divisionName ?? "Conference"}: {team.teamName}
+                      {shortConferenceName(team.regionName)}: {team.teamName}
                     </span>
-                    <span className="font-semibold">{team.tpr.toFixed(1)}</span>
+                    <span className="font-semibold">{team.points}</span>
                   </li>
                 ))}
               </ol>
@@ -172,14 +185,20 @@ export default async function HomePage() {
             </div>
 
             <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-red-600">League Centre</p>
-              <p className="mt-2 text-sm text-slate-300">
-                Live fixtures, standings, and match details are updated throughout the season.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button render={<Link href="/league-centre" />}>Open League Centre</Button>
-                <Button render={<Link href="/news" />} variant="outline">Read previews</Button>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-red-600">🍩 Donut Factory</p>
+              <p className="mt-2 text-sm text-slate-300">Who is dishing out the most 6–0s?</p>
+              <ol className="mt-3 space-y-2 text-sm text-slate-200">
+                {donutLeaders.length > 0 ? (
+                  donutLeaders.map((team, index) => (
+                    <li key={team.teamId} className="flex items-center justify-between gap-3">
+                      <span>{index + 1}. {team.teamName}</span>
+                      <span className="font-semibold">{team.donuts} 🍩</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-slate-300">No 6–0 sets recorded yet.</li>
+                )}
+              </ol>
             </div>
           </div>
         </div>
