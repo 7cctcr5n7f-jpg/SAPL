@@ -86,7 +86,7 @@ export function FixtureCheckerPanel({
           <select
             value={seasonId}
             onChange={(event) => setSeasonId(Number(event.target.value))}
-            className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground"
           >
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
@@ -101,7 +101,7 @@ export function FixtureCheckerPanel({
           <select
             value={week}
             onChange={(event) => setWeek(event.target.value === "all" ? "all" : Number(event.target.value))}
-            className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground"
           >
             <option value="all">All weeks</option>
             {weeks.map((weekNumber) => (
@@ -218,7 +218,7 @@ export function FixtureCheckerPanel({
                             key={`${entry.key}-${player.id}`}
                             className={cn(
                               "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                              player.checked ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border",
+                              player.checked ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border text-foreground",
                             )}
                           >
                             <input
@@ -243,7 +243,7 @@ export function FixtureCheckerPanel({
                             key={`${entry.key}-${player.id}`}
                             className={cn(
                               "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                              player.checked ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border",
+                              player.checked ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border text-foreground",
                             )}
                           >
                             <input
