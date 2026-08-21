@@ -54,6 +54,7 @@ self.addEventListener("message", (event) => {
 
 function isStaticAsset(url) {
   return (
+    url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/landing/") ||
     /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf|otf|css|js)$/.test(url.pathname)
@@ -91,26 +92,19 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // JS/CSS and Next static chunks: network-first so mobile users get fresh
-  // score/standings logic immediately after deploys; fall back to cache offline.
-  if (
-    request.destination === "script" ||
-    request.destination === "style" ||
-    url.pathname.startsWith("/_next/static/")
-  ) {
+  // Optimized Next image requests: stale-while-revalidate for faster team crest loads.
+  if (url.pathname.startsWith("/_next/image")) {
     event.respondWith(
       (async () => {
-        const cache = await caches.open(STATIC_CACHE)
-        try {
-          const response = await fetch(request)
-          if (response && response.status === 200) {
-            await cache.put(request, response.clone())
-          }
-          return response
-        } catch {
-          const cached = await cache.match(request)
-          return cached || Response.error()
-        }
+        const cache = await caches.open(RUNTIME_CACHE)
+        const cached = await cache.match(request)
+        const network = fetch(request)
+          .then((response) => {
+            if (response && response.status === 200) cache.put(request, response.clone())
+            return response
+          })
+          .catch(() => cached)
+        return cached || network
       })(),
     )
     return
