@@ -929,7 +929,7 @@ function CategoryEditor({
       {/* Header: Category + date/time/court + link status */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-semibold shrink-0">{category}</span>
+          <span className="text-sm font-semibold text-foreground shrink-0">{category}</span>
           {isFeature && <Badge variant="secondary" className="text-[10px] shrink-0">Feature</Badge>}
           <span className="text-xs text-muted-foreground shrink-0">
             {fmtShortDate(matchDate)} {assignment?.time ?? "TBD"} · Court {assignment?.court ?? "TBD"}
@@ -957,10 +957,10 @@ function CategoryEditor({
       </div>
 
       {/* Match: Home vs Away */}
-      <div className="flex items-center justify-center gap-2 text-sm font-medium">
-        <div className="flex-1 text-left truncate">{homeName}</div>
+      <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground">
+        <div className="flex-1 text-left truncate text-foreground">{homeName}</div>
         <span className="shrink-0 text-muted-foreground mx-1.5">vs</span>
-        <div className="flex-1 text-right truncate">{awayName}</div>
+        <div className="flex-1 text-right truncate text-foreground">{awayName}</div>
       </div>
 
       {/* Edit mode: inputs */}
