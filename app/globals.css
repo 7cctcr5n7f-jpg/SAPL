@@ -157,6 +157,27 @@
    They previously overrode component state colors (wins/losses, tooltips, etc.)
    and caused cross-device rendering inconsistencies. */
 
+/* League Centre score + tooltip colors (base defaults for all views). */
+.lc-score-win {
+  color: #16a34a;
+}
+
+.lc-score-neutral {
+  color: #000000;
+}
+
+.lc-tooltip-text {
+  color: #f8fafc;
+}
+
+.lc-tooltip-win {
+  color: #34d399;
+}
+
+.lc-tooltip-loss {
+  color: #f87171;
+}
+
 /* League Centre explicit color overrides inside dashboard light mode */
 .dashboard-light .lc-score-win {
   color: #16a34a !important;
