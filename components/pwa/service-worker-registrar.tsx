@@ -60,11 +60,11 @@ export function ServiceWorkerRegistrar() {
 
     const register = async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" })
-
-        // Check immediately, then periodically for long-lived PWA sessions.
+        // Versioned SW URL forces a deterministic update path for sticky mobile
+        // PWA caches without relying on periodic polling.
+        const SW_URL = "/sw.js?v=20260821-1"
+        const registration = await navigator.serviceWorker.register(SW_URL, { scope: "/" })
         registration.update().catch(() => {})
-        const interval = setInterval(() => registration.update().catch(() => {}), 5 * 60 * 1000)
 
         const promptUpdate = (worker: ServiceWorker) => {
           toast("A new version of SAPL is available", {
@@ -92,7 +92,7 @@ export function ServiceWorkerRegistrar() {
           })
         })
 
-        return () => clearInterval(interval)
+        return () => {}
       } catch {
         // Registration failures are non-fatal — the site still works online.
       }

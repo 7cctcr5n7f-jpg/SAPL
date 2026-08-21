@@ -45,19 +45,20 @@ export function StandingsTable({
           {qualificationRule}
         </div>
       ) : null}
-      <div className="hidden grid-cols-[2.5rem_1fr_repeat(8,2.5rem)_3.5rem] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 md:grid">
-        <span className="text-center">#</span>
-        <span>Team</span>
-        <span className="text-center">P</span>
-        <span className="text-center">W</span>
-        <span className="text-center">D</span>
-        <span className="text-center">L</span>
-        <span className="text-center" title="Category Matches Won">MW</span>
-        <span className="text-center" title="Sets Won">SW</span>
-        <span className="text-center" title="Points Difference (Games For − Games Against)">+/−</span>
-        <span className="text-center" title="Team points (1 per set won + 1 bonus per category won)">Pts</span>
-      </div>
-      <ul>
+      <div>
+        <div className="grid grid-cols-[1.4rem_minmax(6.5rem,1fr)_repeat(7,1.6rem)_2rem] items-center gap-1 border-b border-slate-100 bg-slate-50 px-2 py-2 text-[9px] font-bold uppercase tracking-wide text-slate-500 md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4 md:py-2.5 md:text-[10px] md:tracking-widest">
+          <span className="text-center">#</span>
+          <span>Team</span>
+          <span className="text-center">P</span>
+          <span className="text-center">W</span>
+          <span className="text-center">D</span>
+          <span className="text-center">L</span>
+          <span className="text-center" title="Category Matches Won">MW</span>
+          <span className="text-center" title="Sets Won">SW</span>
+          <span className="text-center" title="Points Difference (Games For − Games Against)">+/−</span>
+          <span className="text-center" title="Team points (1 per set won + 1 bonus per category won)">Pts</span>
+        </div>
+        <ul>
         {sortedRows.map((r, i) => {
           const pos = i + 1
           const qualifier = qualifierByTeamId.get(r.teamId) ?? null
@@ -65,7 +66,7 @@ export function StandingsTable({
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[2rem_1fr_auto] items-center gap-2 border-b border-slate-50 px-3 py-2.5 last:border-0 md:grid-cols-[2.5rem_1fr_repeat(8,2.5rem)_3.5rem] md:px-4",
+                "relative grid grid-cols-[1.4rem_minmax(6.5rem,1fr)_repeat(7,1.6rem)_2rem] items-center gap-1 border-b border-slate-50 px-2 py-2.5 last:border-0 md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4",
                 qualifier && "bg-sky-50/70",
                 showRelegation && pos >= total - 1 && total > 4 && "bg-red-50/60",
               )}
@@ -83,56 +84,47 @@ export function StandingsTable({
                       : "bg-transparent",
                 )}
               />
-              <span className="text-center text-sm font-bold tabular-nums text-slate-800">{pos}</span>
-              <div className="flex min-w-0 items-center gap-2.5">
+              <span className="text-center text-xs font-bold tabular-nums text-slate-800 md:text-sm">{pos}</span>
+              <div className="flex min-w-0 items-center gap-1.5 md:gap-2.5">
                 <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.venueLogo ?? r.orgLogo} size="sm" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{r.teamName ?? "—"}</p>
-                  <p className="truncate text-[11px] text-slate-500 md:hidden">
-                    {r.played}P · {r.wins}W · {r.draws}D · {r.matchesWon}MW · {formatPoints(r.points)}pts
-                  </p>
-                  <div className="hidden items-center gap-2 md:flex">
-                    {r.venueName ? <p className="truncate text-[11px] text-slate-500">{r.venueName}</p> : null}
+                  <p className="truncate text-xs font-semibold text-slate-900 md:text-sm">{r.teamName ?? "—"}</p>
+                  <div className="flex items-center gap-1.5 md:gap-2">
+                    {r.venueName ? <p className="hidden truncate text-[11px] text-slate-500 md:block">{r.venueName}</p> : null}
                     {qualifier ? (
                       <span
                         className={cn(
-                          "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          "inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide md:px-2 md:text-[10px]",
                           qualifier === "wildcard" ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700",
                         )}
                       >
-                        {qualifier === "wildcard" ? "Best 3rd in line" : "In playoff places"}
+                        <span className="md:hidden">{qualifier === "wildcard" ? "B3" : "PO"}</span>
+                        <span className="hidden md:inline">{qualifier === "wildcard" ? "Best 3rd" : "Playoff"}</span>
                       </span>
                     ) : null}
                   </div>
-                  {qualifier ? (
-                    <p className="text-[11px] text-sky-700 md:hidden">
-                      {qualifier === "wildcard" ? "Best 3rd in line" : "In playoff places"}
-                    </p>
-                  ) : null}
                 </div>
               </div>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.played}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.wins}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.draws}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.losses}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.matchesWon}</span>
-              <span className="hidden text-center text-sm tabular-nums text-slate-700 md:block">{r.setsWon}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.played}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.wins}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.draws}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.losses}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.matchesWon}</span>
+              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.setsWon}</span>
               <span
                 className={cn(
-                  "hidden text-center text-sm font-semibold tabular-nums md:block",
+                  "text-center text-xs font-semibold tabular-nums md:text-sm",
                   r.pointsDiff > 0 ? "text-emerald-600" : r.pointsDiff < 0 ? "text-red-500" : "text-slate-400",
                 )}
               >
                 {r.pointsDiff > 0 ? `+${r.pointsDiff}` : r.pointsDiff}
               </span>
-              <span className="hidden text-center text-sm font-bold tabular-nums text-slate-900 md:block">{formatPoints(r.points)}</span>
-              <span className="text-right text-sm font-semibold tabular-nums text-slate-500 md:hidden">
-                {Number.isFinite(r.tpr) ? Math.round(r.tpr as number) : "—"}
-              </span>
+              <span className="text-center text-xs font-bold tabular-nums text-slate-900 md:text-sm">{formatPoints(r.points)}</span>
             </li>
           )
         })}
-      </ul>
+        </ul>
+      </div>
       {anyPlayed && showRelegation && (
         <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Playoff qualification</span>
