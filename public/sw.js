@@ -8,7 +8,7 @@
  *    so every Vercel deployment refreshes the installed PWA automatically.
  */
 
-const VERSION = "v4"
+const VERSION = "v5"
 const STATIC_CACHE = `sapl-static-${VERSION}`
 const RUNTIME_CACHE = `sapl-runtime-${VERSION}`
 const OFFLINE_URL = "/offline"
