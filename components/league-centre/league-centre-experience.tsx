@@ -26,7 +26,6 @@ import {
   Radio,
   Users,
 } from "lucide-react"
-import Link from "next/link"
 
 type ContentTab = "schedule" | "standings"
 
@@ -793,7 +792,7 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 md:grid-cols-[1fr_108px_1fr] md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_68px_minmax(0,1fr)] max-[380px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
         <div className="flex min-w-0 flex-col items-start gap-1">
           <div className="flex items-center gap-2.5">
@@ -801,7 +800,7 @@ function FixtureCard({
             <div className="min-w-0 flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-sm font-bold leading-tight md:text-base",
+                  "text-sm font-bold leading-tight max-[380px]:text-xs md:text-base",
                   hasScore && awayWon ? "text-slate-400" : "text-slate-900",
                 )}>
                   {fixture.homeName ?? "TBD"}
@@ -822,15 +821,15 @@ function FixtureCard({
         {/* Score / VS */}
         <div className="flex min-h-[4.75rem] self-center flex-col items-center justify-center gap-1">
           {hasScore ? (
-            <div className="flex items-center gap-2 tabular-nums">
+            <div className="flex items-center gap-2 tabular-nums max-[380px]:gap-1.5">
               <span
-              className={cn("text-3xl font-extrabold leading-none", homeTeamScoreClass)}
+              className={cn("text-3xl font-extrabold leading-none max-[380px]:text-[2rem]", homeTeamScoreClass)}
               >
                 {teamPoints.home}
               </span>
-              <span className="text-lg font-bold text-slate-300">-</span>
+              <span className="text-lg font-bold text-slate-300 max-[380px]:text-base">-</span>
               <span
-              className={cn("text-3xl font-extrabold leading-none", awayTeamScoreClass)}
+              className={cn("text-3xl font-extrabold leading-none max-[380px]:text-[2rem]", awayTeamScoreClass)}
               >
                 {teamPoints.away}
               </span>
@@ -855,7 +854,7 @@ function FixtureCard({
             <div className="min-w-0 flex flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-right text-sm font-bold leading-tight md:text-base",
+                  "text-right text-sm font-bold leading-tight max-[380px]:text-xs md:text-base",
                   "break-words [overflow-wrap:anywhere]",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
                 )}>
@@ -874,18 +873,6 @@ function FixtureCard({
           )}
         </div>
       </div>
-
-      {/* Results: view match details */}
-      {isCompleted && (
-        <div className="mt-3 flex items-center justify-between">
-          <Link
-            href={`/league-centre/match/${fixture.id}`}
-            className="text-xs font-semibold text-slate-500 transition-colors hover:text-red-600"
-          >
-            View match details &rarr;
-          </Link>
-        </div>
-      )}
 
       {/* Team vs Team breakdown toggle */}
       <button
