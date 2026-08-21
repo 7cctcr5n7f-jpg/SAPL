@@ -191,6 +191,10 @@ export function OrgHub({
 
   function confirmDelete() {
     if (!deleteFor) return
+    if (locked) {
+      toast.error("The season is active — team deletion is disabled.")
+      return
+    }
     const id = deleteFor.id
     start(async () => {
       const res = await deleteTeam(id)
@@ -443,9 +447,10 @@ export function OrgHub({
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          disabled={locked}
                           onClick={() => setDeleteFor(t)}
                           aria-label="Delete team"
-                          title="Delete team"
+                          title={locked ? "Disabled while the league is active" : "Delete team"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -568,14 +573,20 @@ export function OrgHub({
             <DialogTitle>Delete team</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Permanently delete <span className="font-semibold text-foreground">{deleteFor?.name}</span>? This removes its
-            roster, pairings, invites and payments, and detaches it from any scheduled fixtures. This cannot be undone.
+            {locked ? (
+              "The season is active — team deletion is disabled to prevent accidental league disruption."
+            ) : (
+              <>
+                Permanently delete <span className="font-semibold text-foreground">{deleteFor?.name}</span>? This removes its
+                roster, pairings, invites and payments, and detaches it from any scheduled fixtures. This cannot be undone.
+              </>
+            )}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteFor(null)} disabled={pending}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={pending}>
+            <Button variant="destructive" onClick={confirmDelete} disabled={pending || locked}>
               {pending ? "Deleting…" : "Delete team"}
             </Button>
           </DialogFooter>

@@ -263,6 +263,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
       logoUrl: teams.logoUrl,
       teamType: teams.teamType,
       divisionId: teams.divisionId,
+      seasonId: teams.seasonId,
       homeClubId: teams.homeClubId,
       captainUserId: teams.captainUserId,
       clubPaysFees: teams.clubPaysFees,
@@ -562,7 +563,7 @@ export async function getMyTeamView(playerId: string, opts?: { preferredTeamId?:
   const [standing] = await db
     .select({ played: standings.played, wins: standings.wins, points: standings.points, rank: standings.rank })
     .from(standings)
-    .where(eq(standings.teamId, teamId))
+    .where(and(eq(standings.teamId, teamId), eq(standings.seasonId, team.seasonId)))
     .limit(1)
 
   return {
