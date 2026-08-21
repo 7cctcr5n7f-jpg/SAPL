@@ -164,7 +164,7 @@ export default async function AdminTeamsPage() {
       <OrgHub
         teams={teamData}
         venues={orgClubs}
-        locked={!isAdminWide && locked}
+        locked={locked}
         registeredEmails={registeredEmails}
         canResendAllInvites={isAdminWide}
       />

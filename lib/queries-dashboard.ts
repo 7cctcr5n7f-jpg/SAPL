@@ -411,6 +411,72 @@ export type PlayerOverviewTeam = {
   played: number
 }
 
+async function getTeamCategoryRecord(teamId: number, seasonId: number) {
+  const rows = await db
+    .select({
+      winnerTeamId: matches.winnerTeamId,
+      scoreDetail: matches.scoreDetail,
+      homeSetsWon: matches.homeSetsWon,
+      awaySetsWon: matches.awaySetsWon,
+    })
+    .from(matches)
+    .innerJoin(fixtures, eq(matches.fixtureId, fixtures.id))
+    .where(
+      and(
+        eq(fixtures.seasonId, seasonId),
+        eq(fixtures.status, "completed"),
+        or(eq(fixtures.homeTeamId, teamId), eq(fixtures.awayTeamId, teamId)),
+      ),
+    )
+
+  let played = 0
+  let wins = 0
+  let losses = 0
+  for (const row of rows) {
+    const hasScore =
+      (row.scoreDetail != null && row.scoreDetail.trim().length > 0) ||
+      (row.homeSetsWon ?? 0) > 0 ||
+      (row.awaySetsWon ?? 0) > 0
+    if (!hasScore) continue
+    played += 1
+    if (row.winnerTeamId === teamId) wins += 1
+    else if (row.winnerTeamId != null) losses += 1
+  }
+  return { played, wins, losses }
+}
+
+async function getCrossConferenceRank(teamId: number, seasonId: number, divisionId: number | null) {
+  if (!divisionId) return null
+  const [divisionRow] = await db
+    .select({ level: divisions.level })
+    .from(divisions)
+    .where(eq(divisions.id, divisionId))
+    .limit(1)
+  if (!divisionRow) return null
+
+  const rows = await db
+    .select({
+      teamId: standings.teamId,
+      points: standings.points,
+      pointsDiff: standings.pointsDiff,
+      wins: standings.wins,
+      setsWon: standings.setsWon,
+    })
+    .from(standings)
+    .innerJoin(divisions, eq(standings.divisionId, divisions.id))
+    .where(and(eq(divisions.seasonId, seasonId), eq(divisions.level, divisionRow.level)))
+
+  const sorted = [...rows].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points
+    if (b.pointsDiff !== a.pointsDiff) return b.pointsDiff - a.pointsDiff
+    if (b.wins !== a.wins) return b.wins - a.wins
+    if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon
+    return a.teamId - b.teamId
+  })
+  const index = sorted.findIndex((row) => row.teamId === teamId)
+  return index >= 0 ? index + 1 : null
+}
+
 /**
  * Compact summary of the player's primary active team for the Overview match
  * centre: club, division, region, fee responsibility and league position.
@@ -424,6 +490,7 @@ export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOve
       teamId: teams.id,
       teamName: teams.name,
       clubPaysFees: teams.clubPaysFees,
+      divisionId: teams.divisionId,
       divisionName: divisions.name,
       seasonId: teams.seasonId,
       regionName: regions.name,
@@ -448,8 +515,10 @@ export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOve
       played: standings.played,
     })
     .from(standings)
-    .where(and(eq(standings.teamId, row.teamId)))
+    .where(and(eq(standings.teamId, row.teamId), eq(standings.seasonId, row.seasonId)))
     .limit(1)
+  const categoryRecord = await getTeamCategoryRecord(row.teamId, row.seasonId)
+  const overallRank = await getCrossConferenceRank(row.teamId, row.seasonId, row.divisionId)
 
   return {
     membershipId: row.membershipId,
@@ -460,10 +529,10 @@ export async function getPlayerOverviewTeam(playerId: string): Promise<PlayerOve
     divisionName: row.divisionName ?? "Unassigned",
     regionName: row.regionName,
     clubPaysFees: row.clubPaysFees,
-    position: standing?.rank ?? null,
-    wins: standing?.wins ?? 0,
-    losses: standing?.losses ?? 0,
-    played: standing?.played ?? 0,
+    position: overallRank ?? standing?.rank ?? null,
+    wins: categoryRecord.wins,
+    losses: categoryRecord.losses,
+    played: categoryRecord.played,
   }
 }
 
@@ -477,6 +546,7 @@ export async function getOwnedOverviewTeam(
       teamId: teams.id,
       teamName: teams.name,
       clubPaysFees: teams.clubPaysFees,
+      divisionId: teams.divisionId,
       divisionName: divisions.name,
       seasonId: teams.seasonId,
       regionName: regions.name,
@@ -506,8 +576,10 @@ export async function getOwnedOverviewTeam(
       played: standings.played,
     })
     .from(standings)
-    .where(eq(standings.teamId, row.teamId))
+    .where(and(eq(standings.teamId, row.teamId), eq(standings.seasonId, row.seasonId)))
     .limit(1)
+  const categoryRecord = await getTeamCategoryRecord(row.teamId, row.seasonId)
+  const overallRank = await getCrossConferenceRank(row.teamId, row.seasonId, row.divisionId)
 
   return {
     membershipId: -row.teamId,
@@ -518,10 +590,10 @@ export async function getOwnedOverviewTeam(
     divisionName: row.divisionName ?? "Unassigned",
     regionName: row.regionName,
     clubPaysFees: row.clubPaysFees,
-    position: standing?.rank ?? null,
-    wins: standing?.wins ?? 0,
-    losses: standing?.losses ?? 0,
-    played: standing?.played ?? 0,
+    position: overallRank ?? standing?.rank ?? null,
+    wins: categoryRecord.wins,
+    losses: categoryRecord.losses,
+    played: categoryRecord.played,
   }
 }
 

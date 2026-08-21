@@ -95,6 +95,7 @@ export default async function AdminSeasonsPage() {
               id: s.id,
               name: s.name,
               isCurrent: s.isCurrent,
+              weeks: s.weeks,
             }))}
           />
         }

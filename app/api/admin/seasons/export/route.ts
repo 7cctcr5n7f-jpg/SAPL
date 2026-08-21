@@ -227,6 +227,7 @@ async function getFixtureExportRows(seasonId: number, week: number) {
     const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
     if (!slotMap.has(key)) slotMap.set(key, row.invitedName)
   }
+
   for (const row of pairingRows) {
     const player = normalizePlayerName(row.firstName, row.lastName, row.fallbackName)
     const key = `${row.teamId}:${row.category}:${row.pairIndex}:${row.slotIndex}`
@@ -274,6 +275,141 @@ async function getFixtureExportRows(seasonId: number, week: number) {
     })
 }
 
+async function getResultsExportRows(seasonId: number, week: number) {
+  const homeTeam = alias(teams, "homeTeam")
+  const awayTeam = alias(teams, "awayTeam")
+
+  const rows = await db
+    .select({
+      week: fixtures.week,
+      matchDate: fixtures.matchDate,
+      timeslot: fixtures.timeslot,
+      venue: fixtures.venue,
+      conference: regions.name,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
+      homeTeam: homeTeam.name,
+      awayTeam: awayTeam.name,
+      category: matches.category,
+      homeSetsWon: matches.homeSetsWon,
+      awaySetsWon: matches.awaySetsWon,
+      scoreDetail: matches.scoreDetail,
+      homePlayerIds: matches.homePlayerIds,
+      awayPlayerIds: matches.awayPlayerIds,
+      courtAssignments: fixtures.courtAssignments,
+    })
+    .from(fixtures)
+    .innerJoin(seasons, eq(fixtures.seasonId, seasons.id))
+    .leftJoin(divisions, eq(fixtures.divisionId, divisions.id))
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .leftJoin(homeTeam, eq(fixtures.homeTeamId, homeTeam.id))
+    .leftJoin(awayTeam, eq(fixtures.awayTeamId, awayTeam.id))
+    .leftJoin(matches, eq(matches.fixtureId, fixtures.id))
+    .where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.week, week)))
+    .orderBy(asc(fixtures.matchDate), asc(divisions.level), asc(matches.session), asc(matches.category))
+
+  if (rows.length === 0) return []
+
+  const teamIds = [...new Set(rows.flatMap((row) => [row.homeTeamId, row.awayTeamId]).filter((id): id is number => id != null))]
+  const pairingUser = alias(user, "pairingUserResults")
+  const pairingRows = teamIds.length
+    ? await db
+        .select({
+          teamId: teamPairings.teamId,
+          category: teamPairings.category,
+          pairIndex: teamPairings.pairIndex,
+          slotIndex: teamPairings.slotIndex,
+          firstName: pairingUser.firstName,
+          lastName: pairingUser.lastName,
+          fallbackName: pairingUser.name,
+        })
+        .from(teamPairings)
+        .innerJoin(pairingUser, eq(teamPairings.playerId, pairingUser.id))
+        .where(inArray(teamPairings.teamId, teamIds))
+    : []
+
+  const playerIds = Array.from(
+    new Set(
+      rows.flatMap((row) => [
+        ...(Array.isArray(row.homePlayerIds) ? row.homePlayerIds : []).filter((id): id is number => typeof id === "number"),
+        ...(Array.isArray(row.awayPlayerIds) ? row.awayPlayerIds : []).filter((id): id is number => typeof id === "number"),
+      ]),
+    ),
+  )
+
+  const playerRows = playerIds.length
+    ? await db
+        .select({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          fallbackName: user.name,
+        })
+        .from(user)
+        .where(inArray(user.id, playerIds))
+    : []
+
+  const playerNameById = new Map<string, string>()
+  for (const p of playerRows) {
+    playerNameById.set(p.id, normalizePlayerName(p.firstName, p.lastName, p.fallbackName))
+  }
+
+  const pairingByTeamCategory = new Map<string, string[]>()
+  for (const row of pairingRows) {
+    if (!row.category || row.pairIndex == null || row.slotIndex == null) continue
+    const key = `${row.teamId}:${row.category}`
+    const player = normalizePlayerName(row.firstName, row.lastName, row.fallbackName)
+    const existing = pairingByTeamCategory.get(key) ?? []
+    existing.push(player)
+    pairingByTeamCategory.set(key, existing)
+  }
+
+  function namesFromIds(ids: number[]) {
+    const names = ids
+      .map((id) => playerNameById.get(String(id)))
+      .filter((name): name is string => !!name)
+    return listToPair(names)
+  }
+
+  function fallbackPair(teamId: number | null, category: string | null) {
+    if (teamId == null || !category) return "TBC / TBC"
+    const names = pairingByTeamCategory.get(`${teamId}:${category}`) ?? []
+    return listToPair(names)
+  }
+
+  return rows
+    .filter((row) => !!row.category)
+    .map((row) => {
+      const assignments = (row.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>
+      const assignment = row.category ? assignments[row.category] : undefined
+      const matchDate =
+        row.matchDate instanceof Date
+          ? row.matchDate.toISOString().slice(0, 10)
+          : row.matchDate
+            ? new Date(row.matchDate).toISOString().slice(0, 10)
+            : ""
+      const homePlayerIds = Array.isArray(row.homePlayerIds) ? row.homePlayerIds : []
+      const awayPlayerIds = Array.isArray(row.awayPlayerIds) ? row.awayPlayerIds : []
+      const homePlayers = homePlayerIds.length ? namesFromIds(homePlayerIds) : fallbackPair(row.homeTeamId, row.category)
+      const awayPlayers = awayPlayerIds.length ? namesFromIds(awayPlayerIds) : fallbackPair(row.awayTeamId, row.category)
+
+      return {
+        Week: row.week,
+        Conference: row.conference ?? "Unassigned",
+        Date: matchDate,
+        Time: assignment?.time ?? row.timeslot ?? "",
+        Venue: row.venue ?? "",
+        "Home Team": row.homeTeam ?? "TBD",
+        "Away Team": row.awayTeam ?? "TBD",
+        "Category Score": `${row.homeSetsWon ?? 0}-${row.awaySetsWon ?? 0}`,
+        Category: row.category ?? "",
+        "Home Players": homePlayers,
+        "Away Players": awayPlayers,
+        "Set Scores": row.scoreDetail ?? "",
+      }
+    })
+}
+
 export async function GET(request: Request) {
   const currentUser = await getCurrentUser()
   if (!currentUser) return new NextResponse("Not authenticated", { status: 401 })
@@ -288,6 +424,8 @@ export async function GET(request: Request) {
   if (!Number.isFinite(seasonId) || seasonId <= 0) {
     return new NextResponse("Invalid seasonId", { status: 400 })
   }
+  const [season] = await db.select({ weeks: seasons.weeks }).from(seasons).where(eq(seasons.id, seasonId)).limit(1)
+  if (!season) return new NextResponse("Season not found", { status: 404 })
 
   if (type === "teams") {
     const rows = await getTeamExportRows(seasonId)
@@ -301,8 +439,8 @@ export async function GET(request: Request) {
   }
 
   if (type === "fixtures") {
-    if (!Number.isFinite(week) || week < 1 || week > 7) {
-      return new NextResponse("Invalid week. Use 1-7.", { status: 400 })
+    if (!Number.isFinite(week) || week < 1 || week > season.weeks) {
+      return new NextResponse(`Invalid week. Use 1-${season.weeks}.`, { status: 400 })
     }
     const rows = await getFixtureExportRows(seasonId, week)
     const csv = toCsv(rows)
@@ -310,6 +448,20 @@ export async function GET(request: Request) {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="season-${seasonId}-week-${week}-fixtures.csv"`,
+      },
+    })
+  }
+
+  if (type === "results") {
+    if (!Number.isFinite(week) || week < 1 || week > season.weeks) {
+      return new NextResponse("Invalid week.", { status: 400 })
+    }
+    const rows = await getResultsExportRows(seasonId, week)
+    const xlsx = await toXlsxBuffer(`Week ${week} results`, rows)
+    return new NextResponse(xlsx, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="season-${seasonId}-week-${week}-results.xlsx"`,
       },
     })
   }
