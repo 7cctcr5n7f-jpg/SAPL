@@ -23,7 +23,7 @@ export function SectionTitle({
 export function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="flex flex-col gap-1 border-l-2 border-primary pl-4">
-      <span className="heading text-3xl md:text-4xl tabular-nums">{value}</span>
+      <span className="heading text-3xl md:text-4xl tabular-nums text-foreground">{value}</span>
       <span className="text-xs uppercase tracking-widest text-muted-foreground">{label}</span>
       {sub ? <span className="text-xs text-muted-foreground">{sub}</span> : null}
     </div>

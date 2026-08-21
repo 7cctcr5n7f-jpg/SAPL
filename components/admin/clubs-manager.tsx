@@ -565,7 +565,7 @@ function FilterChip({
         "rounded-full border px-3 py-1 text-xs font-medium transition",
         active
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-card text-muted-foreground hover:text-foreground",
+          : "border-border bg-card text-foreground hover:text-foreground",
       )}
     >
       {children}
@@ -576,7 +576,7 @@ function FilterChip({
 function CapacityStat({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
     <div className="text-right">
-      <p className={cn("text-sm font-semibold tabular-nums", className)}>{value}</p>
+      <p className={cn("text-sm font-semibold tabular-nums text-foreground", className)}>{value}</p>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
     </div>
   )
@@ -621,7 +621,7 @@ function ClubRowItem({
       {/* Name + region */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-semibold">{club.name}</p>
+          <p className="truncate text-sm font-semibold text-foreground">{club.name}</p>
           {club.hostsThursday ? (
             <span
               title="Hosts on Thursday nights"
@@ -686,7 +686,7 @@ function ClubRowItem({
 
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit} aria-label={`Edit ${club.name}`}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-foreground" onClick={onEdit} aria-label={`Edit ${club.name}`}>
           <Pencil className="h-4 w-4" />
         </Button>
         <Button

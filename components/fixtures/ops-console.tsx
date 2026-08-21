@@ -343,9 +343,9 @@ export function OpsConsole({
         <StatGrid
           columns={3}
           stats={[
-            { label: "Total fixtures", value: health.total },
-            { label: "Published", value: health.published },
-            { label: "Need attention", value: health.missingLinks },
+            { label: "Total fixtures", value: <span className="text-foreground">{health.total}</span> },
+            { label: "Published", value: <span className="text-foreground">{health.published}</span> },
+            { label: "Need attention", value: <span className="text-foreground">{health.missingLinks}</span> },
           ]}
         />
         <SegmentedTabs
@@ -367,8 +367,8 @@ export function OpsConsole({
           >
             <span className="flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold">Action Required</span>
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+              <span className="text-sm font-semibold text-foreground">Action Required</span>
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-foreground">
                 {actionItems.length}
               </span>
             </span>
@@ -382,7 +382,7 @@ export function OpsConsole({
                     onClick={() => setStatus(a.key)}
                     className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/50"
                   >
-                    <span className="flex items-center gap-2.5 text-sm">
+                    <span className="flex items-center gap-2.5 text-sm text-foreground">
                       <a.icon className={cn("h-4 w-4", a.tone)} />
                       {a.label}
                     </span>
@@ -512,7 +512,7 @@ function FilterSelect<T extends number>({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value === "all" ? "all" : (Number(e.target.value) as T))}
-      className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+      className="h-9 rounded-md border border-input bg-background px-2.5 text-sm text-foreground"
       aria-label={`Filter by ${label.toLowerCase()}`}
     >
       <option value="all">{allLabel}</option>
@@ -569,10 +569,10 @@ function ConsoleRow({
             <span className="hidden text-sm text-muted-foreground lg:inline">{f.week}</span>
 
             <div className="flex min-w-0 flex-col gap-0.5 lg:block">
-              <span className={cn("truncate text-sm font-semibold", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
-              <span className={cn("truncate text-sm font-semibold lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
+              <span className={cn("truncate text-sm font-semibold text-foreground", home.placeholder && "italic text-muted-foreground")}>{home.text}</span>
+              <span className={cn("truncate text-sm font-semibold text-foreground lg:hidden", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
             </div>
-            <span className={cn("hidden truncate text-sm font-semibold lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
+            <span className={cn("hidden truncate text-sm font-semibold text-foreground lg:block", away.placeholder && "italic text-muted-foreground")}>{away.text}</span>
 
             <span className="hidden min-w-0 items-center gap-1 truncate text-sm text-muted-foreground lg:flex">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -599,7 +599,13 @@ function ConsoleRow({
         </button>
 
         {canManageVenue && (
-          <Button type="button" size="sm" variant={editing ? "default" : "outline"} className="shrink-0" onClick={onEditToggle}>
+          <Button
+            type="button"
+            size="sm"
+            variant={editing ? "default" : "outline"}
+            className="shrink-0 text-foreground"
+            onClick={onEditToggle}
+          >
             <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
           </Button>
         )}
@@ -814,7 +820,7 @@ function DraftScheduleEditor({
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">Timeslot</span>
-          <select value={timeslot} onChange={(e) => setTimeslot(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={timeslot} onChange={(e) => setTimeslot(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground">
             <option value="">Unscheduled</option>
             {FIXTURE_EDIT_TIMESLOTS.map((slot) => (
               <option key={slot} value={slot}>
@@ -825,7 +831,7 @@ function DraftScheduleEditor({
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">Home team</span>
-          <select value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground">
             <option value="">Select home team</option>
             {divisionTeams.map((team) => (
               <option key={team.id} value={team.id}>
@@ -836,7 +842,7 @@ function DraftScheduleEditor({
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">Away team</span>
-          <select value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground">
             <option value="">Select away team</option>
             {divisionTeams.map((team) => (
               <option key={team.id} value={team.id}>
@@ -847,7 +853,7 @@ function DraftScheduleEditor({
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">Venue</span>
-          <select value={venueClubId} onChange={(e) => setVenueClubId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={venueClubId} onChange={(e) => setVenueClubId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground">
             <option value="">Default home venue</option>
             {clubs.map((club) => (
               <option key={club.id} value={club.id}>
