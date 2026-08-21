@@ -62,8 +62,9 @@ export function ServiceWorkerRegistrar() {
       try {
         const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" })
 
-        // Periodically check for updates (e.g. long-lived PWA sessions).
-        const interval = setInterval(() => registration.update().catch(() => {}), 60 * 60 * 1000)
+        // Check immediately, then periodically for long-lived PWA sessions.
+        registration.update().catch(() => {})
+        const interval = setInterval(() => registration.update().catch(() => {}), 5 * 60 * 1000)
 
         const promptUpdate = (worker: ServiceWorker) => {
           toast("A new version of SAPL is available", {

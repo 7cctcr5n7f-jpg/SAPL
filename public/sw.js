@@ -8,7 +8,7 @@
  *    so every Vercel deployment refreshes the installed PWA automatically.
  */
 
-const VERSION = "v3"
+const VERSION = "v4"
 const STATIC_CACHE = `sapl-static-${VERSION}`
 const RUNTIME_CACHE = `sapl-runtime-${VERSION}`
 const OFFLINE_URL = "/offline"
@@ -54,7 +54,6 @@ self.addEventListener("message", (event) => {
 
 function isStaticAsset(url) {
   return (
-    url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/landing/") ||
     /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf|otf|css|js)$/.test(url.pathname)
@@ -86,6 +85,31 @@ self.addEventListener("fetch", (event) => {
         } catch {
           const offline = await caches.match(OFFLINE_URL)
           return offline || Response.error()
+        }
+      })(),
+    )
+    return
+  }
+
+  // JS/CSS and Next static chunks: network-first so mobile users get fresh
+  // score/standings logic immediately after deploys; fall back to cache offline.
+  if (
+    request.destination === "script" ||
+    request.destination === "style" ||
+    url.pathname.startsWith("/_next/static/")
+  ) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(STATIC_CACHE)
+        try {
+          const response = await fetch(request)
+          if (response && response.status === 200) {
+            await cache.put(request, response.clone())
+          }
+          return response
+        } catch {
+          const cached = await cache.match(request)
+          return cached || Response.error()
         }
       })(),
     )
