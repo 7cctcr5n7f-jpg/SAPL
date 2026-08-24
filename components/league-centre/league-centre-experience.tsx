@@ -792,7 +792,7 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_68px_minmax(0,1fr)] max-[380px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)] max-[380px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
         <div className="flex min-w-0 flex-col items-start gap-1">
           <div className="flex items-center gap-2.5">
@@ -855,7 +855,7 @@ function FixtureCard({
               <div className="flex items-center gap-1.5">
                 <span className={cn(
                   "text-right text-sm font-bold leading-tight max-[380px]:text-xs md:text-base",
-                  "break-words [overflow-wrap:anywhere]",
+                  "break-words",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
                 )}>
                   {fixture.awayName ?? "TBD"}
@@ -1113,7 +1113,7 @@ function FixtureBreakdown({
             return (
               <div key={category} className="px-4 py-3">
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[1fr_92px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
+                <div className="grid grid-cols-[1fr_84px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
                   <div className="min-w-0 space-y-0.5">
                     {homePair.length > 0 ? (
@@ -1126,7 +1126,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
+                                "text-[11px] font-semibold leading-tight break-words md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
@@ -1240,7 +1240,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight [overflow-wrap:anywhere] md:text-xs",
+                                "text-[11px] font-semibold leading-tight break-words md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
