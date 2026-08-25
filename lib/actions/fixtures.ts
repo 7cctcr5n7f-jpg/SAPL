@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { fixtures, clubs, teams, teamEntries } from "@/lib/db/schema"
-import { and, eq, ne } from "drizzle-orm"
+import { and, eq, ne, or } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
 import { revalidatePath, revalidateTag } from "next/cache"
@@ -154,6 +154,8 @@ export async function saveFixtureSchedule(input: {
       id: fixtures.id,
       seasonId: fixtures.seasonId,
       divisionId: fixtures.divisionId,
+      homeTeamId: fixtures.homeTeamId,
+      awayTeamId: fixtures.awayTeamId,
       courtAssignments: fixtures.courtAssignments,
     })
     .from(fixtures)
@@ -215,6 +217,44 @@ export async function saveFixtureSchedule(input: {
       updatedAt: new Date(),
     })
     .where(eq(fixtures.id, input.fixtureId))
+
+  const previousPairMatch =
+    fixture.homeTeamId != null && fixture.awayTeamId != null
+      ? or(
+          and(eq(fixtures.homeTeamId, fixture.homeTeamId), eq(fixtures.awayTeamId, fixture.awayTeamId)),
+          and(eq(fixtures.homeTeamId, fixture.awayTeamId), eq(fixtures.awayTeamId, fixture.homeTeamId)),
+        )
+      : null
+  const updatedPairMatch = or(
+    and(eq(fixtures.homeTeamId, input.homeTeamId), eq(fixtures.awayTeamId, input.awayTeamId)),
+    and(eq(fixtures.homeTeamId, input.awayTeamId), eq(fixtures.awayTeamId, input.homeTeamId)),
+  )
+
+  // Keep mirrored draft/published rows in sync so League Centre reflects fixture edits
+  // even when the admin changed the counterpart row in Ops Console.
+  await db
+    .update(fixtures)
+    .set({
+      week: input.week,
+      matchDate: input.matchDate ? new Date(`${input.matchDate}T19:00:00`) : null,
+      venueClubId: input.venueClubId,
+      venue: venueName,
+      timeslot: input.timeslot,
+      homeTeamId: input.homeTeamId,
+      awayTeamId: input.awayTeamId,
+      homeSlot: homeEntry?.slot ?? null,
+      awaySlot: awayEntry?.slot ?? null,
+      updatedByUserId: user.id,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(fixtures.seasonId, fixture.seasonId),
+        eq(fixtures.divisionId, fixture.divisionId),
+        ne(fixtures.id, input.fixtureId),
+        previousPairMatch ? or(previousPairMatch, updatedPairMatch) : updatedPairMatch,
+      ),
+    )
 
   const report = await validateSeason(fixture.seasonId)
   revalidatePath("/admin")

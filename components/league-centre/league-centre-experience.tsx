@@ -198,12 +198,20 @@ function linkForCategory(links: Record<string, string> | undefined, category: st
   return null
 }
 
-function fixtureWeekNumber(fixture: LCFixture, seasonWeeks: number): number | null {
-  if (Number.isInteger(fixture.week) && fixture.week > 0) return fixture.week
-  if ((fixture.divisionName ?? "").toLowerCase() === "playoff" && Number.isInteger(seasonWeeks) && seasonWeeks > 0) {
-    return seasonWeeks
-  }
-  return null
+function utcDateOnly(iso: string): number | null {
+  const datePart = iso.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null
+  const ts = Date.parse(`${datePart}T00:00:00Z`)
+  return Number.isFinite(ts) ? ts : null
+}
+
+function weekFromDate(matchDate: string | null, firstRegularDate: string | null): number | null {
+  if (!matchDate || !firstRegularDate) return null
+  const matchTs = utcDateOnly(matchDate)
+  const firstTs = utcDateOnly(firstRegularDate)
+  if (matchTs == null || firstTs == null) return null
+  const deltaDays = Math.max(0, Math.floor((matchTs - firstTs) / 86_400_000))
+  return 1 + Math.floor(deltaDays / 7)
 }
 
 // ─── Main experience ────────────────────────────────────────────────────────
@@ -282,36 +290,68 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     [data.fixtures, activeDivisionId],
   )
 
+  const resolvedWeekByFixtureId = useMemo(() => {
+    const regularFixtures = divisionFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() !== "playoff")
+    const firstRegularDate =
+      regularFixtures
+        .map((fixture) => fixture.matchDate)
+        .filter((matchDate): matchDate is string => Boolean(matchDate))
+        .sort((a, b) => (utcDateOnly(a) ?? 0) - (utcDateOnly(b) ?? 0))[0] ?? null
+
+    let maxRegularWeek = 0
+    const byFixtureId = new Map<number, number>()
+
+    for (const fixture of regularFixtures) {
+      const storedWeek = Number.isInteger(fixture.week) && fixture.week > 0 ? fixture.week : null
+      const datedWeek = weekFromDate(fixture.matchDate, firstRegularDate)
+      const resolvedWeek = Math.max(storedWeek ?? 0, datedWeek ?? 0)
+      if (resolvedWeek > 0) {
+        byFixtureId.set(fixture.id, resolvedWeek)
+        maxRegularWeek = Math.max(maxRegularWeek, resolvedWeek)
+      }
+    }
+
+    const playoffWeekFloor = Math.max(data.season.weeks, maxRegularWeek + 1)
+    for (const fixture of divisionFixtures) {
+      if ((fixture.divisionName ?? "").toLowerCase() === "playoff") {
+        const storedWeek = Number.isInteger(fixture.week) && fixture.week > 0 ? fixture.week : playoffWeekFloor
+        byFixtureId.set(fixture.id, Math.max(storedWeek, playoffWeekFloor))
+      }
+    }
+
+    return byFixtureId
+  }, [divisionFixtures, data.season.weeks])
+
   const allWeeks = useMemo(() => {
     const weeks = new Set<number>()
     divisionFixtures.forEach((f) => {
-      const week = fixtureWeekNumber(f, data.season.weeks)
+      const week = resolvedWeekByFixtureId.get(f.id) ?? null
       if (week != null) weeks.add(week)
     })
     return Array.from(weeks).sort((a, b) => a - b)
-  }, [divisionFixtures, data.season.weeks])
+  }, [divisionFixtures, resolvedWeekByFixtureId])
 
   const finalsWeek = useMemo(() => {
     const playoffWeeks = divisionFixtures
       .filter((fixture) => (fixture.divisionName ?? "").toLowerCase() === "playoff")
-      .map((fixture) => fixtureWeekNumber(fixture, data.season.weeks))
+      .map((fixture) => resolvedWeekByFixtureId.get(fixture.id) ?? null)
       .filter((week): week is number => week != null)
     if (!playoffWeeks.length) return null
     return Math.max(...playoffWeeks)
-  }, [divisionFixtures, data.season.weeks])
+  }, [divisionFixtures, resolvedWeekByFixtureId])
 
   const activeWeek = selectedWeek != null && allWeeks.includes(selectedWeek) ? selectedWeek : (allWeeks[0] ?? 1)
 
   const weekFixtures = useMemo(
     () =>
       divisionFixtures
-        .filter((f) => fixtureWeekNumber(f, data.season.weeks) === activeWeek)
+        .filter((f) => (resolvedWeekByFixtureId.get(f.id) ?? null) === activeWeek)
         .sort((a, b) =>
           slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot) ||
           courtSortValue(b.courtInfoByCategory?.[b.divisionName ?? ""]?.court) - courtSortValue(a.courtInfoByCategory?.[a.divisionName ?? ""]?.court) ||
           (a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0),
         ),
-    [divisionFixtures, activeWeek, data.season.weeks],
+    [divisionFixtures, activeWeek, resolvedWeekByFixtureId],
   )
 
   const byeTeams = useMemo(() => {
