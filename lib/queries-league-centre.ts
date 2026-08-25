@@ -982,7 +982,9 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
 
   // Authenticated users: two small targeted queries for personal fixture flags.
   const access = await getAccessContext(user)
-  const canSeeAllBookingLinks = access.can("league_management") || user.isSuperAdmin
+  // In "View As", permission checks must follow the effective user context.
+  // access.isLeagueAdmin is false while impersonating, even for a real super admin.
+  const canSeeAllBookingLinks = access.can("league_management") || access.isLeagueAdmin
   const myTeamIds = await getMyTeamIds(user)
   const myTeamIdsArr = [...myTeamIds]
   const captainTeamIds = new Set<number>(

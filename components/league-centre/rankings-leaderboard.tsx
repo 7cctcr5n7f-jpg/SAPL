@@ -4,10 +4,14 @@ import { Crest } from "@/components/league-centre/crest"
 import type { LCRanking } from "@/lib/queries-league-centre"
 import { ArrowUp, ArrowDown, Minus } from "lucide-react"
 
+function finiteOrZero(value: number) {
+  return Number.isFinite(value) ? value : 0
+}
+
 function Movement({ tpr, highestTpr }: { tpr: number; highestTpr: number }) {
   // Without week-over-week snapshots we approximate momentum from the gap to a
   // team's peak rating: at peak = climbing, well below = sliding.
-  const gap = highestTpr - tpr
+  const gap = finiteOrZero(highestTpr) - finiteOrZero(tpr)
   if (gap <= 1)
     return (
       <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-primary">
@@ -70,7 +74,7 @@ export function RankingsLeaderboard({ rows }: { rows: LCRanking[] }) {
               </p>
             </div>
             <div className="flex flex-col items-end">
-              <span className="heading text-xl tabular-nums">{Math.round(r.tpr)}</span>
+              <span className="heading text-xl tabular-nums">{Math.round(finiteOrZero(r.tpr))}</span>
               <span className="text-[10px] uppercase tracking-widest text-muted-foreground">TPR</span>
             </div>
             <Movement tpr={r.tpr} highestTpr={r.highestTpr} />

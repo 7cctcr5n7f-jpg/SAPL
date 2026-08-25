@@ -3,6 +3,10 @@ import { SectionTitle, DivisionTag } from "@/components/brand/bits"
 import { Button } from "@/components/ui/button"
 import { Trophy, Building2 } from "lucide-react"
 
+function finiteOrZero(value: number) {
+  return Number.isFinite(value) ? value : 0
+}
+
 type TeamRow = {
   teamId: number
   teamName: string
@@ -47,7 +51,7 @@ export function LatestRankings({ teams, clubs }: { teams: TeamRow[]; clubs: Club
                     {t.divisionName ? <DivisionTag name={t.divisionName} /> : null}
                   </div>
                 </div>
-                <span className="heading text-lg tabular-nums">{Math.round(t.tpr)}</span>
+                <span className="heading text-lg tabular-nums">{Math.round(finiteOrZero(t.tpr))}</span>
               </li>
             ))}
           </ul>
@@ -68,7 +72,7 @@ export function LatestRankings({ teams, clubs }: { teams: TeamRow[]; clubs: Club
                   </Link>
                   <span className="text-xs text-muted-foreground">{c.teamCount} teams</span>
                 </div>
-                <span className="heading text-lg tabular-nums">{Math.round(c.cpi)}</span>
+                <span className="heading text-lg tabular-nums">{Math.round(finiteOrZero(c.cpi))}</span>
               </li>
             ))}
           </ul>
