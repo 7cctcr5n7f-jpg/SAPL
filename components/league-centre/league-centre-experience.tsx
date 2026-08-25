@@ -63,7 +63,9 @@ function courtSortValue(value: string | null | undefined) {
 }
 
 function averagePairRating(players: { rating: number | null }[]) {
-  const ratings = players.map((player) => player.rating).filter((rating): rating is number => rating != null)
+  const ratings = players
+    .map((player) => player.rating)
+    .filter((rating): rating is number => rating != null && Number.isFinite(rating))
   if (ratings.length === 0) return null
   return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
 }
@@ -1037,7 +1039,7 @@ function CategoryDot({
 
 /** Small LI pill — shown inline with team/player name */
 function LiBadge({ li, tall = false }: { li: number | null; tall?: boolean }) {
-  if (li == null || li === 0) return null
+  if (li == null || li === 0 || !Number.isFinite(li)) return null
   return (
     <span
       className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200"
