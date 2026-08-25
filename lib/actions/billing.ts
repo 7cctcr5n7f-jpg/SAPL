@@ -75,25 +75,25 @@ export async function sendFeeReminder(input: {
         <span style="color:#E10600;font-size:20px;font-weight:800;"> ●</span>
       </div>
       <div style="padding:32px;">
-        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">Outstanding league fee</h1>
+        <h1 style="color:#ffffff;font-size:22px;margin:0 0 12px;">Outstanding league fee reminder</h1>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
           Hi ${input.payerName},
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
-          We&rsquo;re almost there! 🎾 The ${BRAND.short} league kicks off this Thursday, and we&rsquo;re looking forward to getting everyone on court.
+          The ${BRAND.short} league season is now underway, and we&rsquo;re excited to have you part of it.
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 16px;">
           Our records show that there is still an outstanding league fee of
           <strong style="color:#ffffff;">${fmtZAR(input.amount)}</strong> for <strong style="color:#ffffff;">${input.teamName}</strong>.
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
-          When you get a moment, please log into your ${BRAND.short} profile and settle the outstanding fee. You can use the PayFast payment link provided there to make payment quickly and securely.
+          Please log into your ${BRAND.short} profile and settle the fee using the PayFast payment link provided there.
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
           If you&rsquo;ve already made payment, thank you and please ignore this reminder.
         </p>
         <p style="color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 8px;">
-          Let&rsquo;s get the season started! 🔥
+          See you on court 🎾
         </p>
         <p style="color:#737373;font-size:12px;line-height:1.6;margin:24px 0 0;">
           Questions? Just reply to this email and the ${BRAND.short} team will be happy to help.
@@ -107,15 +107,15 @@ export async function sendFeeReminder(input: {
   </div>`
   const text = `Hi ${input.payerName},
 
-We’re almost there! 🎾 The SAPL league kicks off this Thursday, and we’re looking forward to getting everyone on court.
+The ${BRAND.short} league season is now underway, and we’re excited to have you part of it.
 
 Our records show that there is still an outstanding league fee of ${fmtZAR(input.amount)} for ${input.teamName}.
 
-When you get a moment, please log into your SAPL profile and settle the outstanding fee. You can use the PayFast payment link provided there to make payment quickly and securely.
+Please log into your ${BRAND.short} profile and settle the fee using the PayFast payment link provided there.
 
 If you’ve already made payment, thank you and please ignore this reminder.
 
-Let’s get the season started! 🔥
+See you on court 🎾
 
 Questions? Just reply to this email and the SAPL team will be happy to help.
 
