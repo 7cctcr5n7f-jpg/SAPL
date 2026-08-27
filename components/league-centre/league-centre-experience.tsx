@@ -381,7 +381,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   }
 
   return (
-    <div style={{ backgroundColor: "rgb(245,248,255)" }} className="min-h-screen pb-16">
+    <div style={{ backgroundColor: "rgb(245,248,255)", WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%" }} className="min-h-screen pb-16">
       <div className="mx-auto max-w-5xl px-4 pt-6 md:px-6">
 
         {/* ── Region Selector ──────────────────────────────────────────── */}
@@ -739,9 +739,9 @@ function CategorySection({
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100" style={{ backgroundColor: "rgb(254,254,255)" }}>
       {/* Category header */}
-      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-        <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-600">{category}</span>
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2.5 max-[360px]:px-2.5 max-[360px]:py-2">
+        <span className="text-[11px] font-bold uppercase tracking-[0.13em] text-red-600 max-[360px]:text-[10px]">{category}</span>
+        <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-slate-500 max-[360px]:px-1 max-[360px]:text-[8px]">
           {fixtures.length}
         </span>
       </div>
@@ -804,9 +804,9 @@ function FixtureCard({
   const awayPlayers = fixture.awayPlayers?.[category] ?? []
 
   return (
-    <div className="px-4 py-5 md:px-6 transition-colors hover:bg-slate-50/60">
+    <div className="px-3 py-4 transition-colors hover:bg-slate-50/60 max-[360px]:px-2.5 max-[360px]:py-3 md:px-6 md:py-5">
       {/* Date / Venue row */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-tight text-slate-500 max-[360px]:mb-2.5 max-[360px]:gap-x-2 max-[360px]:text-[10px] max-[340px]:text-[9px]">
         {fixture.matchDate && (
           <span className="inline-flex items-center gap-1 font-medium">
             <CalendarDays className="h-3 w-3" />
@@ -834,15 +834,15 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)] max-[380px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_72px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] max-[360px]:grid-cols-[minmax(0,1fr)_52px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
         <div className="flex min-w-0 flex-col items-start gap-1">
-          <div className="flex items-center gap-2.5">
-            <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="md" />
+          <div className="flex items-center gap-2 max-[360px]:gap-1.5">
+            <Crest name={fixture.homeName} logoUrl={fixture.homeLogo} size="md" className="h-10 w-10 max-[380px]:h-9 max-[380px]:w-9 max-[360px]:h-8 max-[360px]:w-8" />
             <div className="min-w-0 flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-sm font-bold leading-tight max-[380px]:text-xs md:text-base",
+                  "text-[clamp(0.78rem,2.8vw,1rem)] font-bold leading-tight",
                   hasScore && awayWon ? "text-slate-400" : "text-slate-900",
                 )}>
                   {fixture.homeName ?? "TBD"}
@@ -852,26 +852,26 @@ function FixtureCard({
             </div>
           </div>
           {homePlayers.length > 0 && (
-            <div className="ml-[2.75rem] mt-0.5 space-y-0.5">
+            <div className="ml-10 mt-0.5 space-y-0.5 max-[380px]:ml-9 max-[360px]:ml-8">
               {homePlayers.map((p) => (
-                <p key={p.name} className="text-[11px] text-slate-500">{p.name}</p>
+                <p key={p.name} className="text-[10px] leading-tight text-slate-500 max-[360px]:text-[9px]">{p.name}</p>
               ))}
             </div>
           )}
         </div>
 
         {/* Score / VS */}
-        <div className="flex min-h-[4.75rem] self-center flex-col items-center justify-center gap-1">
+        <div className="flex min-h-[4.25rem] self-center flex-col items-center justify-center gap-1 max-[360px]:min-h-[3.9rem]">
           {hasScore ? (
             <div className="flex items-center gap-2 tabular-nums max-[380px]:gap-1.5">
               <span
-              className={cn("text-3xl font-extrabold leading-none max-[380px]:text-[2rem]", homeTeamScoreClass)}
+              className={cn("text-[clamp(1.8rem,8vw,2.25rem)] font-extrabold leading-none", homeTeamScoreClass)}
               >
                 {teamPoints.home}
               </span>
-              <span className="text-lg font-bold text-slate-300 max-[380px]:text-base">-</span>
+              <span className="text-[clamp(1rem,3.5vw,1.125rem)] font-bold text-slate-300">-</span>
               <span
-              className={cn("text-3xl font-extrabold leading-none max-[380px]:text-[2rem]", awayTeamScoreClass)}
+              className={cn("text-[clamp(1.8rem,8vw,2.25rem)] font-extrabold leading-none", awayTeamScoreClass)}
               >
                 {teamPoints.away}
               </span>
@@ -891,12 +891,12 @@ function FixtureCard({
 
         {/* Away team */}
         <div className="flex min-w-0 flex-col items-end gap-1">
-          <div className="flex flex-row-reverse items-center gap-2.5">
-            <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="md" />
+          <div className="flex flex-row-reverse items-center gap-2 max-[360px]:gap-1.5">
+            <Crest name={fixture.awayName} logoUrl={fixture.awayLogo} size="md" className="h-10 w-10 max-[380px]:h-9 max-[380px]:w-9 max-[360px]:h-8 max-[360px]:w-8" />
             <div className="min-w-0 flex flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-right text-sm font-bold leading-tight max-[380px]:text-xs md:text-base",
+                  "text-right text-[clamp(0.78rem,2.8vw,1rem)] font-bold leading-tight",
                   "break-words",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
                 )}>
@@ -907,9 +907,9 @@ function FixtureCard({
             </div>
           </div>
           {awayPlayers.length > 0 && (
-            <div className="mr-[2.75rem] mt-0.5 space-y-0.5 text-right">
+            <div className="mr-10 mt-0.5 space-y-0.5 text-right max-[380px]:mr-9 max-[360px]:mr-8">
               {awayPlayers.map((p) => (
-                <p key={p.name} className="text-[11px] text-slate-500">{p.name}</p>
+                <p key={p.name} className="text-[10px] leading-tight text-slate-500 max-[360px]:text-[9px]">{p.name}</p>
               ))}
             </div>
           )}
@@ -920,7 +920,7 @@ function FixtureCard({
       <button
         onClick={onToggle}
         className={cn(
-          "mt-4 flex w-full items-center justify-between rounded-xl border px-4 py-2.5 text-left text-xs font-semibold transition-all",
+          "mt-3 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-[11px] font-semibold leading-snug transition-all max-[360px]:px-2.5 max-[360px]:py-1.5 max-[360px]:text-[10px]",
           isExpanded
             ? "border-red-200 bg-red-50 text-red-700"
             : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-800",
@@ -1075,23 +1075,23 @@ function FixtureBreakdown({
     <>
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
         {/* Header — team names + form dots */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2.5 max-[360px]:px-2.5 max-[360px]:py-2">
           {/* Home side */}
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              <span className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-slate-700 max-[360px]:text-[9px]">
                 {fixture.homeName}
               </span>
             </div>
             <FormDots items={fixture.homeFormItems} align="left" />
           </div>
 
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</span>
+          <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400 max-[360px]:text-[8px]">Score</span>
 
           {/* Away side */}
           <div className="flex flex-col items-end gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-right text-[11px] font-bold uppercase tracking-wide text-slate-700">
+              <span className="truncate text-right text-[10px] font-bold uppercase tracking-[0.06em] text-slate-700 max-[360px]:text-[9px]">
                 {fixture.awayName}
               </span>
             </div>
@@ -1153,9 +1153,9 @@ function FixtureBreakdown({
               awayRubberPoints > homeRubberPoints ? "W" : awayRubberPoints < homeRubberPoints ? "L" : "D"
 
             return (
-              <div key={category} className="px-4 py-3">
+              <div key={category} className="px-3 py-2.5 max-[360px]:px-2.5 max-[360px]:py-2">
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[1fr_84px_1fr] items-center gap-2 md:grid-cols-[1fr_104px_1fr] md:gap-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_76px_minmax(0,1fr)] items-center gap-1.5 max-[360px]:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
                   <div className="min-w-0 space-y-0.5">
                     {homePair.length > 0 ? (
@@ -1168,7 +1168,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight break-words md:text-xs",
+                                "text-[10px] font-semibold leading-tight break-words max-[360px]:text-[9px] md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
@@ -1197,11 +1197,11 @@ function FixtureBreakdown({
                   {/* Score / vs */}
                   <div className="flex self-stretch flex-col items-center justify-center gap-1 tabular-nums">
                     <div className="flex min-h-[2.2rem] flex-col items-center justify-center gap-0.5">
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-black">
+                      <span className="max-w-full truncate rounded-md bg-slate-100 px-1.5 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-black max-[360px]:px-1 max-[360px]:text-[8px]">
                         {category}
                       </span>
                       {(courtInfo?.court || courtInfo?.time) && (
-                        <span className="text-[10px] font-medium text-slate-500">
+                        <span className="text-[9px] font-medium leading-tight text-slate-500 max-[360px]:text-[8px]">
                           {courtInfo.court ? `Court ${courtInfo.court}` : ""}
                           {courtInfo.court && courtInfo.time ? " · " : ""}
                           {courtInfo.time ?? ""}
@@ -1211,11 +1211,11 @@ function FixtureBreakdown({
                     <div className="flex min-h-[1.25rem] items-center gap-1.5">
                       {hasScore ? (
                         <>
-                          <span className={cn("text-lg font-extrabold", homeRubberScoreClass)}>
+                          <span className={cn("text-base font-extrabold max-[360px]:text-sm", homeRubberScoreClass)}>
                             {homeRubberPoints}
                           </span>
-                          <span className="text-sm text-slate-300">-</span>
-                          <span className={cn("text-lg font-extrabold", awayRubberScoreClass)}>
+                          <span className="text-xs text-slate-300">-</span>
+                          <span className={cn("text-base font-extrabold max-[360px]:text-sm", awayRubberScoreClass)}>
                             {awayRubberPoints}
                           </span>
                         </>
@@ -1282,7 +1282,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[11px] font-semibold leading-tight break-words md:text-xs",
+                                "text-[10px] font-semibold leading-tight break-words max-[360px]:text-[9px] md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
