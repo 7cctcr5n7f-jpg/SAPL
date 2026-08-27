@@ -37,16 +37,16 @@ export function StandingsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
       {!anyPlayed ? (
-        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
+        <div className="border-b border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-700 max-[360px]:px-2.5 max-[360px]:text-[10px]">
           Season has not started yet — standings will update as results are recorded.
         </div>
       ) : qualificationRule ? (
-        <div className="border-b border-sky-100 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800">
+        <div className="border-b border-sky-100 bg-sky-50 px-3 py-2.5 text-[11px] font-medium leading-snug text-sky-800 max-[360px]:px-2.5 max-[360px]:py-2 max-[360px]:text-[10px]">
           {qualificationRule}
         </div>
       ) : null}
       <div>
-        <div className="grid grid-cols-[1.4rem_minmax(6.5rem,1fr)_repeat(7,1.6rem)_2rem] items-center gap-1 border-b border-slate-100 bg-slate-50 px-2 py-2 text-[9px] font-bold uppercase tracking-wide text-slate-500 md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4 md:py-2.5 md:text-[10px] md:tracking-widest">
+        <div className="grid grid-cols-[17px_minmax(0,1fr)_repeat(7,minmax(0,19px))_24px] items-center gap-1 border-b border-slate-100 bg-slate-50 px-2 py-2 text-[9px] font-bold uppercase tracking-wide text-slate-500 max-[360px]:grid-cols-[16px_minmax(0,1fr)_repeat(7,minmax(0,17px))_21px] max-[360px]:gap-0.5 max-[360px]:px-1.5 max-[360px]:py-1.5 max-[360px]:text-[8px] max-[340px]:grid-cols-[15px_minmax(0,1fr)_repeat(7,minmax(0,16px))_20px] max-[340px]:px-1 max-[340px]:text-[7px] md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4 md:py-2.5 md:text-[10px] md:tracking-widest">
           <span className="text-center">#</span>
           <span>Team</span>
           <span className="text-center">P</span>
@@ -66,7 +66,7 @@ export function StandingsTable({
             <li
               key={r.teamId}
               className={cn(
-                "relative grid grid-cols-[1.4rem_minmax(6.5rem,1fr)_repeat(7,1.6rem)_2rem] items-center gap-1 border-b border-slate-50 px-2 py-2.5 last:border-0 md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4",
+                "relative grid grid-cols-[17px_minmax(0,1fr)_repeat(7,minmax(0,19px))_24px] items-center gap-1 border-b border-slate-50 px-2 py-2.5 last:border-0 max-[360px]:grid-cols-[16px_minmax(0,1fr)_repeat(7,minmax(0,17px))_21px] max-[360px]:gap-0.5 max-[360px]:px-1.5 max-[360px]:py-2 max-[340px]:grid-cols-[15px_minmax(0,1fr)_repeat(7,minmax(0,16px))_20px] max-[340px]:px-1 max-[340px]:py-1.5 md:grid-cols-[2.5rem_minmax(14rem,1fr)_repeat(7,2.5rem)_3.5rem] md:gap-2 md:px-4",
                 qualifier && "bg-sky-50/70",
                 showRelegation && pos >= total - 1 && total > 4 && "bg-red-50/60",
               )}
@@ -84,17 +84,22 @@ export function StandingsTable({
                       : "bg-transparent",
                 )}
               />
-              <span className="text-center text-xs font-bold tabular-nums text-slate-800 md:text-sm">{pos}</span>
-              <div className="flex min-w-0 items-center gap-1.5 md:gap-2.5">
-                <Crest name={r.teamName} logoUrl={r.teamLogo ?? r.venueLogo ?? r.orgLogo} size="sm" />
+              <span className="text-center text-[10px] font-bold tabular-nums text-slate-800 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{pos}</span>
+              <div className="flex min-w-0 items-center gap-1 md:gap-2.5">
+                <Crest
+                  name={r.teamName}
+                  logoUrl={r.teamLogo ?? r.venueLogo ?? r.orgLogo}
+                  size="sm"
+                  className="h-7 w-7 text-[9px] max-[360px]:h-6 max-[360px]:w-6 max-[340px]:h-[1.375rem] max-[340px]:w-[1.375rem] md:h-8 md:w-8"
+                />
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-slate-900 md:text-sm">{r.teamName ?? "—"}</p>
+                  <p className="truncate text-[11px] font-semibold text-slate-900 max-[360px]:text-[10px] max-[340px]:text-[9px] md:text-sm">{r.teamName ?? "—"}</p>
                   <div className="flex items-center gap-1.5 md:gap-2">
                     {r.venueName ? <p className="hidden truncate text-[11px] text-slate-500 md:block">{r.venueName}</p> : null}
                     {qualifier ? (
                       <span
                         className={cn(
-                          "inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide md:px-2 md:text-[10px]",
+                          "inline-flex rounded-full px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide max-[360px]:px-0.5 max-[360px]:text-[7px] md:px-2 md:text-[10px]",
                           qualifier === "wildcard" ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700",
                         )}
                       >
@@ -105,21 +110,21 @@ export function StandingsTable({
                   </div>
                 </div>
               </div>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.played}</span>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.wins}</span>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.draws}</span>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.losses}</span>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.matchesWon}</span>
-              <span className="text-center text-xs tabular-nums text-slate-700 md:text-sm">{r.setsWon}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.played}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.wins}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.draws}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.losses}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.matchesWon}</span>
+              <span className="text-center text-[10px] tabular-nums text-slate-700 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{r.setsWon}</span>
               <span
                 className={cn(
-                  "text-center text-xs font-semibold tabular-nums md:text-sm",
+                  "text-center text-[10px] font-semibold tabular-nums max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm",
                   r.pointsDiff > 0 ? "text-emerald-600" : r.pointsDiff < 0 ? "text-red-500" : "text-slate-400",
                 )}
               >
                 {r.pointsDiff > 0 ? `+${r.pointsDiff}` : r.pointsDiff}
               </span>
-              <span className="text-center text-xs font-bold tabular-nums text-slate-900 md:text-sm">{formatPoints(r.points)}</span>
+              <span className="text-center text-[10px] font-bold tabular-nums text-slate-900 max-[360px]:text-[9px] max-[340px]:text-[8px] md:text-sm">{formatPoints(r.points)}</span>
             </li>
           )
         })}

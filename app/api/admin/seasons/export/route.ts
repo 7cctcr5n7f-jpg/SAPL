@@ -17,6 +17,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { getCurrentUser } from "@/lib/session"
 import { getAccessContext } from "@/lib/access"
+import { CATEGORY_RULES } from "@/lib/constants"
 
 function toCsv(rows: Record<string, string | number | null | undefined>[]) {
   if (rows.length === 0) return ""
@@ -160,6 +161,7 @@ async function getTeamExportRows(seasonId: number) {
 async function getFixtureExportRows(seasonId: number, week: number) {
   const homeTeam = alias(teams, "homeTeam")
   const awayTeam = alias(teams, "awayTeam")
+  const categoryOrder = CATEGORY_RULES.map((rule) => rule.name)
 
   const fixtureRows = await db
     .select({
@@ -175,7 +177,6 @@ async function getFixtureExportRows(seasonId: number, week: number) {
       awayTeamId: fixtures.awayTeamId,
       homeTeam: homeTeam.name,
       awayTeam: awayTeam.name,
-      category: matches.category,
       courtAssignments: fixtures.courtAssignments,
     })
     .from(fixtures)
@@ -184,9 +185,8 @@ async function getFixtureExportRows(seasonId: number, week: number) {
     .leftJoin(regions, eq(divisions.regionId, regions.id))
     .leftJoin(homeTeam, eq(fixtures.homeTeamId, homeTeam.id))
     .leftJoin(awayTeam, eq(fixtures.awayTeamId, awayTeam.id))
-    .leftJoin(matches, eq(matches.fixtureId, fixtures.id))
     .where(and(eq(fixtures.seasonId, seasonId), eq(fixtures.week, week)))
-    .orderBy(asc(fixtures.matchDate), asc(divisions.level), asc(matches.category))
+    .orderBy(asc(fixtures.matchDate), asc(divisions.level), asc(fixtures.id))
 
   const teamIds = [...new Set(fixtureRows.flatMap((row) => [row.homeTeamId, row.awayTeamId]).filter((id): id is number => id != null))]
   if (fixtureRows.length === 0) return []
@@ -246,32 +246,42 @@ async function getFixtureExportRows(seasonId: number, week: number) {
     return listToPair(names)
   }
 
-  return fixtureRows
-    .filter((row) => !!row.category)
-    .map((row) => {
+  return fixtureRows.flatMap((row) => {
       const assignments = (row.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>
-      const assignment = row.category ? assignments[row.category] : undefined
+      const categorySet = new Set<string>([...categoryOrder, ...Object.keys(assignments)])
+      const categories = [...categorySet].sort((a, b) => {
+        const ai = categoryOrder.indexOf(a)
+        const bi = categoryOrder.indexOf(b)
+        if (ai === -1 && bi === -1) return a.localeCompare(b)
+        if (ai === -1) return 1
+        if (bi === -1) return -1
+        return ai - bi
+      })
       const matchDate =
         row.matchDate instanceof Date
           ? row.matchDate.toISOString().slice(0, 10)
           : row.matchDate
             ? new Date(row.matchDate).toISOString().slice(0, 10)
             : ""
-      return {
-        Season: row.seasonName,
-        Week: row.week,
-        Conference: row.conference ?? "Unassigned",
-        Division: row.divisionName ?? "Unassigned",
-        Date: matchDate,
-        Category: row.category ?? "",
-        Court: assignment?.court ?? "",
-        Time: assignment?.time ?? row.timeslot ?? "",
-        Venue: row.venue ?? "",
-        "Home Team": row.homeTeam ?? "TBD",
-        "Home Pair": playersFor(row.homeTeamId, row.category),
-        "Away Team": row.awayTeam ?? "TBD",
-        "Away Pair": playersFor(row.awayTeamId, row.category),
-      }
+
+      return categories.map((category) => {
+        const assignment = assignments[category]
+        return {
+          Season: row.seasonName,
+          Week: row.week,
+          Conference: row.conference ?? "Unassigned",
+          Division: row.divisionName ?? "Unassigned",
+          Date: matchDate,
+          Category: category,
+          Court: assignment?.court ?? "",
+          Time: assignment?.time ?? row.timeslot ?? "",
+          Venue: row.venue ?? "",
+          "Home Team": row.homeTeam ?? "TBD",
+          "Home Pair": playersFor(row.homeTeamId, category),
+          "Away Team": row.awayTeam ?? "TBD",
+          "Away Pair": playersFor(row.awayTeamId, category),
+        }
+      })
     })
 }
 
