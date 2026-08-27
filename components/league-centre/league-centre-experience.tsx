@@ -97,14 +97,12 @@ function computeRubberTeamPoints(rubber: LCRubber | null | undefined) {
   const splitSets = tally?.splitSets ?? 0
   const homeBonus = homeSetsWon > awaySetsWon ? 1 : 0
   const awayBonus = awaySetsWon > homeSetsWon ? 1 : 0
-  // Category tied on sets (e.g. 1-1) with no deciding set played — split the
-  // bonus point (0.5 each) and split the "phantom" deciding set (0.5 each),
-  // so a 1-1 split category shows as 2-2 rather than 1-1.
+  // Category tied on completed sets (e.g. 1-1): split only the category bonus
+  // point (0.5 each). Any unfinished deciding set is already split below.
   const tiedSplitBonus = homeSetsWon > 0 && homeSetsWon === awaySetsWon ? 0.5 : 0
-  const tiedSplitExtra = tiedSplitBonus > 0 ? 0.5 : 0
   return {
-    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus + tiedSplitExtra,
-    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus + tiedSplitExtra,
+    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus,
+    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus,
   }
 }
 
@@ -349,7 +347,23 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     return Math.max(...playoffWeeks)
   }, [divisionFixtures, resolvedWeekByFixtureId])
 
-  const activeWeek = selectedWeek != null && allWeeks.includes(selectedWeek) ? selectedWeek : (allWeeks[0] ?? 1)
+  const defaultWeek = useMemo(() => {
+    if (!allWeeks.length) return 1
+    const regularFixtures = divisionFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() !== "playoff")
+    const firstRegularDate =
+      regularFixtures
+        .map((fixture) => fixture.matchDate)
+        .filter((matchDate): matchDate is string => Boolean(matchDate))
+        .sort((a, b) => (utcDateOnly(a) ?? 0) - (utcDateOnly(b) ?? 0))[0] ?? null
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const inferredWeek = weekFromDate(todayIso, firstRegularDate)
+    if (inferredWeek == null) return allWeeks[0]
+    if (allWeeks.includes(inferredWeek)) return inferredWeek
+    const priorWeek = [...allWeeks].reverse().find((week) => week <= inferredWeek)
+    return priorWeek ?? allWeeks[0]
+  }, [allWeeks, divisionFixtures])
+
+  const activeWeek = selectedWeek != null && allWeeks.includes(selectedWeek) ? selectedWeek : defaultWeek
 
   const weekFixtures = useMemo(
     () =>
