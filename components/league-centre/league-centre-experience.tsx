@@ -216,6 +216,13 @@ function weekFromDate(matchDate: string | null, firstRegularDate: string | null)
   return 1 + Math.floor(deltaDays / 7)
 }
 
+function shortRegionLabel(name: string) {
+  return name
+    .replace(/\s*conference\s*/i, "")
+    .replace(/\s*tshwane\s*/i, "")
+    .trim()
+}
+
 // ─── Main experience ────────────────────────────────────────────────────────
 
 export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
@@ -387,7 +394,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
         {/* ── Region Selector ──────────────────────────────────────────── */}
         <section className="mb-6">
           <SectionLabel icon={<MapPin className="h-3.5 w-3.5" />} text="Region" />
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div className="mt-3 grid grid-cols-3 gap-2">
             {data.regions.map((r) => {
               const active = r.id === regionId
               return (
@@ -395,13 +402,16 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                   key={r.id}
                   onClick={() => selectRegion(r.id)}
                   className={cn(
-                    "rounded-2xl border px-5 py-3 text-left transition-all",
+                    "min-w-0 rounded-2xl border px-2 py-2.5 text-center transition-all max-[360px]:rounded-xl max-[360px]:px-1.5 max-[360px]:py-2",
                     active
                       ? "border-red-600 bg-red-600 text-white shadow-md"
                       : "border-slate-200 bg-white text-slate-800 shadow-sm hover:border-red-300 hover:shadow-md",
                   )}
                 >
-                  <span className="block text-sm font-bold">{r.name}</span>
+                  <span className="block truncate whitespace-nowrap text-[clamp(0.65rem,2.8vw,0.95rem)] font-bold">
+                    <span className="hidden min-[420px]:inline">{r.name}</span>
+                    <span className="min-[420px]:hidden">{shortRegionLabel(r.name)}</span>
+                  </span>
                 </button>
               )
             })}
@@ -834,7 +844,7 @@ function FixtureCard({
       </div>
 
       {/* Main match layout */}
-      <div className="grid grid-cols-[minmax(0,1fr)_72px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] max-[360px]:grid-cols-[minmax(0,1fr)_52px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_88px_minmax(0,1fr)] items-start gap-2 max-[380px]:grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)] max-[360px]:grid-cols-[minmax(0,1fr)_70px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_108px_1fr] md:gap-6">
         {/* Home team */}
         <div className="flex min-w-0 flex-col items-start gap-1">
           <div className="flex items-center gap-2 max-[360px]:gap-1.5">
@@ -842,7 +852,7 @@ function FixtureCard({
             <div className="min-w-0 flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-[clamp(0.78rem,2.8vw,1rem)] font-bold leading-tight",
+                  "text-[clamp(0.75rem,2.5vw,1rem)] font-bold leading-tight [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden",
                   hasScore && awayWon ? "text-slate-400" : "text-slate-900",
                 )}>
                   {fixture.homeName ?? "TBD"}
@@ -863,7 +873,7 @@ function FixtureCard({
         {/* Score / VS */}
         <div className="flex min-h-[4.25rem] self-center flex-col items-center justify-center gap-1 max-[360px]:min-h-[3.9rem]">
           {hasScore ? (
-            <div className="flex items-center gap-2 tabular-nums max-[380px]:gap-1.5">
+            <div className="flex min-w-[88px] items-center justify-center gap-2 whitespace-nowrap tabular-nums max-[380px]:min-w-[78px] max-[380px]:gap-1.5 max-[360px]:min-w-[70px]">
               <span
               className={cn("text-[clamp(1.8rem,8vw,2.25rem)] font-extrabold leading-none", homeTeamScoreClass)}
               >
@@ -896,7 +906,7 @@ function FixtureCard({
             <div className="min-w-0 flex flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
-                  "text-right text-[clamp(0.78rem,2.8vw,1rem)] font-bold leading-tight",
+                  "text-right text-[clamp(0.75rem,2.5vw,1rem)] font-bold leading-tight [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden",
                   "break-words",
                   hasScore && homeWon ? "text-slate-400" : "text-slate-900",
                 )}>
@@ -1155,7 +1165,7 @@ function FixtureBreakdown({
             return (
               <div key={category} className="px-3 py-2.5 max-[360px]:px-2.5 max-[360px]:py-2">
                 {/* Players vs Score vs Players */}
-                <div className="grid grid-cols-[minmax(0,1fr)_76px_minmax(0,1fr)] items-center gap-1.5 max-[360px]:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_104px_1fr] md:gap-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_86px_minmax(0,1fr)] items-center gap-1.5 max-[360px]:grid-cols-[minmax(0,1fr)_72px_minmax(0,1fr)] max-[360px]:gap-1 md:grid-cols-[1fr_104px_1fr] md:gap-3">
                   {/* Home pair */}
                   <div className="min-w-0 space-y-0.5">
                     {homePair.length > 0 ? (
@@ -1168,7 +1178,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[10px] font-semibold leading-tight break-words max-[360px]:text-[9px] md:text-xs",
+                                "text-[10px] font-semibold leading-tight [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden max-[360px]:text-[9px] md:text-xs",
                                 hasScore && awayWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
@@ -1282,7 +1292,7 @@ function FixtureBreakdown({
                             <p
                               key={player.name}
                               className={cn(
-                                "text-[10px] font-semibold leading-tight break-words max-[360px]:text-[9px] md:text-xs",
+                                "text-[10px] font-semibold leading-tight [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden max-[360px]:text-[9px] md:text-xs",
                                 hasScore && homeWon ? "text-slate-400" : "text-slate-800",
                               )}
                             >
