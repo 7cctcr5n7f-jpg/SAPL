@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { StandingsTable } from "@/components/league-centre/standings-table"
 import { Crest } from "@/components/league-centre/crest"
-import type { LeagueCentreData, LCFixture, LCRubber, FormItem } from "@/lib/queries-league-centre"
+import type { LeagueCentreData, LCFixture, LCRubber, FormItem, CategoryFormItem } from "@/lib/queries-league-centre"
 import { computeDivisionPlayoffQualifiers } from "@/lib/engine/playoffs"
 import { parseScoreDetail, tallySets } from "@/lib/engine/scoring"
 import { ResultEntry } from "@/components/captain/result-entry"
@@ -97,12 +97,14 @@ function computeRubberTeamPoints(rubber: LCRubber | null | undefined) {
   const splitSets = tally?.splitSets ?? 0
   const homeBonus = homeSetsWon > awaySetsWon ? 1 : 0
   const awayBonus = awaySetsWon > homeSetsWon ? 1 : 0
-  // Category tied on completed sets (e.g. 1-1): split only the category bonus
-  // point (0.5 each). Any unfinished deciding set is already split below.
+  // Category tied on completed sets (e.g. 1-1): split the category bonus point
+  // (0.5 each). If no unfinished deciding set was entered, still split that
+  // deciding set point so tied unfinished categories remain 2-2.
   const tiedSplitBonus = homeSetsWon > 0 && homeSetsWon === awaySetsWon ? 0.5 : 0
+  const tiedUnplayedDeciderSplit = tiedSplitBonus > 0 && splitSets === 0 ? 0.5 : 0
   return {
-    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus,
-    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus,
+    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus + tiedUnplayedDeciderSplit,
+    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus + tiedUnplayedDeciderSplit,
   }
 }
 
@@ -989,7 +991,7 @@ function FormDots({
             <span
               className={cn(
                 "block h-2.5 w-2.5 rounded-full cursor-default transition-transform group-hover:scale-125",
-                item.result === "W" ? "bg-emerald-500" : "bg-red-400",
+                item.result === "W" ? "bg-emerald-500" : item.result === "L" ? "bg-red-400" : "bg-slate-500",
               )}
             />
             {/* Tooltip */}
@@ -997,8 +999,11 @@ function FormDots({
               "lc-tooltip pointer-events-none absolute top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
               align === "right" ? "right-0" : "left-0",
             )}>
-              <span className={cn("font-bold", item.result === "W" ? "lc-tooltip-win" : "lc-tooltip-loss")}>
-                {item.result === "W" ? "W" : "L"}
+              <span className={cn(
+                "font-bold",
+                item.result === "W" ? "lc-tooltip-win" : item.result === "L" ? "lc-tooltip-loss" : "lc-tooltip-text",
+              )}>
+                {item.result}
               </span>
               <span className="lc-tooltip-text">{" · "}{item.opponentName}</span>
               {renderTooltipScoreDetail(scoreLabel)}
@@ -1015,14 +1020,40 @@ function FormDots({
   )
 }
 
+function CategoryFormDots({
+  items,
+  align = "left",
+}: {
+  items: CategoryFormItem[]
+  align?: "left" | "right"
+}) {
+  if (!items.length) return null
+  return (
+    <div className={cn("flex items-center gap-1", align === "right" && "flex-row-reverse")}>
+      {items.map((item, i) => (
+        <CategoryDot
+          key={`${item.opponentName}-${item.scoreDetail ?? "no-score"}-${item.result}-${i}`}
+          result={item.result}
+          opponent={item.opponentName}
+          opponentPlayers={item.opponentPlayers}
+          scoreLabel={item.scoreDetail}
+          align={align}
+        />
+      ))}
+    </div>
+  )
+}
+
 function CategoryDot({
   result,
   opponent,
+  opponentPlayers,
   scoreLabel,
   align = "left",
 }: {
   result: "W" | "L" | "D"
   opponent: string
+  opponentPlayers?: string | null
   scoreLabel?: string | null
   align?: "left" | "right"
 }) {
@@ -1036,7 +1067,7 @@ function CategoryDot({
       />
       <div
         className={cn(
-          "lc-tooltip pointer-events-none absolute top-full z-50 mt-1.5 max-w-52 rounded-md bg-slate-950 px-2 py-1 text-[10px] font-medium leading-snug opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+          "lc-tooltip pointer-events-none absolute top-full z-50 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] rounded-md bg-slate-950 px-2.5 py-1.5 text-[10px] font-medium leading-snug opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
           align === "right" ? "right-0" : "left-0",
         )}
       >
@@ -1048,7 +1079,10 @@ function CategoryDot({
         >
           {result}
         </span>
-        <span className="lc-tooltip-text break-words">{" · "}{opponent}</span>
+        <span className="lc-tooltip-text whitespace-normal">{" · "}{opponent}</span>
+        {opponentPlayers ? (
+          <span className="block whitespace-normal text-slate-300">{opponentPlayers}</span>
+        ) : null}
         {scoreLabel ? renderTooltipScoreDetail(scoreLabel) : null}
         <span
           className={cn(
@@ -1132,6 +1166,7 @@ function FixtureBreakdown({
               a.localeCompare(b),
             )
             .map((category) => {
+            const normalizedCategory = normalizeCategoryKey(category)
             const rubber = rubberByCategory.get(category)
             const homePair = fixture.homePlayers?.[category] ?? []
             const awayPair = fixture.awayPlayers?.[category] ?? []
@@ -1171,10 +1206,6 @@ function FixtureBreakdown({
             const awayRubberPoints = rubberPoints.away
             const homeRubberScoreClass = homeRubberPoints > awayRubberPoints ? "lc-score-win" : "lc-score-neutral"
             const awayRubberScoreClass = awayRubberPoints > homeRubberPoints ? "lc-score-win" : "lc-score-neutral"
-            const homeCategoryResult: "W" | "L" | "D" =
-              homeRubberPoints > awayRubberPoints ? "W" : homeRubberPoints < awayRubberPoints ? "L" : "D"
-            const awayCategoryResult: "W" | "L" | "D" =
-              awayRubberPoints > homeRubberPoints ? "W" : awayRubberPoints < homeRubberPoints ? "L" : "D"
 
             return (
               <div key={category} className="px-3 py-2.5 max-[360px]:px-2.5 max-[360px]:py-2">
@@ -1205,16 +1236,10 @@ function FixtureBreakdown({
                       <p className="text-xs text-slate-400">TBD</p>
                     )}
                     <div className="flex items-center gap-1.5 pt-0.5">
-                      {hasScore ? (
-                        <CategoryDot
-                          result={homeCategoryResult}
-                          opponent={awayPlayerLabel}
-                          scoreLabel={rubber?.scoreDetail ?? null}
-                          align="left"
-                        />
-                      ) : (
-                        <FormDots items={fixture.homeFormItems} align="left" />
-                      )}
+                      <CategoryFormDots
+                        items={fixture.homeCategoryFormItems?.[normalizedCategory] ?? []}
+                        align="left"
+                      />
                     </div>
                   </div>
 
@@ -1230,6 +1255,18 @@ function FixtureBreakdown({
                           {courtInfo.court && courtInfo.time ? " · " : ""}
                           {courtInfo.time ?? ""}
                         </span>
+                      )}
+                      {fixture.canSeeAdminPlaytomicLinks && categoryJoinUrl && (
+                        <a
+                          href={categoryJoinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[9px] font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline max-[360px]:text-[8px]"
+                          title="Open Playtomic match link"
+                        >
+                          PT
+                          <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
                       )}
                     </div>
                     <div className="flex min-h-[1.25rem] items-center gap-1.5">
@@ -1322,16 +1359,10 @@ function FixtureBreakdown({
                       <p className="text-right text-xs text-slate-400">TBD</p>
                     )}
                     <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                      {hasScore ? (
-                        <CategoryDot
-                          result={awayCategoryResult}
-                          opponent={homePlayerLabel}
-                          scoreLabel={rubber?.scoreDetail ?? null}
-                          align="right"
-                        />
-                      ) : (
-                        <FormDots items={fixture.awayFormItems} align="right" />
-                      )}
+                      <CategoryFormDots
+                        items={fixture.awayCategoryFormItems?.[normalizedCategory] ?? []}
+                        align="right"
+                      />
                     </div>
                   </div>
                 </div>

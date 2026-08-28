@@ -74,11 +74,18 @@ export type LCStanding = {
 
 /** One result entry for the form tooltip — newest last */
 export type FormItem = {
-  result: "W" | "L"
+  result: "W" | "L" | "D"
   opponentName: string
   homeScore: number
   awayScore: number
   isHome: boolean
+}
+
+export type CategoryFormItem = {
+  result: "W" | "L" | "D"
+  opponentName: string
+  opponentPlayers: string | null
+  scoreDetail: string | null
 }
 
 export type LCFixture = {
@@ -114,6 +121,9 @@ export type LCFixture = {
   /** Recent form items — up to last 6, oldest first */
   homeFormItems: FormItem[]
   awayFormItems: FormItem[]
+  /** Recent per-category form — up to last 6, oldest first */
+  homeCategoryFormItems: Record<string, CategoryFormItem[]>
+  awayCategoryFormItems: Record<string, CategoryFormItem[]>
   joinUrl: string | null
   /** Per-category booking link, keyed by category. Only present once published. */
   joinUrlByCategory: Record<string, string>
@@ -124,6 +134,7 @@ export type LCFixture = {
   mine: boolean
   assignedToFixture: boolean
   canSeeBookingLinks: boolean
+  canSeeAdminPlaytomicLinks: boolean
   canSubmitResult: boolean
   canSubmitAllCategories: boolean
   myCategories: string[]
@@ -141,8 +152,8 @@ export type LCRubber = {
   awaySetsWon: number
   scoreDetail: string | null
   winnerTeamId: number | null
-  homePlayerIds: number[]
-  awayPlayerIds: number[]
+  homePlayerIds: string[]
+  awayPlayerIds: string[]
 }
 
 export type LCRanking = {
@@ -196,6 +207,45 @@ function normalizeCategoryKey(value: string): string {
     .replace(/\bmen\b/g, "mens")
     .replace(/\bbegineer\b/g, "beginner")
     .replace(/\s+/g, " ")
+}
+
+function computeRubberPoints(scoreDetail: string | null | undefined, fallbackHomeSetsWon: number, fallbackAwaySetsWon: number) {
+  const parsedSets = parseScoreDetail(scoreDetail)
+  const tally = parsedSets.length > 0 ? tallySets(parsedSets) : null
+  const homeSetsWon = tally?.homeSetsWon ?? fallbackHomeSetsWon
+  const awaySetsWon = tally?.awaySetsWon ?? fallbackAwaySetsWon
+  const splitSets = tally?.splitSets ?? 0
+  const homeBonus = homeSetsWon > awaySetsWon ? 1 : 0
+  const awayBonus = awaySetsWon > homeSetsWon ? 1 : 0
+  const tiedSplitBonus = homeSetsWon > 0 && homeSetsWon === awaySetsWon ? 0.5 : 0
+  const tiedUnplayedDeciderSplit = tiedSplitBonus > 0 && splitSets === 0 ? 0.5 : 0
+  return {
+    home: homeSetsWon + homeBonus + splitSets * 0.5 + tiedSplitBonus + tiedUnplayedDeciderSplit,
+    away: awaySetsWon + awayBonus + splitSets * 0.5 + tiedSplitBonus + tiedUnplayedDeciderSplit,
+  }
+}
+
+function extractPlayerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => (typeof item === "string" || typeof item === "number" ? String(item).trim() : ""))
+    .filter((item): item is string => item.length > 0)
+}
+
+function resolveTeamCategoryPlayers(
+  teamPlayerMap: Map<number, Record<string, { name: string; rating: number | null }[]>>,
+  teamId: number | null,
+  category: string,
+): string[] {
+  if (teamId == null) return []
+  const categoryMap = teamPlayerMap.get(teamId)
+  if (!categoryMap) return []
+  const exact = categoryMap[category]
+  if (exact?.length) return exact.map((player) => player.name).filter(Boolean)
+  const normalized = normalizeCategoryKey(category)
+  const matchedKey = Object.keys(categoryMap).find((key) => normalizeCategoryKey(key) === normalized)
+  if (!matchedKey) return []
+  return (categoryMap[matchedKey] ?? []).map((player) => player.name).filter(Boolean)
 }
 
 // ---------------------------------------------------------------------------
@@ -567,6 +617,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     : []
 
   const teamPlayerMap = new Map<number, Record<string, { name: string; rating: number | null }[]>>()
+  const playerNameById = new Map<string, string>()
   const pairLiMap = new Map<string, { sum: number; count: number }>()
   const occupiedSlots = new Set<string>()
   for (const row of pairingRows) {
@@ -575,6 +626,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     if (!catMap) { catMap = {}; teamPlayerMap.set(row.teamId, catMap) }
     const arr = catMap[row.category] ?? []
     const name = `${row.firstName} ${row.lastName}`.trim()
+    if (row.playerId) playerNameById.set(row.playerId, name)
     if (!arr.some((player) => player.name === name)) arr.push({ name, rating: row.playtomicRating })
     catMap[row.category] = arr
 
@@ -618,8 +670,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     awaySetsWon: number
     scoreDetail: string | null
     winnerTeamId: number | null
-    homePlayerIds: number[]
-    awayPlayerIds: number[]
+    homePlayerIds: unknown
+    awayPlayerIds: unknown
   }
   const rubberRows: RubberRow[] = allFixtureIds.length
     ? await db
@@ -633,8 +685,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           awaySetsWon: matches.awaySetsWon,
           scoreDetail: matches.scoreDetail,
           winnerTeamId: matches.winnerTeamId,
-          homePlayerIds: sql<number[]>`${matches.homePlayerIds}`,
-          awayPlayerIds: sql<number[]>`${matches.awayPlayerIds}`,
+          homePlayerIds: sql<unknown>`${matches.homePlayerIds}`,
+          awayPlayerIds: sql<unknown>`${matches.awayPlayerIds}`,
         })
         .from(matches)
         .where(inArray(matches.fixtureId, allFixtureIds))
@@ -642,7 +694,12 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     : []
 
   const rubbersByFixture = new Map<number, LCRubber[]>()
+  const rubberPlayerIds = new Set<string>()
   for (const r of rubberRows) {
+    const homePlayerIds = extractPlayerIds(r.homePlayerIds)
+    const awayPlayerIds = extractPlayerIds(r.awayPlayerIds)
+    homePlayerIds.forEach((id) => rubberPlayerIds.add(id))
+    awayPlayerIds.forEach((id) => rubberPlayerIds.add(id))
     const arr = rubbersByFixture.get(r.fixtureId) ?? []
     arr.push({
       id: r.id,
@@ -653,37 +710,113 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       awaySetsWon: r.awaySetsWon ?? 0,
       scoreDetail: r.scoreDetail,
       winnerTeamId: r.winnerTeamId,
-      homePlayerIds: Array.isArray(r.homePlayerIds) ? r.homePlayerIds : [],
-      awayPlayerIds: Array.isArray(r.awayPlayerIds) ? r.awayPlayerIds : [],
+      homePlayerIds,
+      awayPlayerIds,
     })
     rubbersByFixture.set(r.fixtureId, arr)
+  }
+
+  if (rubberPlayerIds.size > 0) {
+    const rubberPlayerRows = await db
+      .select({
+        id: userTable.id,
+        firstName: userTable.firstName,
+        lastName: userTable.lastName,
+      })
+      .from(userTable)
+      .where(inArray(userTable.id, Array.from(rubberPlayerIds)))
+    for (const row of rubberPlayerRows) {
+      const name = `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim()
+      if (name) playerNameById.set(row.id, name)
+    }
   }
 
   // Form items per team from completed fixtures (oldest to newest, keep last 6).
   const teamFormItemsMap = new Map<number, FormItem[]>()
   const completedByWeek = [...fixtureRows]
-    .filter((f) => normaliseStatus(f.status) === "completed" && f.winnerTeamId != null)
+    .filter((f) => normaliseStatus(f.status) === "completed")
     .sort((a, b) => (a.week ?? 0) - (b.week ?? 0))
+
+  const teamCategoryFormItemsMap = new Map<number, Map<string, CategoryFormItem[]>>()
   for (const f of completedByWeek) {
+    const homePoints = f.homePoints ?? 0
+    const awayPoints = f.awayPoints ?? 0
+    const homeResult: "W" | "L" | "D" = homePoints > awayPoints ? "W" : homePoints < awayPoints ? "L" : "D"
+    const awayResult: "W" | "L" | "D" = awayPoints > homePoints ? "W" : awayPoints < homePoints ? "L" : "D"
     if (f.homeTeamId != null) {
       const item: FormItem = {
-        result: f.winnerTeamId === f.homeTeamId ? "W" : "L",
+        result: homeResult,
         opponentName: f.awayName ?? "Unknown",
-        homeScore: f.homePoints ?? 0,
-        awayScore: f.awayPoints ?? 0,
+        homeScore: homePoints,
+        awayScore: awayPoints,
         isHome: true,
       }
       teamFormItemsMap.set(f.homeTeamId, [...(teamFormItemsMap.get(f.homeTeamId) ?? []), item].slice(-6))
     }
     if (f.awayTeamId != null) {
       const item: FormItem = {
-        result: f.winnerTeamId === f.awayTeamId ? "W" : "L",
+        result: awayResult,
         opponentName: f.homeName ?? "Unknown",
-        homeScore: f.homePoints ?? 0,
-        awayScore: f.awayPoints ?? 0,
+        homeScore: homePoints,
+        awayScore: awayPoints,
         isHome: false,
       }
       teamFormItemsMap.set(f.awayTeamId, [...(teamFormItemsMap.get(f.awayTeamId) ?? []), item].slice(-6))
+    }
+
+    const rubbers = rubbersByFixture.get(f.id) ?? []
+    for (const rubber of rubbers) {
+      const normalizedCategory = normalizeCategoryKey(rubber.category)
+      const points = computeRubberPoints(rubber.scoreDetail, rubber.homeSetsWon ?? 0, rubber.awaySetsWon ?? 0)
+      const homeCategoryResult: "W" | "L" | "D" =
+        points.home > points.away ? "W" : points.home < points.away ? "L" : "D"
+      const awayCategoryResult: "W" | "L" | "D" =
+        points.away > points.home ? "W" : points.away < points.home ? "L" : "D"
+      const homeOppositionPlayers = rubber.awayPlayerIds
+        .map((playerId) => playerNameById.get(String(playerId)))
+        .filter((name): name is string => Boolean(name))
+      const awayOppositionPlayers = rubber.homePlayerIds
+        .map((playerId) => playerNameById.get(String(playerId)))
+        .filter((name): name is string => Boolean(name))
+      const homeFallbackOppositionPlayers = resolveTeamCategoryPlayers(teamPlayerMap, f.awayTeamId, rubber.category)
+      const awayFallbackOppositionPlayers = resolveTeamCategoryPlayers(teamPlayerMap, f.homeTeamId, rubber.category)
+      const homeOppositionLabel = (homeOppositionPlayers.length ? homeOppositionPlayers : homeFallbackOppositionPlayers).join(" / ") || null
+      const awayOppositionLabel = (awayOppositionPlayers.length ? awayOppositionPlayers : awayFallbackOppositionPlayers).join(" / ") || null
+
+      if (f.homeTeamId != null) {
+        const byCategory = teamCategoryFormItemsMap.get(f.homeTeamId) ?? new Map<string, CategoryFormItem[]>()
+        const existing = byCategory.get(normalizedCategory) ?? []
+        byCategory.set(
+          normalizedCategory,
+          [
+            ...existing,
+            {
+              result: homeCategoryResult,
+              opponentName: f.awayName ?? "Unknown",
+              opponentPlayers: homeOppositionLabel,
+              scoreDetail: rubber.scoreDetail,
+            },
+          ].slice(-6),
+        )
+        teamCategoryFormItemsMap.set(f.homeTeamId, byCategory)
+      }
+      if (f.awayTeamId != null) {
+        const byCategory = teamCategoryFormItemsMap.get(f.awayTeamId) ?? new Map<string, CategoryFormItem[]>()
+        const existing = byCategory.get(normalizedCategory) ?? []
+        byCategory.set(
+          normalizedCategory,
+          [
+            ...existing,
+            {
+              result: awayCategoryResult,
+              opponentName: f.homeName ?? "Unknown",
+              opponentPlayers: awayOppositionLabel,
+              scoreDetail: rubber.scoreDetail,
+            },
+          ].slice(-6),
+        )
+        teamCategoryFormItemsMap.set(f.awayTeamId, byCategory)
+      }
     }
   }
 
@@ -701,7 +834,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       (f.courtAssignments ?? {}) as Record<string, { court: string | null; time: string | null }>
 
     const categoryLinks: Record<string, string> = {}
-    if (f.published && status !== "completed") {
+    if (f.published) {
       for (const [cat, url] of Object.entries(rawCourtLinks)) {
         if (url) categoryLinks[cat] = url
       }
@@ -759,6 +892,22 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       })(),
       homeFormItems: f.homeTeamId != null ? (teamFormItemsMap.get(f.homeTeamId) ?? []) : [],
       awayFormItems: f.awayTeamId != null ? (teamFormItemsMap.get(f.awayTeamId) ?? []) : [],
+      homeCategoryFormItems: (() => {
+        const out: Record<string, CategoryFormItem[]> = {}
+        if (f.homeTeamId == null) return out
+        const byCategory = teamCategoryFormItemsMap.get(f.homeTeamId)
+        if (!byCategory) return out
+        for (const [category, items] of byCategory.entries()) out[category] = items
+        return out
+      })(),
+      awayCategoryFormItems: (() => {
+        const out: Record<string, CategoryFormItem[]> = {}
+        if (f.awayTeamId == null) return out
+        const byCategory = teamCategoryFormItemsMap.get(f.awayTeamId)
+        if (!byCategory) return out
+        for (const [category, items] of byCategory.entries()) out[category] = items
+        return out
+      })(),
       _categoryLinks: categoryLinks,
       courtInfoByCategory: f.published ? rawCourtAssignments : {},
       published: !!f.published,
@@ -959,6 +1108,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
         mine: false,
         assignedToFixture: false,
         canSeeBookingLinks: false,
+        canSeeAdminPlaytomicLinks: false,
         canSubmitResult: false,
         canSubmitAllCategories: false,
         joinUrl: null,
@@ -1066,6 +1216,7 @@ export async function getLeagueCentreData(user: CurrentUser | null): Promise<Lea
       mine,
       assignedToFixture,
       canSeeBookingLinks,
+      canSeeAdminPlaytomicLinks: canSeeAllBookingLinks,
       canSubmitResult,
       canSubmitAllCategories,
       joinUrl: myCategories.map((category) => joinUrlByCategory[category]).find(Boolean) ?? null,
