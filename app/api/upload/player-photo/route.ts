@@ -1,9 +1,9 @@
-import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/session"
 import { db } from "@/lib/db"
 import { user as userTable } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
+import { uploadImageToCloudinary } from "@/lib/cloudinary"
 
 const MAX_BYTES = 6 * 1024 * 1024 // 6MB
 const ALLOWED = ["image/png", "image/jpeg", "image/webp"]
@@ -28,18 +28,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Image is larger than 6MB" }, { status: 400 })
     }
 
-    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg"
-    const blob = await put(`player-photos/${crypto.randomUUID()}.${ext}`, file, {
-      access: "public",
-      contentType: file.type,
-    })
+    const url = await uploadImageToCloudinary(file, "player-photos")
 
     // Update user's avatarUrl in database
     if (me.isPlayer) {
-      await db.update(userTable).set({ avatarUrl: blob.url }).where(eq(userTable.id, me.id))
+      await db.update(userTable).set({ avatarUrl: url }).where(eq(userTable.id, me.id))
     }
 
-    return NextResponse.json({ url: blob.url })
+    return NextResponse.json({ url })
   } catch (error) {
     console.error("[v0] Player photo upload error:", error)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })
