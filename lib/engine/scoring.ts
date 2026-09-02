@@ -131,11 +131,15 @@ export function scoreFixture(matches: MatchResult[]): FixtureScore {
       awayMatchesWon++
       awayPoints += LEAGUE_SCORING.bonusForWinner
     } else if (m.homeSetsWon > 0 && m.homeSetsWon === m.awaySetsWon) {
-      // Category tied on completed sets (e.g. 1-1): split only the category
-      // bonus point (0.5 each). Any unfinished deciding set is already split
-      // above via splitSets * 0.5 for each side.
+      // Category tied on completed sets (e.g. 1-1): split the category bonus
+      // point (0.5 each). If no unfinished deciding set was entered, still split
+      // that deciding set point so tied unfinished categories remain 2-2.
       homePoints += LEAGUE_SCORING.bonusForWinner / 2
       awayPoints += LEAGUE_SCORING.bonusForWinner / 2
+      if (splitSets === 0) {
+        homePoints += 0.5
+        awayPoints += 0.5
+      }
     }
   }
 
