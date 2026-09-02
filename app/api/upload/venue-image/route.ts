@@ -1,6 +1,6 @@
-import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/session"
+import { uploadImageToCloudinary } from "@/lib/cloudinary"
 
 const MAX_BYTES = 6 * 1024 * 1024 // 6MB
 const ALLOWED = ["image/png", "image/jpeg", "image/webp"]
@@ -26,13 +26,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Image is larger than 6MB" }, { status: 400 })
     }
 
-    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg"
-    const blob = await put(`venues/${crypto.randomUUID()}.${ext}`, file, {
-      access: "public",
-      contentType: file.type,
-    })
-
-    return NextResponse.json({ url: blob.url })
+    const url = await uploadImageToCloudinary(file, "venues")
+    return NextResponse.json({ url })
   } catch (error) {
     console.error("[v0] Venue image upload error:", error)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })
