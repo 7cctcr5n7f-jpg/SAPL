@@ -693,6 +693,7 @@ export const newsArticles = pgTable(
     excerpt: text("excerpt"),
     content: text("content").notNull().default(""),
     featuredImage: text("featuredImage"),
+    galleryImages: jsonb("galleryImages").$type<string[]>().notNull().default([]),
     featuredImageAlt: text("featuredImageAlt"),
     categoryId: integer("categoryId"),
     authorName: text("authorName"),

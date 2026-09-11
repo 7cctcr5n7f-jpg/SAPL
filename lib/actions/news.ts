@@ -104,6 +104,18 @@ export async function upsertNewsArticle(formData: FormData) {
   const content = String(formData.get("content") ?? "").trim()
   const excerpt = String(formData.get("excerpt") ?? "").trim() || null
   const featuredImage = String(formData.get("featuredImage") ?? "").trim() || null
+  const galleryImagesRaw = String(formData.get("galleryImages") ?? "").trim()
+  let parsedGallery: unknown = []
+  if (galleryImagesRaw) {
+    try {
+      parsedGallery = JSON.parse(galleryImagesRaw)
+    } catch {
+      return { ok: false, error: "Gallery images are invalid." }
+    }
+  }
+  const galleryImages = Array.isArray(parsedGallery)
+    ? parsedGallery.filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+    : []
   const featuredImageAlt = String(formData.get("featuredImageAlt") ?? "").trim() || null
   const categoryId = formData.get("categoryId") ? Number(formData.get("categoryId")) : null
   const authorName = String(formData.get("authorName") ?? "").trim() || "SAPL Editorial"
@@ -138,6 +150,7 @@ export async function upsertNewsArticle(formData: FormData) {
     excerpt,
     content,
     featuredImage,
+    galleryImages,
     featuredImageAlt,
     categoryId,
     authorName,

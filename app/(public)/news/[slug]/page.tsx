@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import Image from "next/image"
 import { notFound } from "next/navigation"
 import { ArticleCard } from "@/components/news/article-card"
+import { ArticleImageCarousel } from "@/components/news/article-image-carousel"
 import { NewsRichContent } from "@/components/news/news-rich-content"
 import { getPublishedNewsArticleBySlug, getRelatedPublishedArticles } from "@/lib/queries-news"
 
@@ -49,11 +49,12 @@ export default async function NewsArticlePage({ params }: { params: Promise<Para
         ← Back to News
       </Link>
       <article className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#121212]">
-        {article.featuredImage ? (
-          <div className="relative aspect-[16/8]">
-            <Image src={article.featuredImage} alt={article.featuredImageAlt || article.title} fill className="object-cover" />
-          </div>
-        ) : null}
+        <ArticleImageCarousel
+          featuredImage={article.featuredImage}
+          featuredImageAlt={article.featuredImageAlt}
+          title={article.title}
+          galleryImages={article.galleryImages}
+        />
         <div className="space-y-4 p-6 md:p-8">
           {article.categoryName ? (
             <span className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-red-700">
