@@ -174,6 +174,8 @@ export type UpcomingFixture = {
   week: number
   matchDate: Date | string | null
   venue: string | null
+  homeTeamLogoUrl: string | null
+  awayTeamLogoUrl: string | null
   homeTeamName: string | null
   awayTeamName: string | null
   divisionName: string | null
@@ -190,6 +192,8 @@ export async function getUpcomingFixtures(seasonId: number, limit = 6): Promise<
       week: fixtures.week,
       matchDate: fixtures.matchDate,
       venue: fixtures.venue,
+      homeTeamLogoUrl: home.logoUrl,
+      awayTeamLogoUrl: away.logoUrl,
       homeTeamName: home.name,
       awayTeamName: away.name,
       divisionName: divisions.name,

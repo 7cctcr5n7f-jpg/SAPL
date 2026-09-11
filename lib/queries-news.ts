@@ -10,6 +10,7 @@ export type NewsArticleSummary = {
   slug: string
   excerpt: string | null
   featuredImage: string | null
+  galleryImages: string[]
   featuredImageAlt: string | null
   categoryId: number | null
   categoryName: string | null
@@ -102,6 +103,7 @@ export async function getNewsAdminArticles() {
       slug: newsArticles.slug,
       excerpt: newsArticles.excerpt,
       featuredImage: newsArticles.featuredImage,
+      galleryImages: newsArticles.galleryImages,
       featuredImageAlt: newsArticles.featuredImageAlt,
       categoryId: newsArticles.categoryId,
       categoryName: newsCategories.name,
@@ -127,6 +129,7 @@ export async function getNewsAdminArticles() {
     slug: row.slug,
     excerpt: row.excerpt,
     featuredImage: row.featuredImage,
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
     featuredImageAlt: row.featuredImageAlt,
     categoryId: row.categoryId,
     categoryName: row.categoryName,
@@ -158,6 +161,7 @@ export async function getPublishedNewsArticleBySlug(slug: string): Promise<NewsA
       excerpt: newsArticles.excerpt,
       content: newsArticles.content,
       featuredImage: newsArticles.featuredImage,
+      galleryImages: newsArticles.galleryImages,
       featuredImageAlt: newsArticles.featuredImageAlt,
       categoryId: newsArticles.categoryId,
       categoryName: newsCategories.name,
@@ -185,6 +189,7 @@ export async function getPublishedNewsArticleBySlug(slug: string): Promise<NewsA
     excerpt: row.excerpt,
     content: row.content,
     featuredImage: row.featuredImage,
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
     featuredImageAlt: row.featuredImageAlt,
     categoryId: row.categoryId,
     categoryName: row.categoryName,
@@ -214,6 +219,7 @@ export async function getFeaturedOrLatestPublishedArticle(): Promise<NewsArticle
       slug: newsArticles.slug,
       excerpt: newsArticles.excerpt,
       featuredImage: newsArticles.featuredImage,
+      galleryImages: newsArticles.galleryImages,
       featuredImageAlt: newsArticles.featuredImageAlt,
       categoryId: newsArticles.categoryId,
       categoryName: newsCategories.name,
@@ -264,6 +270,7 @@ export async function getFeaturedOrLatestPublishedArticle(): Promise<NewsArticle
     slug: row.slug,
     excerpt: row.excerpt,
     featuredImage: row.featuredImage,
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
     featuredImageAlt: row.featuredImageAlt,
     categoryId: row.categoryId,
     categoryName: row.categoryName,
@@ -289,6 +296,7 @@ export async function getLatestPublishedArticles(limit = 6, excludeId?: number):
       slug: newsArticles.slug,
       excerpt: newsArticles.excerpt,
       featuredImage: newsArticles.featuredImage,
+      galleryImages: newsArticles.galleryImages,
       featuredImageAlt: newsArticles.featuredImageAlt,
       categoryId: newsArticles.categoryId,
       categoryName: newsCategories.name,
@@ -315,6 +323,7 @@ export async function getLatestPublishedArticles(limit = 6, excludeId?: number):
     slug: row.slug,
     excerpt: row.excerpt,
     featuredImage: row.featuredImage,
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
     featuredImageAlt: row.featuredImageAlt,
     categoryId: row.categoryId,
     categoryName: row.categoryName,
@@ -341,6 +350,7 @@ export async function getRelatedPublishedArticles(article: NewsArticleDetail, li
           slug: newsArticles.slug,
           excerpt: newsArticles.excerpt,
           featuredImage: newsArticles.featuredImage,
+          galleryImages: newsArticles.galleryImages,
           featuredImageAlt: newsArticles.featuredImageAlt,
           categoryId: newsArticles.categoryId,
           categoryName: newsCategories.name,
@@ -371,6 +381,7 @@ export async function getRelatedPublishedArticles(article: NewsArticleDetail, li
       slug: row.slug,
       excerpt: row.excerpt,
       featuredImage: row.featuredImage,
+      galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
       featuredImageAlt: row.featuredImageAlt,
       categoryId: row.categoryId,
       categoryName: row.categoryName,
@@ -391,6 +402,7 @@ export async function getRelatedPublishedArticles(article: NewsArticleDetail, li
       slug: newsArticles.slug,
       excerpt: newsArticles.excerpt,
       featuredImage: newsArticles.featuredImage,
+      galleryImages: newsArticles.galleryImages,
       featuredImageAlt: newsArticles.featuredImageAlt,
       categoryId: newsArticles.categoryId,
       categoryName: newsCategories.name,
@@ -416,6 +428,7 @@ export async function getRelatedPublishedArticles(article: NewsArticleDetail, li
       slug: row.slug,
       excerpt: row.excerpt,
       featuredImage: row.featuredImage,
+      galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [],
       featuredImageAlt: row.featuredImageAlt,
       categoryId: row.categoryId,
       categoryName: row.categoryName,

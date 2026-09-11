@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+import Image from "next/image"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { NewsImageUploader } from "@/components/admin/news-image-uploader"
 import {
   deleteNewsArticle,
   deleteNewsCategory,
@@ -26,7 +26,7 @@ import {
 } from "@/lib/actions/news"
 import type { NewsArticleDetail } from "@/lib/queries-news"
 import type { UpcomingFixture } from "@/lib/queries-landing"
-import { Trash2, Pencil, Plus } from "lucide-react"
+import { Trash2, Pencil, Plus, Upload, Loader2, Star, X } from "lucide-react"
 
 type CategoryRow = { id: number; name: string; slug: string; publishedCount: number }
 
@@ -57,6 +57,8 @@ export function NewsManager({
   const [editingArticle, setEditingArticle] = useState<EditableArticle | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [imageUrl, setImageUrl] = useState("")
+  const [galleryImages, setGalleryImages] = useState<string[]>([])
+  const [uploadingGallery, setUploadingGallery] = useState(false)
   const [search, setSearch] = useState("")
   const [matchOfWeekFixtureId, setMatchOfWeekFixtureId] = useState<string>(selectedMatchOfWeekFixtureId ? String(selectedMatchOfWeekFixtureId) : "")
 
@@ -102,17 +104,23 @@ export function NewsManager({
   function openNewArticle() {
     setEditingArticle(null)
     setImageUrl("")
+    setGalleryImages([])
     setDialogOpen(true)
   }
 
   function openEditArticle(article: EditableArticle) {
+    const seed = [article.featuredImage, ...(article.galleryImages ?? [])]
+      .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+      .filter((url, index, arr) => arr.indexOf(url) === index)
     setEditingArticle(article)
-    setImageUrl(article.featuredImage ?? "")
+    setImageUrl(article.featuredImage ?? seed[0] ?? "")
+    setGalleryImages(seed)
     setDialogOpen(true)
   }
 
   function submitArticle(formData: FormData) {
     formData.set("featuredImage", imageUrl)
+    formData.set("galleryImages", JSON.stringify(galleryImages))
     startTransition(async () => {
       const res = await upsertNewsArticle(formData)
       if (!res.ok) {
@@ -123,7 +131,28 @@ export function NewsManager({
       setDialogOpen(false)
       setEditingArticle(null)
       setImageUrl("")
+      setGalleryImages([])
     })
+  }
+
+  async function uploadGalleryFile(file: File) {
+    setUploadingGallery(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/upload/news-image", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Upload failed")
+      const uploadedUrl = String(data.url ?? "").trim()
+      if (!uploadedUrl) throw new Error("Upload returned an empty URL")
+
+      setGalleryImages((prev) => (prev.includes(uploadedUrl) ? prev : [...prev, uploadedUrl]))
+      setImageUrl((prev) => prev || uploadedUrl)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed")
+    } finally {
+      setUploadingGallery(false)
+    }
   }
 
   return (
@@ -292,11 +321,76 @@ export function NewsManager({
           <DialogHeader>
             <DialogTitle>{editingArticle ? "Edit article" : "New article"}</DialogTitle>
           </DialogHeader>
-          <form action={submitArticle} className="space-y-4">
+          <form key={editingArticle ? `edit-${editingArticle.id}` : "new-article"} action={submitArticle} className="space-y-4">
             {editingArticle ? <input type="hidden" name="id" value={String(editingArticle.id)} /> : null}
+            <input type="hidden" name="galleryImages" value={JSON.stringify(galleryImages)} />
             <div className="space-y-2">
-              <Label>Featured image</Label>
-              <NewsImageUploader value={imageUrl} onChange={setImageUrl} />
+              <Label>Article images</Label>
+              <div className="space-y-3 rounded-md border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">Upload multiple images, then choose one as the main featured image.</p>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                    {uploadingGallery ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Add images
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={async (event) => {
+                        const input = event.target
+                        const files = Array.from(event.target.files ?? [])
+                        for (const file of files) {
+                          if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+                            toast.error("Please choose PNG, JPG, or WEBP images")
+                            continue
+                          }
+                          await uploadGalleryFile(file)
+                        }
+                        input.value = ""
+                      }}
+                    />
+                  </label>
+                </div>
+                {galleryImages.length ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {galleryImages.map((url) => {
+                      const isMain = imageUrl === url
+                      return (
+                        <div key={url} className="space-y-2 rounded-md border border-border p-2">
+                          <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-secondary">
+                            <Image src={url} alt="Article image" fill className="object-cover" />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant={isMain ? "default" : "outline"} onClick={() => setImageUrl(url)}>
+                              <Star className="mr-1 h-3 w-3" />
+                              {isMain ? "Main image" : "Set as main"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setGalleryImages((prev) => prev.filter((item) => item !== url))
+                                setImageUrl((prev) => {
+                                  if (prev !== url) return prev
+                                  const next = galleryImages.find((item) => item !== url)
+                                  return next ?? ""
+                                })
+                              }}
+                            >
+                              <X className="mr-1 h-3 w-3" />
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No images uploaded yet.</p>
+                )}
+              </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
