@@ -21,13 +21,21 @@ function ensureCloudinaryConfigured() {
 }
 
 export async function uploadImageToCloudinary(file: File, folder: string): Promise<string> {
+  return uploadMediaToCloudinary(file, folder, "image")
+}
+
+export async function uploadMediaToCloudinary(
+  file: File,
+  folder: string,
+  resourceType: "image" | "video" | "auto" = "auto",
+): Promise<string> {
   ensureCloudinaryConfigured()
   const bytes = Buffer.from(await file.arrayBuffer())
   const base64 = bytes.toString("base64")
   const dataUri = `data:${file.type};base64,${base64}`
   const uploaded = await cloudinary.uploader.upload(dataUri, {
     folder,
-    resource_type: "image",
+    resource_type: resourceType,
     unique_filename: true,
     overwrite: false,
     invalidate: false,

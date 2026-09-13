@@ -26,6 +26,7 @@ import {
 } from "@/lib/actions/news"
 import type { NewsArticleDetail } from "@/lib/queries-news"
 import type { UpcomingFixture } from "@/lib/queries-landing"
+import { isVideoUrl } from "@/lib/media"
 import { Trash2, Pencil, Plus, Upload, Loader2, Star, X } from "lucide-react"
 
 type CategoryRow = { id: number; name: string; slug: string; publishedCount: number }
@@ -325,24 +326,24 @@ export function NewsManager({
             {editingArticle ? <input type="hidden" name="id" value={String(editingArticle.id)} /> : null}
             <input type="hidden" name="galleryImages" value={JSON.stringify(galleryImages)} />
             <div className="space-y-2">
-              <Label>Article images</Label>
+              <Label>Article media</Label>
               <div className="space-y-3 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">Upload multiple images, then choose one as the main featured image.</p>
+                  <p className="text-xs text-muted-foreground">Upload images or videos, then choose one as the featured media.</p>
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
                     {uploadingGallery ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    Add images
+                    Add media
                     <input
                       type="file"
-                      accept="image/png,image/jpeg,image/webp"
+                      accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime"
                       multiple
                       className="hidden"
                       onChange={async (event) => {
                         const input = event.target
                         const files = Array.from(event.target.files ?? [])
                         for (const file of files) {
-                          if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-                            toast.error("Please choose PNG, JPG, or WEBP images")
+                          if (!["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime"].includes(file.type)) {
+                            toast.error("Please choose PNG, JPG, WEBP, MP4, WEBM, or MOV files")
                             continue
                           }
                           await uploadGalleryFile(file)
@@ -359,12 +360,16 @@ export function NewsManager({
                       return (
                         <div key={url} className="space-y-2 rounded-md border border-border p-2">
                           <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-secondary">
-                            <Image src={url} alt="Article image" fill className="object-cover" />
+                            {isVideoUrl(url) ? (
+                              <video src={url} className="h-full w-full object-contain" muted playsInline />
+                            ) : (
+                              <Image src={url} alt="Article media" fill className="object-cover" />
+                            )}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button type="button" size="sm" variant={isMain ? "default" : "outline"} onClick={() => setImageUrl(url)}>
                               <Star className="mr-1 h-3 w-3" />
-                              {isMain ? "Main image" : "Set as main"}
+                              {isMain ? "Featured media" : "Set as featured"}
                             </Button>
                             <Button
                               type="button"
@@ -388,7 +393,7 @@ export function NewsManager({
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No images uploaded yet.</p>
+                  <p className="text-xs text-muted-foreground">No media uploaded yet.</p>
                 )}
               </div>
             </div>
@@ -432,7 +437,7 @@ export function NewsManager({
               <Label htmlFor="content">Article content (Markdown-style)</Label>
               <Textarea id="content" name="content" required rows={14} defaultValue={editingArticle?.content ?? ""} />
               <p className="text-xs text-muted-foreground">
-                Supports headings (##), bold (**text**), italic (*text*), bullet/numbered lists, links [text](url), quotes (&gt;), and images ![alt](url).
+                Supports headings (##), bold (**text**), italic (*text*), bullet/numbered lists, links [text](url), quotes (&gt;), images ![alt](url), and videos [Watch video](url).
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">

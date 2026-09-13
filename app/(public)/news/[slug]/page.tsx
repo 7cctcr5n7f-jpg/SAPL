@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { ArticleCard } from "@/components/news/article-card"
 import { ArticleImageCarousel } from "@/components/news/article-image-carousel"
 import { NewsRichContent } from "@/components/news/news-rich-content"
+import { isVideoUrl } from "@/lib/media"
 import { getPublishedNewsArticleBySlug, getRelatedPublishedArticles } from "@/lib/queries-news"
 
 type Params = { slug: string }
@@ -23,7 +24,7 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   if (!article) return { title: "Story not found" }
   const title = article.metaTitle || article.title
   const description = article.metaDescription || article.excerpt || "Latest SAPL editorial coverage."
-  const image = article.featuredImage || undefined
+  const image = article.featuredImage && !isVideoUrl(article.featuredImage) ? article.featuredImage : undefined
 
   return {
     title,
