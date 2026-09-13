@@ -105,7 +105,7 @@ export default async function HomePage() {
             </div>
 
             {featuredStory?.featuredImage ? (
-              <div className="relative aspect-[4/3] max-h-[240px] w-full overflow-hidden border-t border-white/10 bg-black/30 sm:aspect-[16/10] sm:max-h-[320px] lg:min-h-full lg:max-h-none lg:border-l lg:border-t-0 lg:aspect-auto">
+              <div className="relative aspect-[9/14] max-h-[75vh] w-full overflow-hidden border-t border-white/10 bg-black/30 sm:aspect-[3/4] sm:max-h-[70vh] lg:min-h-full lg:max-h-none lg:border-l lg:border-t-0 lg:aspect-auto">
                 {isVideoUrl(featuredStory.featuredImage) ? (
                   <video
                     src={featuredStory.featuredImage}
@@ -114,7 +114,7 @@ export default async function HomePage() {
                     loop
                     playsInline
                     controls
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                 ) : (
                   <Image
