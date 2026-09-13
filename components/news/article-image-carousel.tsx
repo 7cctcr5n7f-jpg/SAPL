@@ -46,15 +46,25 @@ export function ArticleImageCarousel({
           if (nextIndex !== activeIndex) setActiveIndex(nextIndex)
         }}
       >
-        {images.map((url) => (
-          <div key={url} className="relative aspect-[16/9] w-full shrink-0 snap-center bg-black">
-            {isVideoUrl(url) ? (
-              <video src={url} className="h-full w-full object-cover" controls playsInline preload="metadata" />
-            ) : (
-              <Image src={url} alt={featuredImageAlt || title} fill className="object-contain" />
-            )}
-          </div>
-        ))}
+        {images.map((url) => {
+          const isVideo = isVideoUrl(url)
+          return (
+            <div
+              key={url}
+              className={
+                isVideo
+                  ? "relative h-[68vh] max-h-[82vh] w-full shrink-0 snap-center bg-black"
+                  : "relative aspect-[9/14] max-h-[75vh] w-full shrink-0 snap-center bg-black sm:aspect-[3/4]"
+              }
+            >
+              {isVideo ? (
+                <video src={url} className="h-full w-full object-contain" controls playsInline preload="metadata" />
+              ) : (
+                <Image src={url} alt={featuredImageAlt || title} fill className="object-contain" />
+              )}
+            </div>
+          )
+        })}
         {images.length > 1 ? (
           <>
             <button
