@@ -29,17 +29,8 @@ import {
 } from "@/components/landing/info-sections"
 import { PartneredBy, PresentedBy, PrizeCallout, type PublicSponsor } from "@/components/sponsors/sponsor-elements"
 import { ArticleCard } from "@/components/news/article-card"
+import { isVideoUrl } from "@/lib/media"
 import { getFeaturedOrLatestPublishedArticle, getLatestPublishedArticles, getNewsMatchOfWeekFixtureId } from "@/lib/queries-news"
-
-function shortConferenceName(name: string | null | undefined) {
-  if (!name) return "Conference"
-  return name
-    .replace(/\s+conference$/i, "")
-    .replace(/^northern$/i, "North")
-    .replace(/^southern$/i, "South")
-    .replace(/^eastern$/i, "East")
-    .replace(/^western$/i, "West")
-}
 
 function conferenceIndicator(name: string | null | undefined) {
   const normalized = (name ?? "").toLowerCase().trim()
@@ -115,13 +106,25 @@ export default async function HomePage() {
 
             {featuredStory?.featuredImage ? (
               <div className="relative aspect-[4/3] max-h-[240px] w-full overflow-hidden border-t border-white/10 bg-black/30 sm:aspect-[16/10] sm:max-h-[320px] lg:min-h-full lg:max-h-none lg:border-l lg:border-t-0 lg:aspect-auto">
-                <Image
-                  src={featuredStory.featuredImage}
-                  alt={featuredStory.featuredImageAlt || featuredStory.title}
-                  fill
-                  priority
-                  className="object-contain p-3 sm:p-4 md:p-6"
-                />
+                {isVideoUrl(featuredStory.featuredImage) ? (
+                  <video
+                    src={featuredStory.featuredImage}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    controls
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Image
+                    src={featuredStory.featuredImage}
+                    alt={featuredStory.featuredImageAlt || featuredStory.title}
+                    fill
+                    priority
+                    className="object-contain p-3 sm:p-4 md:p-6"
+                  />
+                )}
               </div>
             ) : (
               <div className="hidden items-end justify-end border-l border-white/10 bg-[radial-gradient(circle_at_70%_20%,rgba(239,68,68,0.25),transparent_45%),radial-gradient(circle_at_20%_80%,rgba(255,255,255,0.1),transparent_40%)] p-8 lg:flex">

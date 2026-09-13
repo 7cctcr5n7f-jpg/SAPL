@@ -1,6 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import type { NewsArticleSummary } from "@/lib/queries-news"
+import { isVideoUrl } from "@/lib/media"
 
 function formatDate(iso: string | null) {
   if (!iso) return null
@@ -25,12 +26,22 @@ export function ArticleCard({
     >
       {article.featuredImage ? (
         <div className={compact ? "relative aspect-[16/10]" : "relative h-56 md:h-full"}>
-          <Image
-            src={article.featuredImage}
-            alt={article.featuredImageAlt || article.title}
-            fill
-            className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-          />
+          {isVideoUrl(article.featuredImage) ? (
+            <video
+              src={article.featuredImage}
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <Image
+              src={article.featuredImage}
+              alt={article.featuredImageAlt || article.title}
+              fill
+              className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            />
+          )}
         </div>
       ) : null}
       <div className="space-y-2 p-4">

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import Image from "next/image"
+import { isVideoUrl } from "@/lib/media"
 
 export function ArticleImageCarousel({
   featuredImage,
@@ -47,7 +48,11 @@ export function ArticleImageCarousel({
       >
         {images.map((url) => (
           <div key={url} className="relative aspect-[16/9] w-full shrink-0 snap-center bg-black">
-            <Image src={url} alt={featuredImageAlt || title} fill className="object-contain" />
+            {isVideoUrl(url) ? (
+              <video src={url} className="h-full w-full object-cover" controls playsInline preload="metadata" />
+            ) : (
+              <Image src={url} alt={featuredImageAlt || title} fill className="object-contain" />
+            )}
           </div>
         ))}
         {images.length > 1 ? (
