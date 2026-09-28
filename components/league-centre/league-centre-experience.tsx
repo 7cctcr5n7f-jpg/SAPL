@@ -351,6 +351,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
 
   const defaultWeek = useMemo(() => {
     if (!allWeeks.length) return 1
+    if (allWeeks.includes(7)) return 7
     const regularFixtures = divisionFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() !== "playoff")
     const firstRegularDate =
       regularFixtures
