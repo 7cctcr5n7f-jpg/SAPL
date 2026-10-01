@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { eq, and, asc, inArray, isNull, sql } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/session"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { reconcileClubTeams } from "@/lib/club-teams"
 import {
   generateRegionalFinals,
@@ -258,7 +258,19 @@ async function buildSeasonPairings(seasonId: number) {
       divisionName: anchor.name,
     })
     await db.insert(playoffs).values(
-      templates.map((t) => ({
+      templates.map((t) => {
+        const defaultTimeslot =
+          t.round === "quarter_final"
+            ? ({ 1: "08:00", 2: "10:00", 3: "12:00", 4: "14:00" }[t.bracketPosition] ?? null)
+            : t.round === "semi_final"
+              ? ({ 5: "08:00", 6: "10:00" }[t.bracketPosition] ?? null)
+              : t.round === "third_place"
+                ? "12:00"
+                : t.round === "final"
+                  ? "14:00"
+                  : null
+
+        return {
         seasonId,
         type: t.type,
         round: t.round,
@@ -272,9 +284,11 @@ async function buildSeasonPairings(seasonId: number) {
         homeLabel: t.homeLabel,
         awayLabel: t.awayLabel,
         matchDate: t.round === "quarter_final" ? quarterFinalsDate : finalsSunday,
+        timeslot: defaultTimeslot,
         venueClubId: season.regionalFinalsVenueClubId ?? season.mastersVenueClubId ?? null,
         status: "scheduled" as const,
-      })),
+        }
+      }),
     )
   }
 
@@ -640,7 +654,49 @@ export async function pullPlayoffTeams(formData: FormData) {
   }
 
   revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/league-centre")
+  revalidateTag("league-centre-shared")
   return { ok: true, filled }
+}
+
+export async function setPlayoffTeams(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get("playoffId"))
+  if (!id) return { ok: false, error: "Playoff id required" }
+
+  const homeRaw = String(formData.get("homeTeamId") ?? "").trim()
+  const awayRaw = String(formData.get("awayTeamId") ?? "").trim()
+  const homeTeamId = homeRaw ? Number(homeRaw) : null
+  const awayTeamId = awayRaw ? Number(awayRaw) : null
+  if ((homeTeamId !== null && !Number.isFinite(homeTeamId)) || (awayTeamId !== null && !Number.isFinite(awayTeamId))) {
+    return { ok: false, error: "Invalid team selection" }
+  }
+  const [fixture] = await db.select({ seasonId: playoffs.seasonId }).from(playoffs).where(eq(playoffs.id, id)).limit(1)
+  if (!fixture) return { ok: false, error: "Playoff fixture not found" }
+
+  const selectedIds = [homeTeamId, awayTeamId].filter((value): value is number => value != null)
+  if (selectedIds.length > 0) {
+    const allowed = await db
+      .select({ teamId: teamEntries.teamId })
+      .from(teamEntries)
+      .where(and(eq(teamEntries.seasonId, fixture.seasonId), inArray(teamEntries.teamId, selectedIds)))
+    const allowedIds = new Set(allowed.map((row) => row.teamId))
+    if (selectedIds.some((teamId) => !allowedIds.has(teamId))) {
+      return { ok: false, error: "Selected team is not part of this season" }
+    }
+  }
+
+  await db
+    .update(playoffs)
+    .set({ homeTeamId, awayTeamId })
+    .where(eq(playoffs.id, id))
+
+  revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/league-centre")
+  revalidateTag("league-centre-shared")
+  return { ok: true }
 }
 
 /**
@@ -669,6 +725,9 @@ export async function setPlayoffSchedule(formData: FormData) {
     .where(eq(playoffs.id, id))
 
   revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/league-centre")
+  revalidateTag("league-centre-shared")
   return { ok: true }
 }
 

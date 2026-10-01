@@ -231,6 +231,17 @@ export function buildDivisionPlayoffTemplates(opts: {
     },
     {
       ...base,
+      round: "third_place",
+      bracketPosition: 8,
+      homeSeed: null,
+      awaySeed: null,
+      homeSourceBracket: null,
+      awaySourceBracket: null,
+      homeLabel: "Loser Semi 1",
+      awayLabel: "Loser Semi 2",
+    },
+    {
+      ...base,
       round: "final",
       bracketPosition: 7,
       homeSeed: null,

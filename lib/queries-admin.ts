@@ -17,6 +17,7 @@ import {
   players,
   teamPairings,
   teamInvites,
+  teamEntries,
 } from "@/lib/db/schema"
 import { and, eq, desc, asc, inArray, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
@@ -205,8 +206,21 @@ export async function getPlayoffs(seasonId?: number) {
   const rows = seasonId
     ? await db.select(select).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
     : await db.select(select).from(playoffs).orderBy(asc(playoffs.bracketPosition))
-  const names = await teamNameMap(rows.flatMap((p) => [p.homeTeamId ?? 0, p.awayTeamId ?? 0]))
-  return rows.map((p) => ({
+  const normalizedRows = [...rows]
+  const qf1Index = normalizedRows.findIndex((row) => row.type === "tshwane_masters" && row.round === "quarter_final" && row.bracketPosition === 1)
+  const qf3Index = normalizedRows.findIndex((row) => row.type === "tshwane_masters" && row.round === "quarter_final" && row.bracketPosition === 3)
+  if (qf1Index >= 0 && qf3Index >= 0) {
+    const qf1 = normalizedRows[qf1Index]
+    const qf3 = normalizedRows[qf3Index]
+    const qf1AwayLooksLikeBest3rd2 = (qf1.awayLabel ?? "").toLowerCase().includes("best 3rd place - 2")
+    const qf3AwayLooksLikeBest3rd1 = (qf3.awayLabel ?? "").toLowerCase().includes("best 3rd place - 1")
+    if (qf1AwayLooksLikeBest3rd2 && qf3AwayLooksLikeBest3rd1) {
+      normalizedRows[qf1Index] = { ...qf1, awayTeamId: qf3.awayTeamId, awayLabel: qf3.awayLabel }
+      normalizedRows[qf3Index] = { ...qf3, awayTeamId: qf1.awayTeamId, awayLabel: qf1.awayLabel }
+    }
+  }
+  const names = await teamNameMap(normalizedRows.flatMap((p) => [p.homeTeamId ?? 0, p.awayTeamId ?? 0]))
+  return normalizedRows.map((p) => ({
     ...p,
     // Real team once pulled from standings, otherwise the placeholder label.
     homeName: p.homeTeamId ? (names.get(p.homeTeamId) ?? "TBD") : (p.homeLabel ?? "TBD"),
@@ -222,6 +236,18 @@ export async function getPlayoffVenues() {
     .select({ id: clubs.id, name: clubs.name, courts: clubs.courts })
     .from(clubs)
     .orderBy(asc(clubs.name))
+}
+
+export async function getPlayoffTeamsForSeason(seasonId: number) {
+  return db
+    .select({
+      id: teams.id,
+      name: teams.name,
+    })
+    .from(teamEntries)
+    .innerJoin(teams, eq(teamEntries.teamId, teams.id))
+    .where(eq(teamEntries.seasonId, seasonId))
+    .orderBy(asc(teams.name))
 }
 
 export async function getDivisionStandings(divisionId: number) {
