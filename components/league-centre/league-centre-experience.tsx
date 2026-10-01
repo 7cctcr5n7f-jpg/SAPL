@@ -579,8 +579,8 @@ function FinalsBracket({ fixtures }: { fixtures: LCFixture[] }) {
     if (fixture.playoffBracketPosition != null) {
       if (fixture.playoffBracketPosition >= 1 && fixture.playoffBracketPosition <= 4) return "quarter"
       if (fixture.playoffBracketPosition >= 5 && fixture.playoffBracketPosition <= 6) return "semi"
-      if (fixture.playoffBracketPosition === 7) return "third"
-      if (fixture.playoffBracketPosition === 8) return "final"
+      if (fixture.playoffBracketPosition === 8) return "third"
+      if (fixture.playoffBracketPosition === 7) return "final"
     }
     const label = `${fixture.homeName ?? ""} ${fixture.awayName ?? ""}`.toLowerCase()
     if (label.includes("sf1 loser") || label.includes("sf2 loser") || label.includes("3rd")) return "third"
@@ -629,12 +629,21 @@ function BracketMatchCard({ fixture }: { fixture: LCFixture }) {
         {fixture.timeslot ? <span>{fixture.timeslot}</span> : null}
       </div>
       <div className="space-y-1 text-sm font-semibold text-slate-800">
-        <p>{fixture.homeName ?? "TBD"}</p>
+        <BracketTeamLine name={fixture.homeName} logoUrl={fixture.homeLogo} />
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">vs</p>
-        <p>{fixture.awayName ?? "TBD"}</p>
+        <BracketTeamLine name={fixture.awayName} logoUrl={fixture.awayLogo} />
       </div>
       {fixture.venue ? <p className="mt-1.5 text-[11px] text-slate-500">{fixture.venue}</p> : null}
     </article>
+  )
+}
+
+function BracketTeamLine({ name, logoUrl }: { name: string | null; logoUrl: string | null }) {
+  return (
+    <div className="mx-auto grid w-full max-w-[15rem] grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2">
+      <Crest name={name} logoUrl={logoUrl} size="sm" />
+      <p className="text-left leading-tight">{name ?? "TBD"}</p>
+    </div>
   )
 }
 

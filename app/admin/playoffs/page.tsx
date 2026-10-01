@@ -1,5 +1,5 @@
 import { requirePermissionPage } from "@/lib/access"
-import { getAdminSummary, getPlayoffs, getPlayoffVenues } from "@/lib/queries-admin"
+import { getAdminSummary, getPlayoffs, getPlayoffTeamsForSeason, getPlayoffVenues } from "@/lib/queries-admin"
 import { getCurrentSeason } from "@/lib/queries"
 import { getSeasonReadiness } from "@/lib/team-readiness"
 import { db } from "@/lib/db"
@@ -24,9 +24,10 @@ export default async function AdminPlayoffsPage() {
   const readiness = currentSeason ? await getSeasonReadiness(currentSeason.id) : null
   const season = allSeasons[0] ?? null
 
-  const [playoffs, venues] = await Promise.all([
+  const [playoffs, venues, seasonTeams] = await Promise.all([
     season ? getPlayoffs(season.id) : Promise.resolve([]),
     getPlayoffVenues(),
+    season ? getPlayoffTeamsForSeason(season.id) : Promise.resolve([]),
   ])
 
   return (
@@ -49,11 +50,16 @@ export default async function AdminPlayoffsPage() {
           seasonId={season.id}
           seasonName={season.name}
           venues={venues.map((v) => ({ id: v.id, name: v.name, courts: v.courts }))}
+          teamOptions={seasonTeams}
           playoffs={playoffs.map((p) => ({
             id: p.id,
             type: p.type,
             round: p.round,
             divisionId: p.divisionId,
+            homeTeamId: p.homeTeamId,
+            awayTeamId: p.awayTeamId,
+            homeLabel: p.homeLabel,
+            awayLabel: p.awayLabel,
             homeName: p.homeName,
             awayName: p.awayName,
             homeResolved: p.homeResolved,

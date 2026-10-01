@@ -13,17 +13,22 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { pullPlayoffTeams, setPlayoffSchedule } from "@/lib/actions/admin"
+import { pullPlayoffTeams, setPlayoffSchedule, setPlayoffTeams } from "@/lib/actions/admin"
 import { FIXTURE_TIMESLOTS } from "@/lib/constants"
 import { toast } from "sonner"
 import { Swords, Trophy, Users, CalendarClock, MapPin } from "lucide-react"
 
 type Venue = { id: number; name: string; courts: number }
+type TeamOption = { id: number; name: string }
 type Playoff = {
   id: number
   type: string
   round: string
   divisionId: number | null
+  homeTeamId: number | null
+  awayTeamId: number | null
+  homeLabel: string | null
+  awayLabel: string | null
   homeName: string
   awayName: string
   homeResolved: boolean
@@ -42,11 +47,13 @@ export function PlayoffsManager({
   seasonId,
   seasonName,
   venues,
+  teamOptions,
   playoffs,
 }: {
   seasonId: number
   seasonName: string
   venues: Venue[]
+  teamOptions: TeamOption[]
   playoffs: Playoff[]
 }) {
   const [pending, start] = useTransition()
@@ -104,6 +111,7 @@ export function PlayoffsManager({
                   title={ps[0]?.homeName?.split(" ")[0] ? `${bracketDivisionName(ps)} — Playoffs` : "Playoffs"}
                   playoffs={ps}
                   venues={venues}
+                  teamOptions={teamOptions}
                   pending={pending}
                   start={start}
                 />
@@ -113,6 +121,7 @@ export function PlayoffsManager({
                   title="Tshwane Masters"
                   playoffs={masters}
                   venues={venues}
+                  teamOptions={teamOptions}
                   pending={pending}
                   start={start}
                   crown
@@ -137,6 +146,7 @@ function Bracket({
   title,
   playoffs,
   venues,
+  teamOptions,
   pending,
   start,
   crown,
@@ -144,6 +154,7 @@ function Bracket({
   title: string
   playoffs: Playoff[]
   venues: Venue[]
+  teamOptions: TeamOption[]
   pending: boolean
   start: (cb: () => Promise<void>) => void
   crown?: boolean
@@ -151,6 +162,7 @@ function Bracket({
   const quarters = playoffs.filter((p) => p.round === "quarter_final").sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0))
   const semis = playoffs.filter((p) => p.round === "semi_final").sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0))
   const finals = playoffs.filter((p) => p.round === "final")
+  const thirdPlace = playoffs.filter((p) => p.round === "third_place")
   return (
     <div>
       <p className="mb-3 flex items-center gap-2 font-heading text-sm font-semibold">
@@ -161,21 +173,24 @@ function Bracket({
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quarter Finals</p>
           {quarters.map((p) => (
-            <BracketRow key={p.id} p={p} venues={venues} pending={pending} start={start} />
+            <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} />
           ))}
         </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Semi Finals</p>
           {semis.map((p) => (
-            <BracketRow key={p.id} p={p} venues={venues} pending={pending} start={start} />
+            <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} />
           ))}
         </div>
         <div className="space-y-2">
           <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Trophy className="h-3 w-3" /> Final
+            <Trophy className="h-3 w-3" /> Finals
           </p>
+          {thirdPlace.map((p) => (
+            <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} label="3rd / 4th place" />
+          ))}
           {finals.map((p) => (
-            <BracketRow key={p.id} p={p} venues={venues} pending={pending} start={start} />
+            <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} label="Final" />
           ))}
         </div>
       </div>
@@ -186,16 +201,21 @@ function Bracket({
 function BracketRow({
   p,
   venues,
+  teamOptions,
   pending,
   start,
+  label,
 }: {
   p: Playoff
   venues: Venue[]
+  teamOptions: TeamOption[]
   pending: boolean
   start: (cb: () => Promise<void>) => void
+  label?: string
 }) {
   return (
     <div className="rounded-lg border border-border p-3">
+      {label && <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>}
       <div className="flex items-center justify-between gap-2 text-sm">
         <TeamCell name={p.homeName} resolved={p.homeResolved} />
         <span className="shrink-0 tabular-nums text-muted-foreground">
@@ -216,6 +236,7 @@ function BracketRow({
             {p.venue}
           </span>
         )}
+        <TeamAssignmentDialog p={p} teamOptions={teamOptions} pending={pending} start={start} />
         <ScheduleDialog p={p} venues={venues} pending={pending} start={start} />
       </div>
     </div>
@@ -227,6 +248,95 @@ function TeamCell({ name, resolved, align }: { name: string; resolved: boolean; 
     <span className={align === "right" ? "text-right" : ""}>
       <span className={resolved ? "font-medium" : "font-normal italic text-muted-foreground"}>{name}</span>
     </span>
+  )
+}
+
+function TeamAssignmentDialog({
+  p,
+  teamOptions,
+  pending,
+  start,
+}: {
+  p: Playoff
+  teamOptions: TeamOption[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [homeTeamId, setHomeTeamId] = useState(p.homeTeamId ? String(p.homeTeamId) : "")
+  const [awayTeamId, setAwayTeamId] = useState(p.awayTeamId ? String(p.awayTeamId) : "")
+
+  function save() {
+    const fd = new FormData()
+    fd.set("playoffId", String(p.id))
+    fd.set("homeTeamId", homeTeamId)
+    fd.set("awayTeamId", awayTeamId)
+    start(async () => {
+      const res = await setPlayoffTeams(fd)
+      if (res.ok) {
+        toast.success("Teams updated")
+        setOpen(false)
+      } else toast.error(res.error ?? "Failed to update teams")
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-xs">
+            Edit teams
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign placeholder teams</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`home-team-${p.id}`}>{p.homeLabel ?? "Home placeholder"}</Label>
+            <select
+              id={`home-team-${p.id}`}
+              value={homeTeamId}
+              onChange={(e) => setHomeTeamId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Use placeholder</option>
+              {teamOptions.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`away-team-${p.id}`}>{p.awayLabel ?? "Away placeholder"}</Label>
+            <select
+              id={`away-team-${p.id}`}
+              value={awayTeamId}
+              onChange={(e) => setAwayTeamId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Use placeholder</option>
+              {teamOptions.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending}>
+            Save teams
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

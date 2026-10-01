@@ -494,7 +494,7 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
         .orderBy(asc(fixtures.matchDate), asc(fixtures.week))
     : []
 
-  const playoffRows = await db
+  const playoffRowsRaw = await db
     .select({
       id: playoffs.id,
       homeTeamId: playoffs.homeTeamId,
@@ -513,6 +513,39 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
     .from(playoffs)
     .where(and(eq(playoffs.seasonId, season.id), eq(playoffs.type, "tshwane_masters")))
     .orderBy(asc(playoffs.matchDate), asc(playoffs.bracketPosition))
+  const playoffRows = [...playoffRowsRaw]
+  const qf1Index = playoffRows.findIndex((row) => row.bracketPosition === 1)
+  const qf3Index = playoffRows.findIndex((row) => row.bracketPosition === 3)
+  if (qf1Index >= 0 && qf3Index >= 0) {
+    const qf1 = playoffRows[qf1Index]
+    const qf3 = playoffRows[qf3Index]
+    const qf1AwayLooksLikeBest3rd2 = (qf1.awayLabel ?? "").toLowerCase().includes("best 3rd place - 2")
+    const qf3AwayLooksLikeBest3rd1 = (qf3.awayLabel ?? "").toLowerCase().includes("best 3rd place - 1")
+    if (qf1AwayLooksLikeBest3rd2 && qf3AwayLooksLikeBest3rd1) {
+      playoffRows[qf1Index] = { ...qf1, awayTeamId: qf3.awayTeamId, awayLabel: qf3.awayLabel }
+      playoffRows[qf3Index] = { ...qf3, awayTeamId: qf1.awayTeamId, awayLabel: qf1.awayLabel }
+    }
+  }
+
+  const playoffTeamIds = Array.from(
+    new Set(playoffRows.flatMap((row) => [row.homeTeamId, row.awayTeamId]).filter((id): id is number => id != null)),
+  )
+  const playoffTeamsById = new Map<number, { name: string; logo: string | null }>(
+    playoffTeamIds.length
+      ? (
+          await db
+            .select({
+              id: teams.id,
+              name: teams.name,
+              logo: sql<string | null>`coalesce(${teams.logoUrl}, ${clubs.logoUrl}, ${organisations.logoUrl})`,
+            })
+            .from(teams)
+            .leftJoin(clubs, eq(teams.homeClubId, clubs.id))
+            .leftJoin(organisations, eq(teams.organisationId, organisations.id))
+            .where(inArray(teams.id, playoffTeamIds))
+        ).map((row) => [row.id, { name: row.name, logo: row.logo }])
+      : [],
+  )
 
   const playoffDivisionTargets = usedDivisions.filter(
     (division): division is typeof division & { regionId: number } => division.regionId != null,
@@ -533,10 +566,10 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       venueClubId: null,
       homeTeamId: playoffRow.homeTeamId,
       awayTeamId: playoffRow.awayTeamId,
-      homeName: playoffRow.homeLabel,
-      awayName: playoffRow.awayLabel,
-      homeLogo: null,
-      awayLogo: null,
+      homeName: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.name ?? playoffRow.homeLabel) : playoffRow.homeLabel,
+      awayName: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.name ?? playoffRow.awayLabel) : playoffRow.awayLabel,
+      homeLogo: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.logo ?? null) : null,
+      awayLogo: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.logo ?? null) : null,
       venue: playoffRow.venue ?? "To be Confirmed",
       playtomicUrl: null,
       published: true,
