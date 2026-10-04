@@ -52,7 +52,11 @@ export function tallySets(sets: SetScore[]): {
     if (h === 0 && a === 0) continue // empty/unplayed set row
     homeGames += h
     awayGames += a
-    if (h === a) continue
+    if (h === a) {
+      // Entered but unfinished set (e.g. 2-2): split the set point.
+      splitSets++
+      continue
+    }
     if (!isCompletedSet(h, a)) {
       splitSets++
       continue

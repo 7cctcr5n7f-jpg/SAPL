@@ -269,6 +269,10 @@ async function buildSeasonPairings(seasonId: number) {
                 : t.round === "final"
                   ? "14:00"
                   : null
+        const defaultCourt =
+          t.round === "quarter_final"
+            ? ({ 1: "Court 1", 2: "Court 2", 3: "Court 3", 4: "Court 4" }[t.bracketPosition] ?? null)
+            : null
 
         return {
         seasonId,
@@ -285,6 +289,7 @@ async function buildSeasonPairings(seasonId: number) {
         awayLabel: t.awayLabel,
         matchDate: t.round === "quarter_final" ? quarterFinalsDate : finalsSunday,
         timeslot: defaultTimeslot,
+        court: defaultCourt,
         venueClubId: season.regionalFinalsVenueClubId ?? season.mastersVenueClubId ?? null,
         status: "scheduled" as const,
         }
@@ -710,8 +715,28 @@ export async function setPlayoffSchedule(formData: FormData) {
 
   const dateStr = String(formData.get("matchDate") ?? "").trim()
   const timeslot = String(formData.get("timeslot") ?? "").trim() || null
+  const court = String(formData.get("court") ?? "").trim() || null
+  const categoryScheduleJson = String(formData.get("categoryScheduleJson") ?? "").trim()
   const venueRaw = String(formData.get("venueClubId") ?? "").trim()
   const venueClubId = venueRaw ? Number(venueRaw) : null
+  let categorySchedule: Record<string, { timeslot: string | null; court: string | null }> = {}
+  if (categoryScheduleJson) {
+    try {
+      const parsed = JSON.parse(categoryScheduleJson)
+      if (parsed && typeof parsed === "object") {
+        categorySchedule = Object.fromEntries(
+          Object.entries(parsed).map(([category, value]) => {
+            const entry = value as { timeslot?: unknown; court?: unknown }
+            const entryTimeslot = typeof entry.timeslot === "string" && entry.timeslot.trim().length > 0 ? entry.timeslot.trim() : null
+            const entryCourt = typeof entry.court === "string" && entry.court.trim().length > 0 ? entry.court.trim() : null
+            return [category, { timeslot: entryTimeslot, court: entryCourt }]
+          }),
+        )
+      }
+    } catch {
+      return { ok: false, error: "Invalid category schedule payload" }
+    }
+  }
 
   let venue: string | null = null
   if (venueClubId) {
@@ -721,8 +746,101 @@ export async function setPlayoffSchedule(formData: FormData) {
 
   await db
     .update(playoffs)
-    .set({ matchDate: dateStr ? new Date(dateStr) : null, timeslot, venueClubId, venue })
+    .set({ matchDate: dateStr ? new Date(dateStr) : null, timeslot, court, categorySchedule, venueClubId, venue })
     .where(eq(playoffs.id, id))
+
+  revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/league-centre")
+  revalidateTag("league-centre-shared")
+  return { ok: true }
+}
+
+export async function setPlayoffRoundSchedule(formData: FormData) {
+  await requireAdmin()
+  const seasonId = Number(formData.get("seasonId"))
+  const type = String(formData.get("type") ?? "").trim()
+  const round = String(formData.get("round") ?? "").trim()
+  const divisionRaw = String(formData.get("divisionId") ?? "").trim()
+  const divisionId = divisionRaw ? Number(divisionRaw) : null
+  if (!seasonId || !type || !round) return { ok: false, error: "Season, type and round are required" }
+
+  const dateStr = String(formData.get("matchDate") ?? "").trim()
+  const timeslot = String(formData.get("timeslot") ?? "").trim() || null
+  const venueRaw = String(formData.get("venueClubId") ?? "").trim()
+  const venueClubId = venueRaw ? Number(venueRaw) : null
+
+  let venue: string | null = null
+  if (venueClubId) {
+    const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, venueClubId)).limit(1)
+    venue = club?.name ?? null
+  }
+
+  const conditions = [eq(playoffs.seasonId, seasonId), eq(playoffs.type, type), eq(playoffs.round, round)]
+  if (divisionId != null) conditions.push(eq(playoffs.divisionId, divisionId))
+
+  await db
+    .update(playoffs)
+    .set({ matchDate: dateStr ? new Date(dateStr) : null, timeslot, venueClubId, venue })
+    .where(and(...conditions))
+
+  revalidatePath("/admin")
+  revalidatePath("/league-centre")
+  revalidatePath("/dashboard/league-centre")
+  revalidateTag("league-centre-shared")
+  return { ok: true }
+}
+
+export async function setPlayoffCategoryScheduleBulk(formData: FormData) {
+  await requireAdmin()
+  const updatesRaw = String(formData.get("updatesJson") ?? "").trim()
+  if (!updatesRaw) return { ok: false, error: "No updates provided" }
+
+  type Item = {
+    playoffId: number
+    category: string
+    timeslot?: string | null
+    court?: string | null
+  }
+
+  let updates: Item[] = []
+  try {
+    const parsed = JSON.parse(updatesRaw)
+    if (!Array.isArray(parsed)) return { ok: false, error: "Invalid updates payload" }
+    updates = parsed
+      .map((entry) => ({
+        playoffId: Number(entry?.playoffId),
+        category: String(entry?.category ?? "").trim(),
+        timeslot: entry?.timeslot == null ? undefined : String(entry.timeslot).trim() || null,
+        court: entry?.court == null ? undefined : String(entry.court).trim() || null,
+      }))
+      .filter((entry) => Number.isFinite(entry.playoffId) && entry.playoffId > 0 && entry.category.length > 0)
+  } catch {
+    return { ok: false, error: "Invalid updates payload" }
+  }
+  if (updates.length === 0) return { ok: false, error: "No valid updates provided" }
+
+  const ids = [...new Set(updates.map((u) => u.playoffId))]
+  const rows = await db
+    .select({ id: playoffs.id, categorySchedule: playoffs.categorySchedule })
+    .from(playoffs)
+    .where(inArray(playoffs.id, ids))
+
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row) continue
+    const next = { ...(row.categorySchedule ?? {}) } as Record<string, { timeslot: string | null; court: string | null }>
+    const idUpdates = updates.filter((u) => u.playoffId === id)
+    for (const update of idUpdates) {
+      const prev = next[update.category] ?? { timeslot: null, court: null }
+      next[update.category] = {
+        timeslot: update.timeslot !== undefined ? update.timeslot : prev.timeslot,
+        court: update.court !== undefined ? update.court : prev.court,
+      }
+    }
+    await db.update(playoffs).set({ categorySchedule: next }).where(eq(playoffs.id, id))
+  }
 
   revalidatePath("/admin")
   revalidatePath("/league-centre")

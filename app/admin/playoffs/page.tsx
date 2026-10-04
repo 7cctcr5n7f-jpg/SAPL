@@ -56,6 +56,7 @@ export default async function AdminPlayoffsPage() {
             type: p.type,
             round: p.round,
             divisionId: p.divisionId,
+            divisionName: p.divisionName,
             homeTeamId: p.homeTeamId,
             awayTeamId: p.awayTeamId,
             homeLabel: p.homeLabel,
@@ -70,6 +71,8 @@ export default async function AdminPlayoffsPage() {
             bracketPosition: p.bracketPosition,
             matchDate: p.matchDate ? new Date(p.matchDate).toISOString() : null,
             timeslot: p.timeslot,
+            court: p.court,
+            categorySchedule: p.categorySchedule,
             venueClubId: p.venueClubId,
             venue: p.venue,
           }))}

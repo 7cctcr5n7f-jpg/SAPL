@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 
 type ContentTab = "schedule" | "standings"
+type PlayoffViewTab = "playoff_bracket" | "match_schedule"
 
 const DIVISION_ORDER = ["Premier", "Championship", "Shield", "Challenge"]
 
@@ -216,6 +217,11 @@ function weekFromDate(matchDate: string | null, firstRegularDate: string | null)
   return 1 + Math.floor(deltaDays / 7)
 }
 
+function isPlayoffFixture(fixture: LCFixture): boolean {
+  if (fixture.playoffBracketPosition != null) return true
+  return fixture.playoffType === "regional_final" || fixture.playoffType === "tshwane_masters"
+}
+
 function shortRegionLabel(name: string) {
   return name
     .replace(/\s*conference\s*/i, "")
@@ -239,6 +245,8 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
 
   const [divisionId, setDivisionId] = useState<number | null>(regionDivisions[0]?.id ?? null)
   const [tab, setTab] = useState<ContentTab>("schedule")
+  const [playoffView, setPlayoffView] = useState<PlayoffViewTab>("playoff_bracket")
+  const [playoffDivisionFilter, setPlayoffDivisionFilter] = useState<"all" | number>("all")
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
   const [expandedFixtureId, setExpandedFixtureId] = useState<number | null>(null)
 
@@ -253,6 +261,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
       .sort((a, b) => DIVISION_ORDER.indexOf(a.name) - DIVISION_ORDER.indexOf(b.name) || a.level - b.level)
     setDivisionId(divs[0]?.id ?? null)
     setSelectedWeek(null)
+    setPlayoffDivisionFilter("all")
   }
 
   const activeDivision = regionDivisions.find((d) => d.id === divisionId) ?? regionDivisions[0] ?? null
@@ -300,7 +309,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   )
 
   const resolvedWeekByFixtureId = useMemo(() => {
-    const regularFixtures = divisionFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() !== "playoff")
+    const regularFixtures = divisionFixtures.filter((fixture) => !isPlayoffFixture(fixture))
     const firstRegularDate =
       regularFixtures
         .map((fixture) => fixture.matchDate)
@@ -322,7 +331,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
 
     const playoffWeekFloor = Math.max(data.season.weeks, maxRegularWeek + 1)
     for (const fixture of divisionFixtures) {
-      if ((fixture.divisionName ?? "").toLowerCase() === "playoff") {
+      if (isPlayoffFixture(fixture)) {
         const storedWeek = Number.isInteger(fixture.week) && fixture.week > 0 ? fixture.week : playoffWeekFloor
         byFixtureId.set(fixture.id, Math.max(storedWeek, playoffWeekFloor))
       }
@@ -340,19 +349,41 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     return Array.from(weeks).sort((a, b) => a - b)
   }, [divisionFixtures, resolvedWeekByFixtureId])
 
+  const finalsFixturesForRegion = useMemo(() => {
+    return data.fixtures
+      .filter((fixture) => isPlayoffFixture(fixture))
+      .sort(
+        (a, b) =>
+          (a.matchDate && b.matchDate ? new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime() : 0) ||
+          slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot) ||
+          (a.id - b.id),
+      )
+  }, [data.fixtures])
+
   const finalsWeek = useMemo(() => {
     const playoffWeeks = divisionFixtures
-      .filter((fixture) => (fixture.divisionName ?? "").toLowerCase() === "playoff")
+      .filter((fixture) => isPlayoffFixture(fixture))
       .map((fixture) => resolvedWeekByFixtureId.get(fixture.id) ?? null)
       .filter((week): week is number => week != null)
     if (!playoffWeeks.length) return null
     return Math.max(...playoffWeeks)
   }, [divisionFixtures, resolvedWeekByFixtureId])
 
+  const finalsWeekTab = useMemo(() => {
+    if (!finalsFixturesForRegion.length) return null
+    if (finalsWeek != null) return finalsWeek
+    return Math.max(data.season.weeks + 1, (allWeeks[allWeeks.length - 1] ?? 0) + 1)
+  }, [allWeeks, data.season.weeks, finalsFixturesForRegion.length, finalsWeek])
+
+  const weeksWithFinals = useMemo(() => {
+    if (finalsWeekTab == null || allWeeks.includes(finalsWeekTab)) return allWeeks
+    return [...allWeeks, finalsWeekTab].sort((a, b) => a - b)
+  }, [allWeeks, finalsWeekTab])
+
   const defaultWeek = useMemo(() => {
     if (!allWeeks.length) return 1
     if (allWeeks.includes(7)) return 7
-    const regularFixtures = divisionFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() !== "playoff")
+    const regularFixtures = divisionFixtures.filter((fixture) => !isPlayoffFixture(fixture))
     const firstRegularDate =
       regularFixtures
         .map((fixture) => fixture.matchDate)
@@ -366,7 +397,7 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
     return priorWeek ?? allWeeks[0]
   }, [allWeeks, divisionFixtures])
 
-  const activeWeek = selectedWeek != null && allWeeks.includes(selectedWeek) ? selectedWeek : defaultWeek
+  const activeWeek = selectedWeek != null && weeksWithFinals.includes(selectedWeek) ? selectedWeek : defaultWeek
 
   const weekFixtures = useMemo(
     () =>
@@ -390,8 +421,18 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
   }, [weekFixtures, divisionStandings])
 
   const activeFixtures = weekFixtures
-  const finalsFixtures = activeFixtures.filter((fixture) => (fixture.divisionName ?? "").toLowerCase() === "playoff")
-  const showingFinalsBracket = finalsWeek != null && activeWeek === finalsWeek && finalsFixtures.length > 0
+  const showingFinalsWeekend = finalsWeekTab != null && activeWeek === finalsWeekTab && finalsFixturesForRegion.length > 0
+  const playoffDivisionOptions = useMemo(() => {
+    const ids = Array.from(new Set(finalsFixturesForRegion.map((fixture) => fixture.divisionId)))
+    const raw = ids.map((id) => ({ id, name: data.divisions.find((division) => division.id === id)?.name ?? "Division" }))
+    const seen = new Set<string>()
+    return raw.filter((option) => {
+      const key = option.name.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [data.divisions, finalsFixturesForRegion])
 
   if (!data.regions.length) {
     return (
@@ -496,11 +537,11 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
           </div>
 
           {/* Week Selector — Schedule only */}
-          {tab === "schedule" && allWeeks.length > 0 && (
+          {tab === "schedule" && weeksWithFinals.length > 0 && (
             <WeekSelector
-              weeks={allWeeks}
+              weeks={weeksWithFinals}
               activeWeek={activeWeek}
-              finalsWeek={finalsWeek}
+              finalsWeek={finalsWeekTab}
               onSelect={setSelectedWeek}
             />
           )}
@@ -515,12 +556,12 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
               />
             ) : (
               <div className="space-y-5">
-                {finalsWeek != null && activeWeek === finalsWeek ? (
+                {finalsWeekTab != null && activeWeek === finalsWeekTab ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
                     Finals weekend is shown <span className="font-semibold">as is</span> based on current standings and can still change before lock-in.
                   </div>
                 ) : null}
-                {!showingFinalsBracket && byeTeams.length > 0 ? (
+                {!showingFinalsWeekend && byeTeams.length > 0 ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <span className="text-xs font-bold uppercase tracking-[0.15em] text-amber-700">
@@ -544,8 +585,66 @@ export function LeagueCentreExperience({ data }: { data: LeagueCentreData }) {
                     </div>
                   </div>
                 ) : null}
-                {showingFinalsBracket ? (
-                  <FinalsBracket fixtures={finalsFixtures} />
+                {showingFinalsWeekend ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => setPlayoffView("playoff_bracket")}
+                          className={cn(
+                            "rounded-lg px-3 py-2 text-sm font-semibold transition-all",
+                            playoffView === "playoff_bracket" ? "bg-red-600 text-white shadow-sm" : "bg-white text-slate-600 hover:text-slate-900",
+                          )}
+                        >
+                          Playoff Bracket
+                        </button>
+                        <button
+                          onClick={() => setPlayoffView("match_schedule")}
+                          className={cn(
+                            "rounded-lg px-3 py-2 text-sm font-semibold transition-all",
+                            playoffView === "match_schedule" ? "bg-red-600 text-white shadow-sm" : "bg-white text-slate-600 hover:text-slate-900",
+                          )}
+                        >
+                          Match Schedule
+                        </button>
+                      </div>
+                    </div>
+                    {playoffView === "playoff_bracket" ? (
+                      <FinalsBracket fixtures={finalsFixturesForRegion} />
+                    ) : (
+                      <>
+                        {playoffDivisionOptions.length > 1 && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Division</span>
+                            <button
+                              onClick={() => setPlayoffDivisionFilter("all")}
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-semibold",
+                                playoffDivisionFilter === "all" ? "border-red-600 bg-red-600 text-white" : "border-slate-200 bg-white text-slate-600",
+                              )}
+                            >
+                              All divisions
+                            </button>
+                            {playoffDivisionOptions.map((division) => (
+                              <button
+                                key={division.id}
+                                onClick={() => setPlayoffDivisionFilter(division.id)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1 text-xs font-semibold",
+                                  playoffDivisionFilter === division.id ? "border-red-600 bg-red-600 text-white" : "border-slate-200 bg-white text-slate-600",
+                                )}
+                              >
+                                {division.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <PlayoffSchedule
+                          fixtures={finalsFixturesForRegion.filter((fixture) => playoffDivisionFilter === "all" || fixture.divisionId === playoffDivisionFilter)}
+                        />
+                      </>
+                    )}
+                  </div>
                 ) : (
                   <FixturesByCategory
                     fixtures={activeFixtures}
@@ -622,18 +721,23 @@ function BracketColumn({ title, fixtures }: { title: string; fixtures: LCFixture
 }
 
 function BracketMatchCard({ fixture }: { fixture: LCFixture }) {
+  const hasScore = fixture.homePoints != null && fixture.awayPoints != null
+  const isComplete = fixture.status === "completed"
   return (
     <article className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-center">
-      <div className="mb-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-        {fixture.matchDate ? <span>{shortDate(fixture.matchDate)}</span> : null}
-        {fixture.timeslot ? <span>{fixture.timeslot}</span> : null}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{playoffRoundLabel(fixture)}</p>
+        {isComplete && hasScore ? (
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            {fixture.homePoints}-{fixture.awayPoints}
+          </span>
+        ) : null}
       </div>
       <div className="space-y-1 text-sm font-semibold text-slate-800">
         <BracketTeamLine name={fixture.homeName} logoUrl={fixture.homeLogo} />
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">vs</p>
         <BracketTeamLine name={fixture.awayName} logoUrl={fixture.awayLogo} />
       </div>
-      {fixture.venue ? <p className="mt-1.5 text-[11px] text-slate-500">{fixture.venue}</p> : null}
     </article>
   )
 }
@@ -643,6 +747,258 @@ function BracketTeamLine({ name, logoUrl }: { name: string | null; logoUrl: stri
     <div className="mx-auto grid w-full max-w-[15rem] grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2">
       <Crest name={name} logoUrl={logoUrl} size="sm" />
       <p className="text-left leading-tight">{name ?? "TBD"}</p>
+    </div>
+  )
+}
+
+function playoffRoundLabel(fixture: LCFixture): string {
+  const position = fixture.playoffBracketPosition
+  if (position != null) {
+    if (position >= 1 && position <= 4) return "Quarter-final"
+    if (position >= 5 && position <= 6) return "Semi-final"
+    if (position === 7) return "Final"
+    if (position === 8) return "3rd Place Playoff"
+  }
+  return "Playoff"
+}
+
+function normalizePlaceholder(value: string | null | undefined): string | null {
+  if (!value) return null
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function fallbackPlayoffLabel(fixture: LCFixture, side: "home" | "away"): string {
+  const position = fixture.playoffBracketPosition
+  if (position != null && position >= 1 && position <= 4) {
+    if (position === 1) return side === "home" ? "Conference winner Eastern" : "Best 3rd place - 1"
+    if (position === 2) return side === "home" ? "Conference runner-up Northern" : "Conference runner-up Southern"
+    if (position === 3) return side === "home" ? "Conference winner Northern" : "Best 3rd place - 2"
+    if (position === 4) return side === "home" ? "Conference winner Southern" : "Conference runner-up Eastern"
+  }
+  if (position != null && position >= 5 && position <= 6) return side === "home" ? "QF winner" : "QF winner"
+  if (position === 7) return side === "home" ? "SF winner" : "SF winner"
+  if (position === 8) return side === "home" ? "SF loser" : "SF loser"
+  return side === "home" ? "TBD home side" : "TBD away side"
+}
+
+function displayPlayoffTeamName(fixture: LCFixture, side: "home" | "away"): string {
+  const teamId = side === "home" ? fixture.homeTeamId : fixture.awayTeamId
+  const name = side === "home" ? fixture.homeName : fixture.awayName
+  if (teamId != null) return normalizePlaceholder(name) ?? (side === "home" ? "Home team" : "Away team")
+  return normalizePlaceholder(name) ?? fallbackPlayoffLabel(fixture, side)
+}
+
+function playoffSideDisplay(fixture: LCFixture, side: "home" | "away"): { primary: string; secondary: string | null; assigned: boolean } {
+  const assigned = side === "home" ? fixture.homeTeamId != null : fixture.awayTeamId != null
+  if (assigned) return { primary: displayPlayoffTeamName(fixture, side), secondary: null, assigned: true }
+  const placeholder = displayPlayoffTeamName(fixture, side)
+  return { primary: "TBD", secondary: placeholder && placeholder !== "TBD" ? placeholder : null, assigned: false }
+}
+
+function playoffPairingDisplay({
+  fixture,
+  category,
+  side,
+}: {
+  fixture: LCFixture
+  category: string
+  side: "home" | "away"
+}): { label: string; line1: string; line2: string | null; rating: number | null } {
+  const assigned = side === "home" ? fixture.homeTeamId != null : fixture.awayTeamId != null
+  const playersByCategory = side === "home" ? fixture.homePlayers : fixture.awayPlayers
+  if (!assigned) return { label: "TBD players", line1: "TBD player 1", line2: "TBD player 2", rating: null }
+
+  const normalized = category.toLowerCase().replace(/\s+/g, "")
+  const key = Object.keys(playersByCategory ?? {}).find((k) => k.toLowerCase().replace(/\s+/g, "") === normalized) ?? category
+  const players = playersByCategory?.[key] ?? []
+  if (!players.length) return { label: "TBD players", line1: "TBD player 1", line2: "TBD player 2", rating: null }
+  const names = players.map((player) => player.name).filter(Boolean)
+  return {
+    label: names.join(" · "),
+    line1: names[0] ?? "TBD player 1",
+    line2: names[1] ?? null,
+    rating: averagePairRating(players),
+  }
+}
+
+function PlayoffSchedule({
+  fixtures,
+}: {
+  fixtures: LCFixture[]
+}) {
+  const scheduleEntries = useMemo(() => {
+    const categoryOrder = ["Ladies Open", "Mens Open", "Mens Intermediate", "Mens Beginner"]
+    return fixtures.flatMap((fixture) => {
+      const configured = fixture.playoffCategorySchedule ?? {}
+      const categoriesFromPlayers = Array.from(
+        new Set([...Object.keys(fixture.homePlayers ?? {}), ...Object.keys(fixture.awayPlayers ?? {})]),
+      )
+      const categories = Array.from(new Set([...categoryOrder, ...categoriesFromPlayers]))
+      return categories.map((category) => {
+        const schedule = configured[category]
+        return {
+          fixture,
+          category,
+          timeslot: schedule?.timeslot ?? fixture.timeslot,
+          court: schedule?.court ?? null,
+        }
+      })
+    })
+  }, [fixtures])
+
+  const groups = useMemo(() => {
+    const map = new Map<string, { date: string | null; timeslot: string | null; entries: Array<{ fixture: LCFixture; category: string; timeslot: string | null; court: string | null }> }>()
+    for (const entry of scheduleEntries) {
+      const key = `${entry.fixture.matchDate ?? "no-date"}|${entry.timeslot ?? "no-time"}`
+      const bucket = map.get(key)
+      if (bucket) {
+        bucket.entries.push(entry)
+      } else {
+        map.set(key, { date: entry.fixture.matchDate, timeslot: entry.timeslot, entries: [entry] })
+      }
+    }
+    return [...map.values()]
+      .map((group) => ({
+        ...group,
+        entries: [...group.entries].sort(
+          (a, b) => courtSortValue(a.court) - courtSortValue(b.court) || (a.fixture.id - b.fixture.id),
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          (a.date && b.date ? new Date(a.date).getTime() - new Date(b.date).getTime() : 0) ||
+          slotTimeValue(a.timeslot) - slotTimeValue(b.timeslot),
+      )
+  }, [scheduleEntries])
+
+  if (!groups.length) {
+    return <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No playoff fixtures for this selection.</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <section key={`${group.date ?? "no-date"}-${group.timeslot ?? "no-time"}`} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 md:p-4">
+          {(() => {
+            const venues = Array.from(new Set(group.entries.map((entry) => entry.fixture.venue).filter((venue): venue is string => Boolean(venue))))
+            return venues.length === 1 ? (
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Venue · {venues[0]}</p>
+            ) : null
+          })()}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-1">
+              <p className="text-base font-bold text-slate-900">
+                {group.timeslot ?? "TBD"}
+              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                {group.date ? shortDate(group.date) : "Date TBD"} · {playoffRoundLabel(group.entries[0].fixture)} · {group.entries.length} matches
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto pb-1">
+            <div className="grid min-w-[980px] grid-cols-4 gap-2.5">
+              {group.entries.map((entry, idx) => (
+              <article
+                key={`${entry.fixture.id}-${entry.category}-${idx}`}
+                className="relative overflow-hidden rounded-lg border border-slate-200/90 bg-gradient-to-b from-white via-white to-slate-50 p-2.5 shadow-sm"
+              >
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-red-400 to-red-500" />
+                <div className="mb-2 flex items-center justify-between gap-1.5">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                    {playoffRoundLabel(entry.fixture)}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{entry.fixture.status}</span>
+                </div>
+                <p className="mb-1.5 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{entry.category}</p>
+                {entry.court ? (
+                  <p className="mb-1.5 text-center text-[10px] font-semibold text-slate-600">{entry.court}</p>
+                ) : null}
+                <div className="space-y-1.5">
+                  {(() => {
+                    const homePair = playoffPairingDisplay({ fixture: entry.fixture, category: entry.category, side: "home" })
+                    const awayPair = playoffPairingDisplay({ fixture: entry.fixture, category: entry.category, side: "away" })
+                    const homeDisplay = playoffSideDisplay(entry.fixture, "home")
+                    const awayDisplay = playoffSideDisplay(entry.fixture, "away")
+                    return (
+                      <>
+                        <PlayoffSchedulePairRow
+                          logoUrl={entry.fixture.homeLogo}
+                          crestName={homeDisplay.secondary ?? homeDisplay.primary}
+                          line1={homePair.line1}
+                          line2={homePair.line2}
+                          rating={homePair.rating}
+                          dimmed={homePair.label.toLowerCase().includes("tbd")}
+                        />
+                        <div className="flex items-center justify-center py-0.5">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            VS
+                          </span>
+                        </div>
+                        <PlayoffSchedulePairRow
+                          logoUrl={entry.fixture.awayLogo}
+                          crestName={awayDisplay.secondary ?? awayDisplay.primary}
+                          line1={awayPair.line1}
+                          line2={awayPair.line2}
+                          rating={awayPair.rating}
+                          dimmed={awayPair.label.toLowerCase().includes("tbd")}
+                        />
+                      </>
+                    )
+                  })()}
+                </div>
+              </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function PlayoffSchedulePairRow({
+  logoUrl,
+  crestName,
+  line1,
+  line2,
+  rating,
+  dimmed = false,
+}: {
+  logoUrl: string | null
+  crestName: string
+  line1: string
+  line2: string | null
+  rating: number | null
+  dimmed?: boolean
+}) {
+  return (
+    <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1.5">
+      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-2">
+        <Crest name={crestName} logoUrl={logoUrl} size="sm" />
+        <div className="min-w-0">
+          <p
+            className={cn(
+              "truncate text-[11px] leading-tight font-semibold",
+              dimmed ? "text-slate-500" : "text-slate-800",
+            )}
+            title={line1}
+          >
+            {line1}
+          </p>
+          {line2 ? (
+            <p
+              className={cn(
+                "mt-0.5 truncate text-[11px] leading-tight font-semibold",
+                dimmed ? "text-slate-500" : "text-slate-800",
+              )}
+              title={line2}
+            >
+              {line2}
+            </p>
+          ) : null}
+        </div>
+        <LiBadge li={rating} prominent />
+      </div>
     </div>
   )
 }
@@ -1106,11 +1462,16 @@ function CategoryDot({
 }
 
 /** Small LI pill — shown inline with team/player name */
-function LiBadge({ li, tall = false }: { li: number | null; tall?: boolean }) {
+function LiBadge({ li, tall = false, prominent = false }: { li: number | null; tall?: boolean; prominent?: boolean }) {
   if (li == null || li === 0 || !Number.isFinite(li)) return null
   return (
     <span
-      className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200"
+      className={cn(
+        "inline-flex items-center rounded-full tabular-nums ring-1",
+        prominent
+          ? "bg-white px-2 py-0.5 text-[13px] font-bold text-slate-700 ring-slate-300 shadow-sm"
+          : "bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 ring-slate-200",
+      )}
       title="Average pair rating"
       style={tall ? { minHeight: 40, alignSelf: "stretch" } : undefined}
     >

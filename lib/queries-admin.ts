@@ -190,6 +190,7 @@ export async function getPlayoffs(seasonId?: number) {
     type: playoffs.type,
     round: playoffs.round,
     divisionId: playoffs.divisionId,
+    divisionName: divisions.name,
     homeTeamId: playoffs.homeTeamId,
     awayTeamId: playoffs.awayTeamId,
     homeLabel: playoffs.homeLabel,
@@ -200,12 +201,19 @@ export async function getPlayoffs(seasonId?: number) {
     bracketPosition: playoffs.bracketPosition,
     matchDate: playoffs.matchDate,
     timeslot: playoffs.timeslot,
+    court: playoffs.court,
+    categorySchedule: playoffs.categorySchedule,
     venueClubId: playoffs.venueClubId,
     venue: playoffs.venue,
   }
   const rows = seasonId
-    ? await db.select(select).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(asc(playoffs.bracketPosition))
-    : await db.select(select).from(playoffs).orderBy(asc(playoffs.bracketPosition))
+    ? await db
+        .select(select)
+        .from(playoffs)
+        .leftJoin(divisions, eq(playoffs.divisionId, divisions.id))
+        .where(eq(playoffs.seasonId, seasonId))
+        .orderBy(asc(playoffs.bracketPosition))
+    : await db.select(select).from(playoffs).leftJoin(divisions, eq(playoffs.divisionId, divisions.id)).orderBy(asc(playoffs.bracketPosition))
   const normalizedRows = [...rows]
   const qf1Index = normalizedRows.findIndex((row) => row.type === "tshwane_masters" && row.round === "quarter_final" && row.bracketPosition === 1)
   const qf3Index = normalizedRows.findIndex((row) => row.type === "tshwane_masters" && row.round === "quarter_final" && row.bracketPosition === 3)
