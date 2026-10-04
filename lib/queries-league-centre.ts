@@ -112,6 +112,10 @@ export type LCFixture = {
   awaySetsWon: number | null
   winnerTeamId: number | null
   playoffBracketPosition?: number | null
+  playoffType?: string | null
+  playoffRound?: string | null
+  playoffCourt?: string | null
+  playoffCategorySchedule?: Record<string, { timeslot: string | null; court: string | null }>
   /** Average LI for all active players in each team */
   homeAvgLi: number | null
   awayAvgLi: number | null
@@ -477,6 +481,8 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
           awaySetsWon: fixtures.awaySetsWon,
           winnerTeamId: fixtures.winnerTeamId,
           bracketPosition: sql<number | null>`null`,
+          playoffCourt: sql<string | null>`null`,
+          categorySchedule: sql<Record<string, { timeslot: string | null; court: string | null }> | null>`null`,
           homeAvgLi: home.avgLi,
           awayAvgLi: away.avgLi,
         })
@@ -497,6 +503,13 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
   const playoffRowsRaw = await db
     .select({
       id: playoffs.id,
+      type: playoffs.type,
+      round: playoffs.round,
+      divisionId: playoffs.divisionId,
+      divisionName: divisions.name,
+      divisionLevel: divisions.level,
+      regionId: divisions.regionId,
+      regionName: regions.name,
       homeTeamId: playoffs.homeTeamId,
       awayTeamId: playoffs.awayTeamId,
       homeLabel: playoffs.homeLabel,
@@ -507,15 +520,19 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       status: playoffs.status,
       matchDate: playoffs.matchDate,
       timeslot: playoffs.timeslot,
+      court: playoffs.court,
+      categorySchedule: playoffs.categorySchedule,
       venue: playoffs.venue,
       bracketPosition: playoffs.bracketPosition,
     })
     .from(playoffs)
-    .where(and(eq(playoffs.seasonId, season.id), eq(playoffs.type, "tshwane_masters")))
+    .leftJoin(divisions, eq(playoffs.divisionId, divisions.id))
+    .leftJoin(regions, eq(divisions.regionId, regions.id))
+    .where(and(eq(playoffs.seasonId, season.id), inArray(playoffs.type, ["regional_final", "tshwane_masters"])))
     .orderBy(asc(playoffs.matchDate), asc(playoffs.bracketPosition))
   const playoffRows = [...playoffRowsRaw]
-  const qf1Index = playoffRows.findIndex((row) => row.bracketPosition === 1)
-  const qf3Index = playoffRows.findIndex((row) => row.bracketPosition === 3)
+  const qf1Index = playoffRows.findIndex((row) => row.type === "regional_final" && row.bracketPosition === 1)
+  const qf3Index = playoffRows.findIndex((row) => row.type === "regional_final" && row.bracketPosition === 3)
   if (qf1Index >= 0 && qf3Index >= 0) {
     const qf1 = playoffRows[qf1Index]
     const qf3 = playoffRows[qf3Index]
@@ -547,44 +564,42 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       : [],
   )
 
-  const playoffDivisionTargets = usedDivisions.filter(
-    (division): division is typeof division & { regionId: number } => division.regionId != null,
-  )
-
-  const playoffFixtureRows = playoffRows.flatMap((playoffRow) =>
-    playoffDivisionTargets.map((divisionTarget, index) => ({
-      id: 9_000_000 + playoffRow.id * 10 + index,
-      week: season.weeks,
-      matchDate: playoffRow.matchDate,
-      timeslot: playoffRow.timeslot,
-      status: playoffRow.status,
-      divisionId: divisionTarget.id,
-      divisionName: "Playoff",
-      divisionLevel: divisionTarget.level,
-      regionId: divisionTarget.regionId,
-      regionName: divisionTarget.regionName,
-      venueClubId: null,
-      homeTeamId: playoffRow.homeTeamId,
-      awayTeamId: playoffRow.awayTeamId,
-      homeName: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.name ?? playoffRow.homeLabel) : playoffRow.homeLabel,
-      awayName: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.name ?? playoffRow.awayLabel) : playoffRow.awayLabel,
-      homeLogo: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.logo ?? null) : null,
-      awayLogo: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.logo ?? null) : null,
-      venue: playoffRow.venue ?? "To be Confirmed",
-      playtomicUrl: null,
-      published: true,
-      courtLinks: {},
-      courtAssignments: {},
-      homePoints: playoffRow.homeScore,
-      awayPoints: playoffRow.awayScore,
-      homeSetsWon: playoffRow.homeScore,
-      awaySetsWon: playoffRow.awayScore,
-      winnerTeamId: playoffRow.winnerTeamId,
-      bracketPosition: playoffRow.bracketPosition,
-      homeAvgLi: null,
-      awayAvgLi: null,
-    })),
-  )
+  const playoffFixtureRows = playoffRows.map((playoffRow) => ({
+    id: 9_000_000 + playoffRow.id,
+    week: season.weeks + 1,
+    matchDate: playoffRow.matchDate,
+    timeslot: playoffRow.timeslot,
+    status: playoffRow.status,
+    divisionId: playoffRow.divisionId ?? -1,
+    divisionName: playoffRow.divisionName ?? "Playoff",
+    divisionLevel: playoffRow.divisionLevel ?? null,
+    regionId: playoffRow.regionId ?? null,
+    regionName: playoffRow.regionName ?? null,
+    venueClubId: null,
+    playoffCourt: playoffRow.court,
+    playoffCategorySchedule: playoffRow.categorySchedule,
+    homeTeamId: playoffRow.homeTeamId,
+    awayTeamId: playoffRow.awayTeamId,
+    homeName: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.name ?? playoffRow.homeLabel) : playoffRow.homeLabel,
+    awayName: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.name ?? playoffRow.awayLabel) : playoffRow.awayLabel,
+    homeLogo: playoffRow.homeTeamId ? (playoffTeamsById.get(playoffRow.homeTeamId)?.logo ?? null) : null,
+    awayLogo: playoffRow.awayTeamId ? (playoffTeamsById.get(playoffRow.awayTeamId)?.logo ?? null) : null,
+    venue: playoffRow.venue ?? "To be Confirmed",
+    playtomicUrl: null,
+    published: true,
+    courtLinks: {},
+    courtAssignments: {},
+    homePoints: playoffRow.homeScore,
+    awayPoints: playoffRow.awayScore,
+    homeSetsWon: playoffRow.homeScore,
+    awaySetsWon: playoffRow.awayScore,
+    winnerTeamId: playoffRow.winnerTeamId,
+    playoffType: playoffRow.type,
+    playoffRound: playoffRow.round,
+    bracketPosition: playoffRow.bracketPosition,
+    homeAvgLi: null,
+    awayAvgLi: null,
+  }))
 
   const fixtureRows = [...fixtureRowsBase, ...playoffFixtureRows]
 
@@ -897,6 +912,22 @@ async function _buildSharedLeagueCentreData(): Promise<SharedLeagueCentreData> {
       awaySetsWon: f.awaySetsWon,
       winnerTeamId: f.winnerTeamId,
       playoffBracketPosition: (f as { bracketPosition?: number | null }).bracketPosition ?? null,
+      playoffType:
+        (f as { playoffType?: string | null; type?: string | null }).playoffType ??
+        (f as { type?: string | null }).type ??
+        null,
+      playoffRound:
+        (f as { playoffRound?: string | null; round?: string | null }).playoffRound ??
+        (f as { round?: string | null }).round ??
+        null,
+      playoffCourt: (f as { playoffCourt?: string | null }).playoffCourt ?? null,
+      playoffCategorySchedule:
+        (f as {
+          playoffCategorySchedule?: Record<string, { timeslot: string | null; court: string | null }> | null
+          categorySchedule?: Record<string, { timeslot: string | null; court: string | null }> | null
+        }).playoffCategorySchedule ??
+        (f as { categorySchedule?: Record<string, { timeslot: string | null; court: string | null }> | null }).categorySchedule ??
+        undefined,
       homeAvgLi: typeof f.homeAvgLi === "number" ? f.homeAvgLi : null,
       awayAvgLi: typeof f.awayAvgLi === "number" ? f.awayAvgLi : null,
       homePairLi: (() => {

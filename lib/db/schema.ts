@@ -809,6 +809,11 @@ export const playoffs = pgTable(
     winnerTeamId: integer("winnerTeamId"),
     matchDate: timestamp("matchDate"),
     timeslot: text("timeslot"),
+    court: text("court"),
+    categorySchedule: jsonb("categorySchedule")
+      .$type<Record<string, { timeslot: string | null; court: string | null }>>()
+      .notNull()
+      .default({}),
     venue: text("venue"),
     venueClubId: integer("venueClubId"),
     // Placeholder seeding so brackets exist before standings are known.

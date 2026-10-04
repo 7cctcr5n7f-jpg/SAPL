@@ -13,10 +13,11 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { pullPlayoffTeams, setPlayoffSchedule, setPlayoffTeams } from "@/lib/actions/admin"
-import { FIXTURE_TIMESLOTS } from "@/lib/constants"
+import { pullPlayoffTeams, setPlayoffCategoryScheduleBulk, setPlayoffRoundSchedule, setPlayoffSchedule, setPlayoffTeams } from "@/lib/actions/admin"
 import { toast } from "sonner"
 import { Swords, Trophy, Users, CalendarClock, MapPin } from "lucide-react"
+
+const PLAYOFF_TIMESLOTS = ["08:00", "10:00", "12:00", "14:00"] as const
 
 type Venue = { id: number; name: string; courts: number }
 type TeamOption = { id: number; name: string }
@@ -25,6 +26,7 @@ type Playoff = {
   type: string
   round: string
   divisionId: number | null
+  divisionName: string | null
   homeTeamId: number | null
   awayTeamId: number | null
   homeLabel: string | null
@@ -39,6 +41,8 @@ type Playoff = {
   bracketPosition: number | null
   matchDate: string | null
   timeslot: string | null
+  court: string | null
+  categorySchedule: Record<string, { timeslot: string | null; court: string | null }>
   venueClubId: number | null
   venue: string | null
 }
@@ -107,8 +111,9 @@ export function PlayoffsManager({
             <>
               {regionalByDivision.map(([divId, ps]) => (
                 <Bracket
+                  seasonId={seasonId}
                   key={`div-${divId}`}
-                  title={ps[0]?.homeName?.split(" ")[0] ? `${bracketDivisionName(ps)} — Playoffs` : "Playoffs"}
+                  title={ps[0]?.divisionName ? `${ps[0].divisionName} — Playoffs` : "Playoffs"}
                   playoffs={ps}
                   venues={venues}
                   teamOptions={teamOptions}
@@ -118,6 +123,7 @@ export function PlayoffsManager({
               ))}
               {masters.length > 0 && (
                 <Bracket
+                  seasonId={seasonId}
                   title="Tshwane Masters"
                   playoffs={masters}
                   venues={venues}
@@ -135,14 +141,8 @@ export function PlayoffsManager({
   )
 }
 
-function bracketDivisionName(ps: Playoff[]) {
-  // Labels look like "Premier Seed 1" — take the leading division word(s).
-  const label = ps.find((p) => p.round !== "final")?.homeName ?? ""
-  const m = label.match(/^([A-Za-z0-9 ]+?)\s+Seed\s+\d/i)
-  return m ? m[1].trim() : "Division"
-}
-
 function Bracket({
+  seasonId,
   title,
   playoffs,
   venues,
@@ -151,6 +151,7 @@ function Bracket({
   start,
   crown,
 }: {
+  seasonId: number
   title: string
   playoffs: Playoff[]
   venues: Venue[]
@@ -171,7 +172,24 @@ function Bracket({
       </p>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quarter Finals</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quarter Finals</p>
+            <div className="flex items-center gap-1.5">
+              <CategoryTimesDialog playoffs={quarters} pending={pending} start={start} />
+              <CourtAllocationDialog playoffs={quarters} pending={pending} start={start} />
+              <BulkRoundScheduleDialog
+                seasonId={seasonId}
+                playoffs={playoffs}
+                round="quarter_final"
+                venues={venues}
+                pending={pending}
+                start={start}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            1) Edit teams, 2) set category times, 3) assign courts per time slot.
+          </p>
           {quarters.map((p) => (
             <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} />
           ))}
@@ -227,7 +245,7 @@ function BracketRow({
         {p.matchDate && (
           <span className="inline-flex items-center gap-1">
             <CalendarClock className="h-3 w-3" />
-            {new Date(p.matchDate).toLocaleDateString()} {p.timeslot ?? ""}
+            {new Date(p.matchDate).toLocaleDateString()} {p.timeslot ?? ""} {p.court ? `· ${p.court}` : ""}
           </span>
         )}
         {p.venue && (
@@ -340,6 +358,310 @@ function TeamAssignmentDialog({
   )
 }
 
+function BulkRoundScheduleDialog({
+  seasonId,
+  playoffs,
+  round,
+  venues,
+  pending,
+  start,
+}: {
+  seasonId: number
+  playoffs: Playoff[]
+  round: "quarter_final" | "semi_final" | "third_place" | "final"
+  venues: Venue[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const sample = playoffs.find((playoff) => playoff.round === round)
+  const [date, setDate] = useState(sample?.matchDate ? sample.matchDate.slice(0, 10) : "")
+  const [timeslot, setTimeslot] = useState(sample?.timeslot ?? PLAYOFF_TIMESLOTS[0])
+  const [venueClubId, setVenueClubId] = useState(sample?.venueClubId ? String(sample.venueClubId) : "")
+
+  function save() {
+    const fd = new FormData()
+    fd.set("seasonId", String(seasonId))
+    fd.set("type", sample?.type ?? "regional_final")
+    fd.set("round", round)
+    if (sample?.divisionId != null) fd.set("divisionId", String(sample.divisionId))
+    fd.set("matchDate", date)
+    fd.set("timeslot", timeslot)
+    fd.set("venueClubId", venueClubId)
+    start(async () => {
+      const res = await setPlayoffRoundSchedule(fd)
+      if (res.ok) {
+        toast.success("Round schedule updated")
+        setOpen(false)
+      } else toast.error(res.error ?? "Failed to update round schedule")
+    })
+  }
+
+  if (!sample) return null
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
+            Bulk schedule
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bulk schedule {round.replace("_", " ")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Date</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Timeslot</Label>
+            <select
+              value={timeslot}
+              onChange={(e) => setTimeslot(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {PLAYOFF_TIMESLOTS.map((slot) => (
+                <option key={slot} value={slot}>
+                  {slot}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>Venue</Label>
+            <select
+              value={venueClubId}
+              onChange={(e) => setVenueClubId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">No venue</option>
+              {venues.map((venue) => (
+                <option key={venue.id} value={venue.id}>
+                  {venue.name} ({venue.courts} courts)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending}>
+            Save all
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CategoryTimesDialog({
+  playoffs,
+  pending,
+  start,
+}: {
+  playoffs: Playoff[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  const categories = ["Ladies Open", "Mens Open", "Mens Intermediate", "Mens Beginner"] as const
+  const [open, setOpen] = useState(false)
+  const [timesByCategory, setTimesByCategory] = useState<Record<string, string>>(
+    categories.reduce((acc, category) => {
+      const sample = playoffs.find((playoff) => playoff.categorySchedule?.[category]?.timeslot)?.categorySchedule?.[category]?.timeslot
+      acc[category] = sample ?? PLAYOFF_TIMESLOTS[0]
+      return acc
+    }, {} as Record<string, string>),
+  )
+
+  function save() {
+    const updates: Array<{ playoffId: number; category: string; timeslot: string | null }> = []
+    for (const playoff of playoffs) {
+      for (const category of categories) {
+        updates.push({ playoffId: playoff.id, category, timeslot: timesByCategory[category] ?? null })
+      }
+    }
+    const fd = new FormData()
+    fd.set("updatesJson", JSON.stringify(updates))
+    start(async () => {
+      const res = await setPlayoffCategoryScheduleBulk(fd)
+      if (res.ok) {
+        toast.success("Category times saved")
+        setOpen(false)
+      } else toast.error(res.error ?? "Failed to save category times")
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
+            Category times
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set category times (all quarter-finals)</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {categories.map((category) => (
+            <div key={category} className="grid gap-2 md:grid-cols-[1fr_180px] md:items-center">
+              <p className="text-sm font-medium">{category}</p>
+              <select
+                value={timesByCategory[category] ?? PLAYOFF_TIMESLOTS[0]}
+                onChange={(e) => setTimesByCategory((prev) => ({ ...prev, [category]: e.target.value }))}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {PLAYOFF_TIMESLOTS.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {slot}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending}>
+            Save category times
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CourtAllocationDialog({
+  playoffs,
+  pending,
+  start,
+}: {
+  playoffs: Playoff[]
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  const categories = ["Ladies Open", "Mens Open", "Mens Intermediate", "Mens Beginner"] as const
+  const [open, setOpen] = useState(false)
+  const [category, setCategory] = useState<(typeof categories)[number]>("Ladies Open")
+  const [courtByFixtureId, setCourtByFixtureId] = useState<Record<number, string>>(
+    Object.fromEntries(playoffs.map((playoff) => [playoff.id, playoff.categorySchedule?.["Ladies Open"]?.court ?? ""])),
+  )
+
+  const timeslotForCategory = useMemo(() => {
+    return playoffs.find((playoff) => playoff.categorySchedule?.[category]?.timeslot)?.categorySchedule?.[category]?.timeslot ?? ""
+  }, [category, playoffs])
+
+  function setCategoryAndLoad(categoryName: (typeof categories)[number]) {
+    setCategory(categoryName)
+    setCourtByFixtureId(
+      Object.fromEntries(playoffs.map((playoff) => [playoff.id, playoff.categorySchedule?.[categoryName]?.court ?? ""])),
+    )
+  }
+
+  function save() {
+    const chosen = playoffs.map((playoff) => courtByFixtureId[playoff.id] ?? "")
+    const filled = chosen.filter(Boolean)
+    const duplicates = new Set<string>()
+    const seen = new Set<string>()
+    for (const court of filled) {
+      if (seen.has(court)) duplicates.add(court)
+      seen.add(court)
+    }
+    if (duplicates.size > 0) {
+      toast.error(`Each court can only host one match in the slot. Duplicate: ${[...duplicates].join(", ")}`)
+      return
+    }
+
+    const updates = playoffs.map((playoff) => ({
+      playoffId: playoff.id,
+      category,
+      timeslot: timeslotForCategory || null,
+      court: (courtByFixtureId[playoff.id] || null),
+    }))
+    const fd = new FormData()
+    fd.set("updatesJson", JSON.stringify(updates))
+    start(async () => {
+      const res = await setPlayoffCategoryScheduleBulk(fd)
+      if (res.ok) {
+        toast.success("Court allocation saved")
+        setOpen(false)
+      } else toast.error(res.error ?? "Failed to save court allocation")
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
+            Court allocation
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign courts by category</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-[1fr_180px] md:items-center">
+            <Label>Category</Label>
+            <select
+              value={category}
+              onChange={(e) => setCategoryAndLoad(e.target.value as (typeof categories)[number])}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {categories.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Timeslot: <span className="font-semibold">{timeslotForCategory || "Not set yet (set category times first)"}</span>
+          </p>
+          <div className="space-y-2 rounded-md border border-input p-3">
+            {playoffs.map((playoff) => (
+              <div key={playoff.id} className="grid gap-2 md:grid-cols-[1fr_140px] md:items-center">
+                <p className="text-sm">{playoff.homeName} vs {playoff.awayName}</p>
+                <select
+                  value={courtByFixtureId[playoff.id] ?? ""}
+                  onChange={(e) => setCourtByFixtureId((prev) => ({ ...prev, [playoff.id]: e.target.value }))}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Court TBD</option>
+                  <option value="Court 1">Court 1</option>
+                  <option value="Court 2">Court 2</option>
+                  <option value="Court 3">Court 3</option>
+                  <option value="Court 4">Court 4</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending}>
+            Save court allocation
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ScheduleDialog({
   p,
   venues,
@@ -353,14 +675,25 @@ function ScheduleDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [date, setDate] = useState(p.matchDate ? p.matchDate.slice(0, 10) : "")
-  const [timeslot, setTimeslot] = useState(p.timeslot ?? FIXTURE_TIMESLOTS[0])
+  const categories = ["Ladies Open", "Mens Open", "Mens Intermediate", "Mens Beginner"]
+  const [categorySchedule, setCategorySchedule] = useState<Record<string, { timeslot: string | null; court: string | null }>>(
+    categories.reduce((acc, category) => {
+      acc[category] = {
+        timeslot: p.categorySchedule?.[category]?.timeslot ?? null,
+        court: p.categorySchedule?.[category]?.court ?? null,
+      }
+      return acc
+    }, {} as Record<string, { timeslot: string | null; court: string | null }>),
+  )
   const [venueClubId, setVenueClubId] = useState(p.venueClubId ? String(p.venueClubId) : "")
 
   function save() {
     const fd = new FormData()
     fd.set("playoffId", String(p.id))
     fd.set("matchDate", date)
-    fd.set("timeslot", timeslot)
+    fd.set("timeslot", "")
+    fd.set("court", "")
+    fd.set("categoryScheduleJson", JSON.stringify(categorySchedule))
     fd.set("venueClubId", venueClubId)
     start(async () => {
       const res = await setPlayoffSchedule(fd)
@@ -390,22 +723,50 @@ function ScheduleDialog({
             <Input id={`date-${p.id}`} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`slot-${p.id}`}>Timeslot</Label>
-            <select
-              id={`slot-${p.id}`}
-              value={timeslot}
-              onChange={(e) => setTimeslot(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {FIXTURE_TIMESLOTS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+            <Label>Category schedule (per team category)</Label>
+            <div className="space-y-2 rounded-md border border-input p-3">
+              {categories.map((category) => (
+                <div key={category} className="grid gap-2 md:grid-cols-[1fr_160px_140px] md:items-center">
+                  <p className="text-sm font-medium">{category}</p>
+                  <select
+                    value={categorySchedule[category]?.timeslot ?? ""}
+                    onChange={(e) =>
+                      setCategorySchedule((prev) => ({
+                        ...prev,
+                        [category]: { ...prev[category], timeslot: e.target.value || null },
+                      }))
+                    }
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select timeslot</option>
+                    {PLAYOFF_TIMESLOTS.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={categorySchedule[category]?.court ?? ""}
+                    onChange={(e) =>
+                      setCategorySchedule((prev) => ({
+                        ...prev,
+                        [category]: { ...prev[category], court: e.target.value || null },
+                      }))
+                    }
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select court</option>
+                    <option value="Court 1">Court 1</option>
+                    <option value="Court 2">Court 2</option>
+                    <option value="Court 3">Court 3</option>
+                    <option value="Court 4">Court 4</option>
+                  </select>
+                </div>
               ))}
-            </select>
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`venue-${p.id}`}>Court / venue</Label>
+            <Label htmlFor={`venue-${p.id}`}>Venue</Label>
             <select
               id={`venue-${p.id}`}
               value={venueClubId}
