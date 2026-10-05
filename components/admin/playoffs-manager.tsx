@@ -18,6 +18,8 @@ import { toast } from "sonner"
 import { Swords, Trophy, Users, CalendarClock, MapPin } from "lucide-react"
 
 const PLAYOFF_TIMESLOTS = ["08:00", "10:00", "12:00", "14:00"] as const
+const PLAYOFF_CATEGORIES = ["Ladies Open", "Mens Open", "Mens Intermediate", "Mens Beginner"] as const
+const PLAYOFF_COURTS = ["Court 1", "Court 2", "Court 3", "Court 4"] as const
 
 type Venue = { id: number; name: string; courts: number }
 type TeamOption = { id: number; name: string }
@@ -195,15 +197,57 @@ function Bracket({
           ))}
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Semi Finals</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Semi Finals</p>
+            <div className="flex items-center gap-1.5">
+              <RoundSchedulerDialog
+                title="Schedule semi-finals"
+                triggerLabel="Category schedule"
+                playoffs={semis}
+                occupiedBy={playoffs}
+                fixtureLabel={(p) => `Semi-final ${(p.bracketPosition ?? 5) - 4}`}
+                pending={pending}
+                start={start}
+              />
+              <BulkRoundScheduleDialog
+                seasonId={seasonId}
+                playoffs={playoffs}
+                round="semi_final"
+                venues={venues}
+                pending={pending}
+                start={start}
+              />
+            </div>
+          </div>
           {semis.map((p) => (
             <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} />
           ))}
         </div>
         <div className="space-y-2">
-          <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Trophy className="h-3 w-3" /> Finals
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Trophy className="h-3 w-3" /> Finals
+            </p>
+            <div className="flex items-center gap-1.5">
+              <RoundSchedulerDialog
+                title="Schedule 3rd place & final"
+                triggerLabel="Category schedule"
+                playoffs={[...thirdPlace, ...finals]}
+                occupiedBy={playoffs}
+                fixtureLabel={(p) => (p.round === "final" ? "Final" : "3rd / 4th place")}
+                pending={pending}
+                start={start}
+              />
+              <BulkRoundScheduleDialog
+                seasonId={seasonId}
+                playoffs={playoffs}
+                round="final"
+                venues={venues}
+                pending={pending}
+                start={start}
+              />
+            </div>
+          </div>
           {thirdPlace.map((p) => (
             <BracketRow key={p.id} p={p} venues={venues} teamOptions={teamOptions} pending={pending} start={start} label="3rd / 4th place" />
           ))}
@@ -655,6 +699,217 @@ function CourtAllocationDialog({
           </Button>
           <Button onClick={save} disabled={pending}>
             Save court allocation
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function playoffDayKey(matchDate: string | null) {
+  return matchDate ? new Date(matchDate).toISOString().slice(0, 10) : "no-date"
+}
+
+function RoundSchedulerDialog({
+  title,
+  triggerLabel,
+  playoffs,
+  occupiedBy,
+  fixtureLabel,
+  pending,
+  start,
+}: {
+  title: string
+  triggerLabel: string
+  playoffs: Playoff[]
+  occupiedBy: Playoff[]
+  fixtureLabel: (p: Playoff) => string
+  pending: boolean
+  start: (cb: () => Promise<void>) => void
+}) {
+  type Cell = { timeslot: string; court: string }
+  const cellKey = (id: number, category: string) => `${id}|${category}`
+  const loadCells = () => {
+    const out: Record<string, Cell> = {}
+    for (const playoff of playoffs) {
+      for (const category of PLAYOFF_CATEGORIES) {
+        const entry = playoff.categorySchedule?.[category]
+        out[cellKey(playoff.id, category)] = { timeslot: entry?.timeslot ?? "", court: entry?.court ?? "" }
+      }
+    }
+    return out
+  }
+
+  const [open, setOpen] = useState(false)
+  const [cells, setCells] = useState<Record<string, Cell>>(loadCells)
+
+  function handleOpenChange(next: boolean) {
+    if (next) setCells(loadCells())
+    setOpen(next)
+  }
+
+  function updateCell(id: number, category: string, patch: Partial<Cell>) {
+    setCells((prev) => ({ ...prev, [cellKey(id, category)]: { ...prev[cellKey(id, category)], ...patch } }))
+  }
+
+  function setCategoryTime(category: string, timeslot: string) {
+    setCells((prev) => {
+      const next = { ...prev }
+      for (const playoff of playoffs) {
+        next[cellKey(playoff.id, category)] = { ...next[cellKey(playoff.id, category)], timeslot }
+      }
+      return next
+    })
+  }
+
+  // Cells that share the same day, timeslot and court (including other rounds already saved).
+  const conflicts = useMemo(() => {
+    const users = new Map<string, string[]>()
+    const add = (key: string, cell: string) => users.set(key, [...(users.get(key) ?? []), cell])
+    const editableIds = new Set(playoffs.map((playoff) => playoff.id))
+    for (const playoff of playoffs) {
+      for (const category of PLAYOFF_CATEGORIES) {
+        const cell = cells[cellKey(playoff.id, category)]
+        if (cell?.timeslot && cell?.court) {
+          add(`${playoff.divisionId ?? "none"}|${playoffDayKey(playoff.matchDate)}|${cell.timeslot}|${cell.court}`, cellKey(playoff.id, category))
+        }
+      }
+    }
+    for (const other of occupiedBy) {
+      if (editableIds.has(other.id)) continue
+      for (const [category, entry] of Object.entries(other.categorySchedule ?? {})) {
+        if (entry?.timeslot && entry?.court) {
+          add(`${other.divisionId ?? "none"}|${playoffDayKey(other.matchDate)}|${entry.timeslot}|${entry.court}`, `other|${other.id}|${category}`)
+        }
+      }
+    }
+    const conflicted = new Set<string>()
+    for (const members of users.values()) {
+      if (members.length > 1) members.forEach((member) => conflicted.add(member))
+    }
+    return conflicted
+  }, [cells, occupiedBy, playoffs])
+
+  const missingTime = playoffs.some((playoff) =>
+    PLAYOFF_CATEGORIES.some((category) => {
+      const cell = cells[cellKey(playoff.id, category)]
+      return !!cell?.court && !cell?.timeslot
+    }),
+  )
+
+  function save() {
+    const updates = playoffs.flatMap((playoff) =>
+      PLAYOFF_CATEGORIES.map((category) => {
+        const cell = cells[cellKey(playoff.id, category)]
+        return { playoffId: playoff.id, category, timeslot: cell?.timeslot ?? "", court: cell?.court ?? "" }
+      }),
+    )
+    const fd = new FormData()
+    fd.set("updatesJson", JSON.stringify(updates))
+    start(async () => {
+      const res = await setPlayoffCategoryScheduleBulk(fd)
+      if (res.ok) {
+        toast.success(`${title} saved`)
+        setOpen(false)
+      } else toast.error(res.error ?? "Failed to save schedule")
+    })
+  }
+
+  if (playoffs.length === 0) return null
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
+            {triggerLabel}
+          </Button>
+        }
+      />
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          Choose the timeslot and court for each category match. Each court can only host one match per timeslot.
+        </p>
+        <div className="space-y-4">
+          {PLAYOFF_CATEGORIES.map((category) => (
+            <div key={category} className="space-y-2 rounded-lg border border-input p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{category}</p>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  Time for all
+                  <select
+                    value=""
+                    onChange={(e) => e.target.value && setCategoryTime(category, e.target.value)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    <option value="">Select…</option>
+                    {PLAYOFF_TIMESLOTS.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {playoffs.map((playoff) => {
+                const key = cellKey(playoff.id, category)
+                const cell = cells[key] ?? { timeslot: "", court: "" }
+                const clash = conflicts.has(key)
+                return (
+                  <div key={key} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_100px_110px] md:items-center">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{fixtureLabel(playoff)}</p>
+                      <p className="truncate text-sm">
+                        {playoff.homeName} vs {playoff.awayName}
+                      </p>
+                    </div>
+                    <select
+                      value={cell.timeslot}
+                      onChange={(e) => updateCell(playoff.id, category, { timeslot: e.target.value })}
+                      className={`h-9 w-full rounded-md border bg-background px-2 text-sm ${clash ? "border-destructive" : "border-input"}`}
+                    >
+                      <option value="">Time TBD</option>
+                      {PLAYOFF_TIMESLOTS.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={cell.court}
+                      onChange={(e) => updateCell(playoff.id, category, { court: e.target.value })}
+                      className={`h-9 w-full rounded-md border bg-background px-2 text-sm ${clash ? "border-destructive" : "border-input"}`}
+                    >
+                      <option value="">Court TBD</option>
+                      {PLAYOFF_COURTS.map((court) => (
+                        <option key={court} value={court}>
+                          {court}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+        {conflicts.size > 0 ? (
+          <p className="text-xs font-medium text-destructive">
+            Some matches share the same court and timeslot (highlighted in red). Change one of them to continue.
+          </p>
+        ) : null}
+        {missingTime ? (
+          <p className="text-xs font-medium text-destructive">Pick a timeslot for every match that has a court.</p>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={pending || conflicts.size > 0 || missingTime}>
+            Save schedule
           </Button>
         </DialogFooter>
       </DialogContent>

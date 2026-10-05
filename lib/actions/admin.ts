@@ -820,25 +820,77 @@ export async function setPlayoffCategoryScheduleBulk(formData: FormData) {
   }
   if (updates.length === 0) return { ok: false, error: "No valid updates provided" }
 
+  type CategoryEntry = { timeslot: string | null; court: string | null }
   const ids = [...new Set(updates.map((u) => u.playoffId))]
   const rows = await db
-    .select({ id: playoffs.id, categorySchedule: playoffs.categorySchedule })
+    .select({
+      id: playoffs.id,
+      seasonId: playoffs.seasonId,
+      divisionId: playoffs.divisionId,
+      categorySchedule: playoffs.categorySchedule,
+    })
     .from(playoffs)
     .where(inArray(playoffs.id, ids))
+  if (rows.length === 0) return { ok: false, error: "Playoff fixtures not found" }
 
   const byId = new Map(rows.map((row) => [row.id, row]))
+  const nextById = new Map<number, Record<string, CategoryEntry>>()
   for (const id of ids) {
     const row = byId.get(id)
     if (!row) continue
-    const next = { ...(row.categorySchedule ?? {}) } as Record<string, { timeslot: string | null; court: string | null }>
-    const idUpdates = updates.filter((u) => u.playoffId === id)
-    for (const update of idUpdates) {
+    const next = { ...(row.categorySchedule ?? {}) } as Record<string, CategoryEntry>
+    for (const update of updates.filter((u) => u.playoffId === id)) {
       const prev = next[update.category] ?? { timeslot: null, court: null }
       next[update.category] = {
         timeslot: update.timeslot !== undefined ? update.timeslot : prev.timeslot,
         court: update.court !== undefined ? update.court : prev.court,
       }
     }
+    nextById.set(id, next)
+  }
+
+  // Reject double-booked courts: same division, same day, same timeslot and court.
+  const seasonIds = [...new Set(rows.map((row) => row.seasonId))]
+  const siblings = await db
+    .select({
+      id: playoffs.id,
+      divisionId: playoffs.divisionId,
+      matchDate: playoffs.matchDate,
+      round: playoffs.round,
+      bracketPosition: playoffs.bracketPosition,
+      categorySchedule: playoffs.categorySchedule,
+    })
+    .from(playoffs)
+    .where(inArray(playoffs.seasonId, seasonIds))
+
+  const slotUsers = new Map<string, Array<{ id: number; category: string; touched: boolean; label: string }>>()
+  for (const sibling of siblings) {
+    const schedule = nextById.get(sibling.id) ?? (sibling.categorySchedule ?? {})
+    const day = sibling.matchDate ? new Date(sibling.matchDate as unknown as string).toISOString().slice(0, 10) : "no-date"
+    for (const [category, entry] of Object.entries(schedule as Record<string, CategoryEntry>)) {
+      if (!entry?.timeslot || !entry?.court) continue
+      const key = `${sibling.divisionId ?? "none"}|${day}|${entry.timeslot}|${entry.court}`
+      const bucket = slotUsers.get(key) ?? []
+      bucket.push({
+        id: sibling.id,
+        category,
+        touched: updates.some((u) => u.playoffId === sibling.id && u.category === category),
+        label: `${sibling.round.replace("_", " ")} #${sibling.bracketPosition ?? sibling.id} (${category})`,
+      })
+      slotUsers.set(key, bucket)
+    }
+  }
+  for (const [key, users] of slotUsers) {
+    if (users.length > 1 && users.some((user) => user.touched)) {
+      const [, , timeslot, court] = key.split("|")
+      return {
+        ok: false,
+        error: `${court} at ${timeslot} is double-booked: ${users.map((user) => user.label).join(" and ")}`,
+      }
+    }
+  }
+
+  for (const [id, next] of nextById) {
     await db.update(playoffs).set({ categorySchedule: next }).where(eq(playoffs.id, id))
   }
 
