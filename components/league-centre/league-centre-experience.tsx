@@ -821,6 +821,23 @@ function playoffPairingDisplay({
   }
 }
 
+const PLAYOFF_CATEGORY_ORDER = ["ladies open", "mens open", "mens intermediate", "mens beginner"]
+
+function playoffCategoryOrder(category: string) {
+  const index = PLAYOFF_CATEGORY_ORDER.indexOf(category.toLowerCase().replace(/\s+/g, " ").trim())
+  return index === -1 ? PLAYOFF_CATEGORY_ORDER.length : index
+}
+
+function playoffCourtOrder(court: string | null | undefined) {
+  const match = court?.match(/\d+/)
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER
+}
+
+function playoffGroupRoundLabel(fixtures: LCFixture[]) {
+  const labels = Array.from(new Set(fixtures.map((fixture) => playoffRoundLabel(fixture))))
+  return labels.join(" & ")
+}
+
 function PlayoffSchedule({
   fixtures,
 }: {
@@ -861,7 +878,10 @@ function PlayoffSchedule({
       .map((group) => ({
         ...group,
         entries: [...group.entries].sort(
-          (a, b) => courtSortValue(a.court) - courtSortValue(b.court) || (a.fixture.id - b.fixture.id),
+          (a, b) =>
+            playoffCourtOrder(a.court) - playoffCourtOrder(b.court) ||
+            playoffCategoryOrder(a.category) - playoffCategoryOrder(b.category) ||
+            (a.fixture.id - b.fixture.id),
         ),
       }))
       .sort(
@@ -891,7 +911,7 @@ function PlayoffSchedule({
                 {group.timeslot ?? "TBD"}
               </p>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                {group.date ? shortDate(group.date) : "Date TBD"} · {playoffRoundLabel(group.entries[0].fixture)} · {group.entries.length} matches
+                {group.date ? shortDate(group.date) : "Date TBD"} · {playoffGroupRoundLabel(group.entries.map((entry) => entry.fixture))} · {group.entries.length} matches
               </p>
             </div>
           </div>

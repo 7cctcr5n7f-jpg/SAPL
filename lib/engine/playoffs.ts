@@ -57,7 +57,7 @@ export type PlayoffPairing = {
 
 export type PlayoffTemplate = {
   type: "regional_final" | "tshwane_masters"
-  round: "quarter_final" | "semi_final" | "final"
+  round: "quarter_final" | "semi_final" | "third_place" | "final"
   divisionId: number | null
   regionId: number | null
   bracketPosition: number
