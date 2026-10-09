@@ -678,6 +678,10 @@ function FinalsBracket({ fixtures }: { fixtures: LCFixture[] }) {
     if (fixture.playoffBracketPosition != null) {
       if (fixture.playoffBracketPosition >= 1 && fixture.playoffBracketPosition <= 4) return "quarter"
       if (fixture.playoffBracketPosition >= 5 && fixture.playoffBracketPosition <= 6) return "semi"
+    }
+    if (fixture.playoffRound === "third_place") return "third"
+    if (fixture.playoffRound === "final") return "final"
+    if (fixture.playoffBracketPosition != null) {
       if (fixture.playoffBracketPosition === 8) return "third"
       if (fixture.playoffBracketPosition === 7) return "final"
     }
@@ -752,6 +756,8 @@ function BracketTeamLine({ name, logoUrl }: { name: string | null; logoUrl: stri
 }
 
 function playoffRoundLabel(fixture: LCFixture): string {
+  if (fixture.playoffRound === "third_place") return "3rd Place Playoff"
+  if (fixture.playoffRound === "final") return "Final"
   const position = fixture.playoffBracketPosition
   if (position != null) {
     if (position >= 1 && position <= 4) return "Quarter-final"
@@ -776,8 +782,10 @@ function fallbackPlayoffLabel(fixture: LCFixture, side: "home" | "away"): string
     if (position === 4) return side === "home" ? "Conference winner Southern" : "Conference runner-up Eastern"
   }
   if (position != null && position >= 5 && position <= 6) return side === "home" ? "QF winner" : "QF winner"
-  if (position === 7) return side === "home" ? "SF winner" : "SF winner"
-  if (position === 8) return side === "home" ? "SF loser" : "SF loser"
+  if (fixture.playoffRound === "third_place") return "SF loser"
+  if (fixture.playoffRound === "final") return "SF winner"
+  if (position === 7) return "SF winner"
+  if (position === 8) return "SF loser"
   return side === "home" ? "TBD home side" : "TBD away side"
 }
 

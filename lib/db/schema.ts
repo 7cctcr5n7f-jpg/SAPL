@@ -814,6 +814,11 @@ export const playoffs = pgTable(
       .$type<Record<string, { timeslot: string | null; court: string | null }>>()
       .notNull()
       .default({}),
+    // Per-category set scores (up to three sets per side) for the live playoff scoreboard.
+    categoryScores: jsonb("categoryScores")
+      .$type<Record<string, { home: Array<number | null>; away: Array<number | null> }>>()
+      .notNull()
+      .default({}),
     venue: text("venue"),
     venueClubId: integer("venueClubId"),
     // Placeholder seeding so brackets exist before standings are known.
