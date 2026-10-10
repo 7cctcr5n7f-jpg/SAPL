@@ -1,14 +1,28 @@
 "use server"
 
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { db } from "@/lib/db"
-import { playoffs } from "@/lib/db/schema"
+import { playoffs, settings, teamEntries } from "@/lib/db/schema"
 import { getCurrentUser } from "@/lib/session"
-import { BOARD_SET_COUNT, normalizeBoardTime, padSets, parseCourtNumber } from "@/lib/playoff-board"
+import {
+  BOARD_SET_COUNT,
+  LIVE_STAGE_SETTING_KEY,
+  boardStageSupportsPlayers,
+  showPlayersSettingKey,
+  MAX_BOARD_PLAYER_NAME_LENGTH,
+  MAX_BOARD_TITLE_LENGTH,
+  isBoardStage,
+  normalizeBoardTime,
+  padSets,
+  parseCourtNumber,
+} from "@/lib/playoff-board"
 
 export type PlayoffBoardEdit =
   | { playoffId: number; kind: "points"; side: "home" | "away"; value: number }
+  | { playoffId: number; kind: "title"; value: string }
+  | { playoffId: number; kind: "player"; category: string; side: "home" | "away"; slot: number; value: string }
+  | { playoffId: number; kind: "team"; side: "home" | "away"; teamId: number | null }
   | { playoffId: number; kind: "time"; category: string; value: string }
   | { playoffId: number; kind: "court"; category: string; value: number }
   | { playoffId: number; kind: "set"; category: string; side: "home" | "away"; set: number; value: number | null }
@@ -38,6 +52,69 @@ export async function updatePlayoffBoard(edit: PlayoffBoardEdit): Promise<Result
       await tx
         .update(playoffs)
         .set(edit.side === "home" ? { homeScore: edit.value } : { awayScore: edit.value })
+        .where(eq(playoffs.id, playoffId))
+      return { ok: true }
+    }
+
+    if (edit.kind === "title") {
+      const title = String(edit.value ?? "").trim().slice(0, MAX_BOARD_TITLE_LENGTH)
+      await tx
+        .update(playoffs)
+        .set({ boardConfig: { ...(row.boardConfig ?? {}), title: title || null } })
+        .where(eq(playoffs.id, playoffId))
+      return { ok: true }
+    }
+
+    if (edit.kind === "player") {
+      if (edit.side !== "home" && edit.side !== "away") return { ok: false, error: "Invalid side" }
+      if (typeof edit.category !== "string" || !edit.category || edit.category.length > 40) return { ok: false, error: "Invalid category" }
+      if (edit.slot !== 0 && edit.slot !== 1) return { ok: false, error: "Invalid player slot" }
+      const name = String(edit.value ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_BOARD_PLAYER_NAME_LENGTH)
+      const config = { ...(row.boardConfig ?? {}) }
+      const allNames = { ...(config.playerNames ?? {}) }
+      const entry = { ...(allNames[edit.category] ?? {}) }
+      const sideNames: Array<string | null> = [entry[edit.side]?.[0] ?? null, entry[edit.side]?.[1] ?? null]
+      sideNames[edit.slot] = name || null
+      entry[edit.side] = sideNames
+      if (entry.home?.every((n) => n == null)) delete entry.home
+      if (entry.away?.every((n) => n == null)) delete entry.away
+      if (entry.home || entry.away) allNames[edit.category] = entry
+      else delete allNames[edit.category]
+      config.playerNames = allNames
+      await tx.update(playoffs).set({ boardConfig: config }).where(eq(playoffs.id, playoffId))
+      return { ok: true }
+    }
+
+    if (edit.kind === "team") {
+      if (edit.side !== "home" && edit.side !== "away") return { ok: false, error: "Invalid side" }
+      const config = { ...(row.boardConfig ?? {}) }
+      const hiddenKey = edit.side === "home" ? "homeHidden" : "awayHidden"
+      if (edit.teamId === null) {
+        config[hiddenKey] = true
+        await tx.update(playoffs).set({ boardConfig: config }).where(eq(playoffs.id, playoffId))
+        return { ok: true }
+      }
+      const teamId = Number(edit.teamId)
+      if (!Number.isInteger(teamId) || teamId <= 0) return { ok: false, error: "Invalid team" }
+      const [entry] = await tx
+        .select({ teamId: teamEntries.teamId })
+        .from(teamEntries)
+        .where(and(eq(teamEntries.seasonId, row.seasonId), eq(teamEntries.teamId, teamId)))
+        .limit(1)
+      if (!entry) return { ok: false, error: "Selected team is not part of this season" }
+      const otherId = edit.side === "home" ? row.awayTeamId : row.homeTeamId
+      const otherHidden = Boolean(edit.side === "home" ? config.awayHidden : config.homeHidden)
+      if (otherId === teamId && !otherHidden) return { ok: false, error: "That team is already in this match" }
+      delete config[hiddenKey]
+      const homeTeamId = edit.side === "home" ? teamId : row.homeTeamId
+      const awayTeamId = edit.side === "away" ? teamId : row.awayTeamId
+      await tx
+        .update(playoffs)
+        .set({
+          ...(edit.side === "home" ? { homeTeamId: teamId } : { awayTeamId: teamId }),
+          boardConfig: config,
+          winnerTeamId: row.winnerTeamId != null && [homeTeamId, awayTeamId].includes(row.winnerTeamId) ? row.winnerTeamId : null,
+        })
         .where(eq(playoffs.id, playoffId))
       return { ok: true }
     }
@@ -111,4 +188,29 @@ export async function updatePlayoffBoard(edit: PlayoffBoardEdit): Promise<Result
     revalidateTag("league-centre-shared", "max")
   }
   return result
+}
+
+export async function setLivePlayoffStage(stage: string): Promise<Result> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: "Not authenticated" }
+  if (user.realRole !== "super_admin") return { ok: false, error: "Admin access required" }
+  if (!isBoardStage(stage)) return { ok: false, error: "Invalid stage" }
+  await db
+    .insert(settings)
+    .values({ key: LIVE_STAGE_SETTING_KEY, value: stage })
+    .onConflictDoUpdate({ target: settings.key, set: { value: stage, updatedAt: new Date() } })
+  return { ok: true }
+}
+
+export async function setBoardShowPlayers(stage: string, show: boolean): Promise<Result> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: "Not authenticated" }
+  if (user.realRole !== "super_admin") return { ok: false, error: "Admin access required" }
+  if (!isBoardStage(stage) || !boardStageSupportsPlayers(stage)) return { ok: false, error: "Player names are only available for semi-finals and finals" }
+  const value = show ? "true" : "false"
+  await db
+    .insert(settings)
+    .values({ key: showPlayersSettingKey(stage), value })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } })
+  return { ok: true }
 }
