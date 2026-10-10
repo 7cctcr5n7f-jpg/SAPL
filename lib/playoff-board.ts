@@ -12,8 +12,56 @@ export const BOARD_SET_COUNT = 3
 
 export type BoardSets = Array<number | null>
 
+export const BOARD_STAGES = ["quarter_final", "semi_final", "final"] as const
+export type BoardStage = (typeof BOARD_STAGES)[number]
+
+export const BOARD_STAGE_LABELS: Record<BoardStage, string> = {
+  quarter_final: "Quarter-finals",
+  semi_final: "Semi-finals",
+  final: "Finals",
+}
+
+// The "Finals" stage shows the 3rd place playoff next to the final.
+export const BOARD_STAGE_ROUNDS: Record<BoardStage, string[]> = {
+  quarter_final: ["quarter_final"],
+  semi_final: ["semi_final"],
+  final: ["third_place", "final"],
+}
+
+export const LIVE_STAGE_SETTING_KEY = "playoff_board_stage"
+
+// Player names are only offered once the board has room for them (semi-finals and finals).
+export function boardStageSupportsPlayers(stage: BoardStage): boolean {
+  return stage !== "quarter_final"
+}
+
+export function showPlayersSettingKey(stage: BoardStage): string {
+  return `playoff_board_show_players_${stage}`
+}
+export const MAX_BOARD_TITLE_LENGTH = 40
+export const MAX_BOARD_PLAYER_NAME_LENGTH = 30
+
+export function isBoardStage(value: unknown): value is BoardStage {
+  return typeof value === "string" && (BOARD_STAGES as readonly string[]).includes(value)
+}
+
+export function defaultMatchHeading(round: string, index: number): { title: string; tag: string } {
+  const n = index + 1
+  if (round === "quarter_final") return { title: `Quarter-final ${n}`, tag: `QF${n}` }
+  if (round === "semi_final") return { title: `Semi-final ${n}`, tag: `SF${n}` }
+  if (round === "third_place") return { title: "3rd place playoff", tag: "3RD" }
+  if (round === "final") return { title: "Final", tag: "FINAL" }
+  return { title: `Match ${n}`, tag: `M${n}` }
+}
+
 export type BoardTeam = {
   id: number | null
+  name: string
+  logoUrl: string | null
+}
+
+export type BoardTeamOption = {
+  id: number
   name: string
   logoUrl: string | null
 }
@@ -24,11 +72,19 @@ export type BoardFixture = {
   court: number | null
   home: BoardSets
   away: BoardSets
+  homePlayers: string[]
+  awayPlayers: string[]
 }
 
 export type BoardMatch = {
   playoffId: number
   position: number
+  round: string
+  title: string
+  defaultTitle: string
+  tag: string
+  homeHidden: boolean
+  awayHidden: boolean
   home: BoardTeam
   away: BoardTeam
   homePoints: number
@@ -37,6 +93,10 @@ export type BoardMatch = {
 }
 
 export type PlayoffBoardData = {
+  stage: BoardStage
+  liveStage: BoardStage
+  showPlayers: boolean
+  seasonId: number | null
   dateLabel: string | null
   venue: string | null
   matches: BoardMatch[]

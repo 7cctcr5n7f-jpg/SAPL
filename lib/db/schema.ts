@@ -819,6 +819,17 @@ export const playoffs = pgTable(
       .$type<Record<string, { home: Array<number | null>; away: Array<number | null> }>>()
       .notNull()
       .default({}),
+    // Live scoreboard presentation: custom card heading and per-side "no team" switches.
+    boardConfig: jsonb("boardConfig")
+      .$type<{
+        title?: string | null
+        homeHidden?: boolean
+        awayHidden?: boolean
+        // Board-only player name overrides per category and side; null keeps the registered name.
+        playerNames?: Record<string, { home?: Array<string | null>; away?: Array<string | null> }>
+      }>()
+      .notNull()
+      .default({}),
     venue: text("venue"),
     venueClubId: integer("venueClubId"),
     // Placeholder seeding so brackets exist before standings are known.
